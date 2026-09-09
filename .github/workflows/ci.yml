@@ -27,6 +27,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: for script in deploy/*.sh; do sh -n "$script"; done
       - run: npm test
       - run: npm run build && npm run build:server
       - run: npm run deploy:configure -- --local

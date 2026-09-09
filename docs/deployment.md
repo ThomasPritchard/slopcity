@@ -32,6 +32,8 @@ Keep the default outbound allowance. PostgreSQL 5432, game 2567, LiveKit API 788
 
 Install Docker Engine and the Compose plugin using [Docker's Ubuntu instructions](https://docs.docker.com/engine/install/ubuntu/). Use a normal SSH user with sudo; Docker access itself grants root-equivalent privileges. Install Git and Node 24 LTS for the one-time configuration command (the game runs in its container).
 
+For a fresh Ubuntu 24.04 host, `sudo sh deploy/bootstrap-ubuntu.sh YOUR_USERNAME` performs the Docker installation from its official apt repository, grants that user Docker access and prepares `/opt/slop-city`. It leaves nginx and firewall configuration unchanged and refuses to remove conflicting packages automatically. Reconnect SSH after it finishes. If Node is not installed on the host, use `sh deploy/configure.sh GAME_DOMAIN VOICE_DOMAIN TURN_DOMAIN PUBLIC_IPV4` instead of `npm run deploy:configure`; the wrapper runs the generator in a Node 24 container as your user.
+
 The local project already includes its Git ignore rules, binary attributes, lockfile, Docker build and GitHub Actions CI. Create a **private** remote when ready; no remote is assumed by this configuration. Clone the reviewed repository into `/opt/slop-city`. Do not copy the Mac's `.env`, `.local` database or development credentials. The VPS starts with a fresh guest database; migrating development profiles is a separate deliberate operation.
 
 ```sh
