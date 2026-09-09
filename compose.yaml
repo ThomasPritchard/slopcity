@@ -54,6 +54,8 @@ services:
   livekit:
     <<: *service
     image: livekit/livekit-server:v1.13.6
+    # Match the private configuration owner without granting filesystem-bypass capabilities.
+    user: ${LIVEKIT_UID:?Run configuration generator}:${LIVEKIT_GID:?Run configuration generator}
     command: ['--config', '/etc/livekit.yaml']
     volumes:
       - ${DEPLOY_DIR:-./.deploy}/livekit.yaml:/etc/livekit.yaml:ro

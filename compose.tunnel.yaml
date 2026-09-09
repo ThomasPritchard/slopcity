@@ -1,0 +1,10 @@
+# HTTPS/WSS terminate at the existing Cloudflare tunnel. Preserve host nginx.
+# The gateway is reachable only from this host, including host-run cloudflared.
+services:
+  edge:
+    ports: !override
+      - '127.0.0.1:${TUNNEL_ORIGIN_PORT:-9080}:80/tcp'
+  livekit:
+    ports: !override
+      - '${BIND_IP:-0.0.0.0}:${RTC_TCP_PORT:-7881}:7881/tcp'
+      - '${BIND_IP:-0.0.0.0}:${RTC_UDP_PORT:-7882}:7882/udp'

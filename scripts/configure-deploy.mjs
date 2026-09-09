@@ -6,9 +6,10 @@ import { resolve } from 'node:path';
 // This command writes secrets, never prints them, and refuses to overwrite a deployment.
 const args = process.argv.slice(2);
 const local = args.includes('--local');
-const values = args.filter(arg => arg !== '--local');
+const tunnel = args.includes('--tunnel');
+const values = args.filter(arg => !['--local', '--tunnel'].includes(arg));
 if ((!local && values.length !== 4) || (local && values.length > 1)) {
-  console.error('Usage: npm run deploy:configure -- GAME_DOMAIN VOICE_DOMAIN TURN_DOMAIN PUBLIC_IPV4\nLocal test: npm run deploy:configure -- --local [.deploy-smoke]');
+  console.error('Usage: npm run deploy:configure -- [--tunnel] GAME_DOMAIN VOICE_DOMAIN TURN_DOMAIN PUBLIC_IPV4\nLocal test: npm run deploy:configure -- --local [--tunnel] [.deploy-smoke]');
   process.exit(1);
 }
 const [gameDomain, voiceDomain, turnDomain, publicIP] = local
@@ -68,17 +69,32 @@ const livekit = {
   rtc: { tcp_port: 7881, udp_port: 7882, use_external_ip: false, node_ip: publicIP, ...(local ? { enable_loopback_candidate: true } : {}) },
   keys: { [voiceKey]: voiceSecret },
   room: { max_participants: 64, empty_timeout: 300, departure_timeout: 20 },
-  turn: { enabled: true, domain: turnDomain, tls_port: 5349, udp_port: 3478, external_tls: true, ...(local ? { allow_restricted_peer_cidrs: ['127.0.0.1/32'] } : {}) },
+  turn: tunnel ? { enabled: false } : { enabled: true, domain: turnDomain, tls_port: 5349, udp_port: 3478, external_tls: true, ...(local ? { allow_restricted_peer_cidrs: ['127.0.0.1/32'] } : {}) },
   logging: { level: 'info', json: true },
 };
+if (tunnel) {
+  // Cloudflare terminates public TLS. Only the local tunnel/nginx reaches this
+  // HTTP listener; the browser's HTTPS origin and Secure cookies remain intact.
+  delete caddy.apps.tls;
+  delete caddy.apps.layer4;
+  const web = caddy.apps.http.servers.web;
+  web.listen = [':80'];
+  const routes = web.routes[0].handle[0].routes;
+  routes.splice(2, 0, {
+    match: [{ path: ['/voice', '/voice/*'] }],
+    handle: [{ handler: 'rewrite', strip_path_prefix: '/voice' }, proxy('livekit:7880')],
+    terminal: true,
+  });
+  caddy.apps.http.servers = { web };
+}
 try {
   for (const [name, contents] of Object.entries({
     'postgres-password': adminPassword,
     'app-password': appPassword,
-    'game.env': `NODE_ENV=production\nHOST=0.0.0.0\nPORT=2567\nDATABASE_URL=postgresql://slop_city:${appPassword}@postgres:5432/slop_city\nAPP_ORIGIN=${appOrigin}\nAPP_ORIGINS=\nLIVEKIT_URL=http://livekit:7880\nLIVEKIT_PUBLIC_URL=wss://${voiceDomain}${portSuffix}\nLIVEKIT_API_KEY=${voiceKey}\nLIVEKIT_API_SECRET=${voiceSecret}\n`,
+    'game.env': `NODE_ENV=production\nHOST=0.0.0.0\nPORT=2567\nDATABASE_URL=postgresql://slop_city:${appPassword}@postgres:5432/slop_city\nAPP_ORIGIN=${appOrigin}\nAPP_ORIGINS=\nLIVEKIT_URL=http://livekit:7880\nLIVEKIT_PUBLIC_URL=${tunnel ? `wss://${gameDomain}${portSuffix}/voice` : `wss://${voiceDomain}${portSuffix}`}\nLIVEKIT_API_KEY=${voiceKey}\nLIVEKIT_API_SECRET=${voiceSecret}\n`,
     'livekit.yaml': JSON.stringify(livekit, null, 2) + '\n',
     'caddy.json': JSON.stringify(caddy, null, 2) + '\n',
-    'compose.env': `DEPLOY_DIR=./${directoryName}\nRELEASE_TAG=local\n${local ? 'COMPOSE_PROJECT_NAME=slop-city-smoke\nBIND_IP=127.0.0.1\nHTTP_PORT=8088\nHTTPS_PORT=8443\nRTC_TCP_PORT=17891\nRTC_UDP_PORT=17892\nTURN_UDP_PORT=13478\n' : 'BIND_IP=0.0.0.0\n'}`,
+    'compose.env': `DEPLOY_DIR=./${directoryName}\nRELEASE_TAG=local\nLIVEKIT_UID=${process.getuid?.() ?? 1000}\nLIVEKIT_GID=${process.getgid?.() ?? 1000}\n${tunnel ? 'COMPOSE_FILE=compose.yaml:compose.tunnel.yaml\n' : ''}${local ? 'COMPOSE_PROJECT_NAME=slop-city-smoke\nBIND_IP=127.0.0.1\nHTTP_PORT=8088\nHTTPS_PORT=8443\nRTC_TCP_PORT=17891\nRTC_UDP_PORT=17892\nTURN_UDP_PORT=13478\n' : 'BIND_IP=0.0.0.0\n'}`,
   })) await writeFile(resolve(directory, name), contents, { mode: 0o600, flag: 'wx' });
 } catch (error) {
   await rm(directory, { recursive: true, force: true });
@@ -87,3 +103,4 @@ try {
 console.log(`Created private configuration in ${directoryName}/ (no credentials printed).`);
 console.log(`Run: docker compose --env-file ${directoryName}/compose.env config --quiet`);
 if (local) console.log('Local test configuration binds only to loopback. Its translated media ports are for container/API tests, not public voice deployment.');
+if (tunnel) console.log('Tunnel origin: http://127.0.0.1:9080. Voice signalling uses /voice; audio needs directly reachable RTC ports. TURN is disabled in tunnel mode.');

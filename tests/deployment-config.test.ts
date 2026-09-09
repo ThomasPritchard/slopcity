@@ -43,3 +43,22 @@ test('production generation rejects URL-shaped hostnames and private addresses b
     await assert.rejects(stat(join(cwd, '.deploy')), { code: 'ENOENT' });
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+test('tunnel mode keeps the public HTTPS origin and sends signalling through the existing hostname', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'slop-tunnel-config-'));
+  try {
+    const result = spawnSync(process.execPath, [configure, '--tunnel', 'slopcity.example.com', 'voice.example.com', 'turn.example.com', '203.0.113.10'], { cwd, encoding: 'utf8' });
+    assert.equal(result.status, 0);
+    const directory = join(cwd, '.deploy');
+    const env = parseEnv(await readFile(join(directory, 'game.env'), 'utf8'));
+    const compose = parseEnv(await readFile(join(directory, 'compose.env'), 'utf8'));
+    const gateway = JSON.parse(await readFile(join(directory, 'caddy.json'), 'utf8'));
+    const voice = JSON.parse(await readFile(join(directory, 'livekit.yaml'), 'utf8'));
+    assert.equal(env.APP_ORIGIN, 'https://slopcity.example.com');
+    assert.equal(env.LIVEKIT_PUBLIC_URL, 'wss://slopcity.example.com/voice');
+    assert.equal(compose.COMPOSE_FILE, 'compose.yaml:compose.tunnel.yaml');
+    assert.deepEqual(gateway.apps.http.servers.web.listen, [':80']);
+    assert.equal(gateway.apps.tls, undefined, 'public TLS belongs to the existing tunnel');
+    assert.equal(voice.turn.enabled, false, 'do not advertise an unreachable TURN/TLS endpoint');
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});

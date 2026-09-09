@@ -74,19 +74,20 @@ class LocalSocket extends WebSocket {
 globalThis.WebSocket = LocalSocket as unknown as typeof globalThis.WebSocket;
 const { Client } = await import('@colyseus/sdk');
 const composeArgs = ['compose', '--env-file', `${directory}/compose.env`, '--project-name', 'slop-city-smoke'];
-async function docker(args: string[], input?: Buffer): Promise<Buffer> {
+async function docker(args: string[], input?: Buffer, captureStderr = false): Promise<Buffer> {
   return new Promise((resolveOutput, reject) => {
     const child = spawn('docker', [...composeArgs, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
     const parts: Buffer[] = [];
     let bytes = 0;
     const timeout = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`Docker smoke command timed out (${args[0]})`)); }, 60000);
-    child.stdout.on('data', data => {
+    const collect = (data: Buffer) => {
       bytes += data.length;
       if (bytes > 64 * 1024 * 1024) { child.kill('SIGKILL'); reject(new Error('Smoke command output exceeded memory bound')); }
       else parts.push(Buffer.from(data));
-    });
-    // Third-party command errors may include credentials; never echo them.
-    child.stderr.resume();
+    };
+    child.stdout.on('data', collect);
+    // Only the explicit diagnostics path collects stderr, then redacts it.
+    if (captureStderr) child.stderr.on('data', collect); else child.stderr.resume();
     child.stdin.on('error', () => {});
     child.once('error', () => { clearTimeout(timeout); reject(new Error('Unable to execute Docker smoke command')); });
     child.once('close', code => {
@@ -96,6 +97,23 @@ async function docker(args: string[], input?: Buffer): Promise<Buffer> {
     });
     child.stdin.end(input);
   });
+}
+if (process.argv.includes('--diagnostics')) {
+  const credentials = [
+    gameEnv.DATABASE_URL!, gameEnv.LIVEKIT_API_KEY!, gameEnv.LIVEKIT_API_SECRET!,
+    await readFile(`${directory}/postgres-password`, 'utf8'),
+    await readFile(`${directory}/app-password`, 'utf8'),
+  ];
+  const redact = (value: string) => {
+    for (const credential of credentials) if (credential.trim()) value = value.replaceAll(credential.trim(), '[REDACTED]');
+    return value
+      .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[REDACTED JWT]')
+      .replace(/(slop_guest=)[A-Za-z0-9_-]+/g, '$1[REDACTED]')
+      .replace(/(access_token=)[^&\s"\\]+/gi, '$1[REDACTED]');
+  };
+  console.log(redact((await docker(['ps', '--all', '--format', '{{.Service}} {{.State}} {{.Health}} {{.ExitCode}}'])).toString()));
+  console.log(redact((await docker(['logs', '--no-color', '--tail', '60', 'game', 'livekit', 'edge', 'postgres'], undefined, true)).toString()));
+  process.exit(0);
 }
 async function until(check: () => boolean | Promise<boolean>, label: string, timeout = 10000) {
   const deadline = Date.now() + timeout;
@@ -170,6 +188,7 @@ const restoreDatabase = `smoke_restore_${randomUUID().replaceAll('-', '')}`;
 let restoreCreated = false;
 try {
   await healthy();
+  await docker(['exec', '-T', 'livekit', 'sh', '-c', 'test -r /etc/livekit.yaml']);
   const index = await localFetch(origin);
   assert.equal(index.status, 200);
   const html = await index.text();

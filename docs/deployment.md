@@ -51,6 +51,12 @@ The application runs as an unprivileged container user with a read-only filesyst
 
 ## First live checks
 
+### Existing Cloudflare Tunnel / nginx host
+
+For a host behind a router with an existing Cloudflare public hostname, generate configuration with `sh deploy/configure.sh --tunnel GAME_DOMAIN VOICE_DOMAIN TURN_DOMAIN PUBLIC_IPV4`. This chooses `compose.tunnel.yaml` automatically through `deploy/compose.sh`. The gateway listens only at `http://127.0.0.1:9080`, with the public HTTPS origin preserved. Cloudflare/nginx must preserve the original Host header and support WebSocket upgrades. The existing tunnel can point directly at that local URL, or nginx can proxy the selected hostname to it. The supplied `deploy/nginx-tunnel.conf` is specifically for `slopcity.fun`; `sudo sh deploy/enable-nginx-tunnel.sh` installs it only if the private gateway is healthy and no Slop City site already exists. It validates/reloads nginx and enables the daily backup timer, preserving other sites.
+
+Voice signalling uses `wss://GAME_DOMAIN/voice` in this mode, so it needs no additional tunnel hostname. Audio still needs a direct route: forward UDP 7882 and optionally TCP 7881 from the router to the game host, keeping the same external and internal port numbers. Verify actual media from another network. TURN is explicitly disabled in tunnel mode because a normal HTTP tunnel cannot carry TURN/TLS; reliable fallback on restricted networks requires a separately reachable TURN setup. The ordinary direct-VPS configuration retains its full TURN/TLS gateway. Do not claim voice works based on signalling alone.
+
 ```sh
 sh deploy/compose.sh ps
 curl --fail https://play.your-domain.com/game/health

@@ -31,9 +31,13 @@ jobs:
       - run: npm test
       - run: npm run build && npm run build:server
       - run: npm run deploy:configure -- --local
+        id: configure
       - run: docker compose --env-file .deploy-smoke/compose.env config --quiet
       - run: docker compose --env-file .deploy-smoke/compose.env up -d --build --wait --wait-timeout 120
       - run: npm run test:deployment
+      - name: Redacted service diagnostics on failure
+        if: failure() && steps.configure.outcome == 'success'
+        run: node --import tsx scripts/deployment-check.ts --diagnostics
       - name: Remove disposable test services
         if: always()
         run: docker compose --env-file .deploy-smoke/compose.env down --volumes --remove-orphans
