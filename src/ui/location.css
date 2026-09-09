@@ -1,0 +1,26 @@
+.location {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(680px, calc(100% - 40px));
+  padding: 38px 20px;
+  text-align: center;
+  pointer-events: none;
+  text-shadow: 0 2px 16px #152f27, 0 1px 3px #152f27;
+  background: radial-gradient(ellipse, #21372d55, transparent 70%);
+  animation: location-arrival 4s ease both;
+}
+.location h1 { font: 400 clamp(34px, 5vw, 64px)/1.1 'Instrument Serif', Georgia, serif; margin-top: 10px; }
+.location .eyebrow { font-size: 8px; letter-spacing: 2.5px; }
+.location-rule { display: block; width: 48px; height: 1px; background: #edf2d0aa; margin: 20px auto 0; }
+@keyframes location-arrival {
+  0% { opacity: 0; }
+  12%, 72% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .location { animation-name: location-arrival-reduced; }
+  @keyframes location-arrival-reduced { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }
+}

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#23342e" />
+    <meta name="description" content="Slop City. A place to make your own." />
+    <title>Slop City — Town Square</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2323342e'/%3E%3Ctext x='32' y='44' font-size='38' text-anchor='middle' fill='%23e9efaa'%3Es%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="startup" role="status" style="position:fixed;inset:0;z-index:100;background:#23342e;color:#f2eedf;display:grid;place-content:center;padding:32px;font:16px/1.6 system-ui;text-align:center">
+      <p style="font-size:12px;letter-spacing:4px">SLOP CITY</p>
+      <h1 id="startup-title" style="font:normal 40px Georgia;margin:12px 0">Opening the square…</h1>
+      <p id="startup-message">Loading the game.</p>
+      <button id="startup-retry" hidden style="padding:14px 24px;border:0;border-radius:6px;background:#e3ebbb;color:#23342e;font:inherit;cursor:pointer">Try again</button>
+      <a id="startup-local" hidden href="http://localhost:5173" style="color:#e3ebbb">Open the local game</a>
+      <noscript>Please enable JavaScript to play Slop City.</noscript>
+    </div>
+    <div id="root"></div>
+    <script>
+      (function () {
+        function showError() {
+          var screen = document.getElementById('startup');
+          if (!screen) return;
+          var localFile = location.protocol === 'file:';
+          document.getElementById('startup-title').textContent = localFile ? 'Open the game through its server.' : 'The game could not start.';
+          document.getElementById('startup-message').textContent = localFile ? 'Run npm run dev in the project, then use the link below.' : 'Some game files could not load. Try again to fetch the latest version.';
+          document.getElementById('startup-retry').hidden = localFile;
+          document.getElementById('startup-local').hidden = !localFile;
+          screen.setAttribute('role', 'alert');
+        }
+        window.addEventListener('slop-city-startup-error', showError);
+        window.addEventListener('error', showError, true);
+        document.getElementById('startup-retry').onclick = function () { location.reload(); };
+        if (location.protocol === 'file:') showError();
+      })();
+    </script>
+    <script type="module" src="/src/bootstrap.ts"></script>
+  </body>
+</html>

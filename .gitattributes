@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.sh text eol=lf
+*.blend binary
+*.glb binary
+*.png binary
+*.jpg binary
+*.hdr binary

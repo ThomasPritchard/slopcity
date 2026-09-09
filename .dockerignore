@@ -1,0 +1,20 @@
+# Allowlist: secrets, local databases, Git history and Blender sources never enter builds.
+**
+!Dockerfile
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.server.json
+!vite.config.ts
+!index.html
+!src/**
+!server/**
+!shared/**
+!scripts/**
+!tests/**
+!public/**
+!deploy/init-database.sh
+!deploy/postgres-entrypoint.sh
+**/.DS_Store
+**/*.log
+**/.env*

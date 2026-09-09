@@ -1,0 +1,478 @@
+{
+  "source_sha256": "aa12372629ffb66e9d595348dc195ffb3e92b070facd964e7c24e8a15c205c88",
+  "original": {
+    "bytes": 3988004,
+    "triangles": 84588,
+    "vertices": 67104,
+    "mesh_count": 32,
+    "materials": [
+      "Eye_White",
+      "Hair",
+      "Iris",
+      "Lips",
+      "Pupil",
+      "Skin",
+      "wear_bomber__Cloth_Main",
+      "wear_bomber__Cloth_Rib",
+      "wear_bomber__Fastening",
+      "wear_boots__Shoe_Leather",
+      "wear_boots__Shoe_Rubber",
+      "wear_boots__Shoe_Stitch",
+      "wear_cargo__Stitch",
+      "wear_cargo__Trousers",
+      "wear_chinos__Seam",
+      "wear_chinos__Trousers",
+      "wear_jeans__Stitch",
+      "wear_jeans__Trousers",
+      "wear_knit__Cloth_Main",
+      "wear_knit__Cloth_Rib",
+      "wear_loafers__Shoe_Leather",
+      "wear_loafers__Shoe_Rubber",
+      "wear_loafers__Shoe_Stitch",
+      "wear_loafers__Skin",
+      "wear_sneakers__Cloth_Main",
+      "wear_sneakers__Cotton_Inner",
+      "wear_sneakers__Shoe_Leather",
+      "wear_sneakers__Shoe_Rubber",
+      "wear_sneakers__Trousers",
+      "wear_utility__Buttons",
+      "wear_utility__Cloth_Main",
+      "wear_utility__Seam"
+    ],
+    "nodes": [
+      "CitizenRig",
+      "Eye_White",
+      "Hair",
+      "Iris",
+      "Lips",
+      "Pupil",
+      "Skin",
+      "foot.L",
+      "foot.R",
+      "forearm.L",
+      "forearm.R",
+      "hand.L",
+      "hand.R",
+      "head",
+      "hips",
+      "root",
+      "shin.L",
+      "shin.R",
+      "spine",
+      "thigh.L",
+      "thigh.R",
+      "upper_arm.L",
+      "upper_arm.R",
+      "wear_bomber__Cloth_Main",
+      "wear_bomber__Cloth_Rib",
+      "wear_bomber__Fastening",
+      "wear_boots__Shoe_Leather",
+      "wear_boots__Shoe_Rubber",
+      "wear_boots__Shoe_Stitch",
+      "wear_cargo__Stitch",
+      "wear_cargo__Trousers",
+      "wear_chinos__Seam",
+      "wear_chinos__Trousers",
+      "wear_jeans__Stitch",
+      "wear_jeans__Trousers",
+      "wear_knit__Cloth_Main",
+      "wear_knit__Cloth_Rib",
+      "wear_loafers__Shoe_Leather",
+      "wear_loafers__Shoe_Rubber",
+      "wear_loafers__Shoe_Stitch",
+      "wear_loafers__Skin",
+      "wear_sneakers__Cloth_Main",
+      "wear_sneakers__Cotton_Inner",
+      "wear_sneakers__Shoe_Leather",
+      "wear_sneakers__Shoe_Rubber",
+      "wear_sneakers__Trousers",
+      "wear_utility__Buttons",
+      "wear_utility__Cloth_Main",
+      "wear_utility__Seam"
+    ],
+    "animations": [
+      "Idle",
+      "Sit",
+      "Walk",
+      "Wave"
+    ],
+    "animation_channels": {
+      "Idle": 48,
+      "Sit": 48,
+      "Walk": 48,
+      "Wave": 48
+    },
+    "skins": [
+      [
+        "root",
+        "hips",
+        "spine",
+        "head",
+        "upper_arm.L",
+        "forearm.L",
+        "hand.L",
+        "upper_arm.R",
+        "forearm.R",
+        "hand.R",
+        "thigh.L",
+        "shin.L",
+        "foot.L",
+        "thigh.R",
+        "shin.R",
+        "foot.R"
+      ]
+    ],
+    "all_primitives_skinned": true
+  },
+  "lod": {
+    "bytes": 1248076,
+    "triangles": 23128,
+    "vertices": 20070,
+    "mesh_count": 32,
+    "materials": [
+      "Eye_White",
+      "Hair",
+      "Iris",
+      "Lips",
+      "Pupil",
+      "Skin",
+      "wear_bomber__Cloth_Main",
+      "wear_bomber__Cloth_Rib",
+      "wear_bomber__Fastening",
+      "wear_boots__Shoe_Leather",
+      "wear_boots__Shoe_Rubber",
+      "wear_boots__Shoe_Stitch",
+      "wear_cargo__Stitch",
+      "wear_cargo__Trousers",
+      "wear_chinos__Seam",
+      "wear_chinos__Trousers",
+      "wear_jeans__Stitch",
+      "wear_jeans__Trousers",
+      "wear_knit__Cloth_Main",
+      "wear_knit__Cloth_Rib",
+      "wear_loafers__Shoe_Leather",
+      "wear_loafers__Shoe_Rubber",
+      "wear_loafers__Shoe_Stitch",
+      "wear_loafers__Skin",
+      "wear_sneakers__Cloth_Main",
+      "wear_sneakers__Cotton_Inner",
+      "wear_sneakers__Shoe_Leather",
+      "wear_sneakers__Shoe_Rubber",
+      "wear_sneakers__Trousers",
+      "wear_utility__Buttons",
+      "wear_utility__Cloth_Main",
+      "wear_utility__Seam"
+    ],
+    "nodes": [
+      "CitizenRig",
+      "Eye_White",
+      "Hair",
+      "Iris",
+      "Lips",
+      "Pupil",
+      "Skin",
+      "foot.L",
+      "foot.R",
+      "forearm.L",
+      "forearm.R",
+      "hand.L",
+      "hand.R",
+      "head",
+      "hips",
+      "root",
+      "shin.L",
+      "shin.R",
+      "spine",
+      "thigh.L",
+      "thigh.R",
+      "upper_arm.L",
+      "upper_arm.R",
+      "wear_bomber__Cloth_Main",
+      "wear_bomber__Cloth_Rib",
+      "wear_bomber__Fastening",
+      "wear_boots__Shoe_Leather",
+      "wear_boots__Shoe_Rubber",
+      "wear_boots__Shoe_Stitch",
+      "wear_cargo__Stitch",
+      "wear_cargo__Trousers",
+      "wear_chinos__Seam",
+      "wear_chinos__Trousers",
+      "wear_jeans__Stitch",
+      "wear_jeans__Trousers",
+      "wear_knit__Cloth_Main",
+      "wear_knit__Cloth_Rib",
+      "wear_loafers__Shoe_Leather",
+      "wear_loafers__Shoe_Rubber",
+      "wear_loafers__Shoe_Stitch",
+      "wear_loafers__Skin",
+      "wear_sneakers__Cloth_Main",
+      "wear_sneakers__Cotton_Inner",
+      "wear_sneakers__Shoe_Leather",
+      "wear_sneakers__Shoe_Rubber",
+      "wear_sneakers__Trousers",
+      "wear_utility__Buttons",
+      "wear_utility__Cloth_Main",
+      "wear_utility__Seam"
+    ],
+    "animations": [
+      "Idle",
+      "Sit",
+      "Walk",
+      "Wave"
+    ],
+    "animation_channels": {
+      "Idle": 48,
+      "Sit": 48,
+      "Walk": 48,
+      "Wave": 48
+    },
+    "skins": [
+      [
+        "root",
+        "hips",
+        "spine",
+        "head",
+        "upper_arm.L",
+        "forearm.L",
+        "hand.L",
+        "upper_arm.R",
+        "forearm.R",
+        "hand.R",
+        "thigh.L",
+        "shin.L",
+        "foot.L",
+        "thigh.R",
+        "shin.R",
+        "foot.R"
+      ]
+    ],
+    "all_primitives_skinned": true
+  },
+  "triangle_retention": 0.27341939755047995,
+  "reductions": [
+    {
+      "object": "wear_utility__Cloth_Main",
+      "material": "wear_utility__cloth_main",
+      "ratio": 0.22,
+      "polygons_before": 1092,
+      "triangles_after": 536
+    },
+    {
+      "object": "Skin",
+      "material": "skin",
+      "ratio": 0.32,
+      "polygons_before": 14510,
+      "triangles_after": 9234
+    },
+    {
+      "object": "wear_utility__Seam",
+      "material": "wear_utility__seam",
+      "ratio": 0.22,
+      "polygons_before": 220,
+      "triangles_after": 94
+    },
+    {
+      "object": "wear_utility__Buttons",
+      "material": "wear_utility__buttons",
+      "ratio": 0.22,
+      "polygons_before": 768,
+      "triangles_after": 294
+    },
+    {
+      "object": "Lips",
+      "material": "lips",
+      "ratio": 0.32,
+      "polygons_before": 372,
+      "triangles_after": 222
+    },
+    {
+      "object": "Eye_White",
+      "material": "eye_white",
+      "ratio": 0.5,
+      "polygons_before": 1280,
+      "triangles_after": 1216
+    },
+    {
+      "object": "Iris",
+      "material": "iris",
+      "ratio": 0.5,
+      "polygons_before": 576,
+      "triangles_after": 528
+    },
+    {
+      "object": "Pupil",
+      "material": "pupil",
+      "ratio": 0.5,
+      "polygons_before": 320,
+      "triangles_after": 288
+    },
+    {
+      "object": "Hair",
+      "material": "hair",
+      "ratio": 0.32,
+      "polygons_before": 2692,
+      "triangles_after": 1728
+    },
+    {
+      "object": "wear_chinos__Trousers",
+      "material": "wear_chinos__trousers",
+      "ratio": 0.22,
+      "polygons_before": 584,
+      "triangles_after": 278
+    },
+    {
+      "object": "wear_chinos__Seam",
+      "material": "wear_chinos__seam",
+      "ratio": 0.22,
+      "polygons_before": 40,
+      "triangles_after": 18
+    },
+    {
+      "object": "wear_sneakers__Shoe_Rubber",
+      "material": "wear_sneakers__shoe_rubber",
+      "ratio": 0.22,
+      "polygons_before": 1828,
+      "triangles_after": 828
+    },
+    {
+      "object": "wear_sneakers__Cotton_Inner",
+      "material": "wear_sneakers__cotton_inner",
+      "ratio": 0.22,
+      "polygons_before": 1264,
+      "triangles_after": 628
+    },
+    {
+      "object": "wear_sneakers__Shoe_Leather",
+      "material": "wear_sneakers__shoe_leather",
+      "ratio": 0.22,
+      "polygons_before": 496,
+      "triangles_after": 286
+    },
+    {
+      "object": "wear_sneakers__Trousers",
+      "material": "wear_sneakers__trousers",
+      "ratio": 0.22,
+      "polygons_before": 2192,
+      "triangles_after": 862
+    },
+    {
+      "object": "wear_sneakers__Cloth_Main",
+      "material": "wear_sneakers__cloth_main",
+      "ratio": 0.22,
+      "polygons_before": 196,
+      "triangles_after": 82
+    },
+    {
+      "object": "wear_knit__Cloth_Main",
+      "material": "wear_knit__cloth_main",
+      "ratio": 0.22,
+      "polygons_before": 686,
+      "triangles_after": 342
+    },
+    {
+      "object": "wear_knit__Cloth_Rib",
+      "material": "wear_knit__cloth_rib",
+      "ratio": 0.22,
+      "polygons_before": 524,
+      "triangles_after": 264
+    },
+    {
+      "object": "wear_bomber__Cloth_Main",
+      "material": "wear_bomber__cloth_main",
+      "ratio": 0.22,
+      "polygons_before": 686,
+      "triangles_after": 342
+    },
+    {
+      "object": "wear_bomber__Cloth_Rib",
+      "material": "wear_bomber__cloth_rib",
+      "ratio": 0.22,
+      "polygons_before": 614,
+      "triangles_after": 304
+    },
+    {
+      "object": "wear_bomber__Fastening",
+      "material": "wear_bomber__fastening",
+      "ratio": 0.22,
+      "polygons_before": 3626,
+      "triangles_after": 1530
+    },
+    {
+      "object": "wear_jeans__Trousers",
+      "material": "wear_jeans__trousers",
+      "ratio": 0.22,
+      "polygons_before": 584,
+      "triangles_after": 278
+    },
+    {
+      "object": "wear_jeans__Stitch",
+      "material": "wear_jeans__stitch",
+      "ratio": 0.22,
+      "polygons_before": 80,
+      "triangles_after": 38
+    },
+    {
+      "object": "wear_cargo__Trousers",
+      "material": "wear_cargo__trousers",
+      "ratio": 0.22,
+      "polygons_before": 780,
+      "triangles_after": 360
+    },
+    {
+      "object": "wear_cargo__Stitch",
+      "material": "wear_cargo__stitch",
+      "ratio": 0.22,
+      "polygons_before": 56,
+      "triangles_after": 28
+    },
+    {
+      "object": "wear_boots__Shoe_Rubber",
+      "material": "wear_boots__shoe_rubber",
+      "ratio": 0.22,
+      "polygons_before": 476,
+      "triangles_after": 276
+    },
+    {
+      "object": "wear_boots__Shoe_Leather",
+      "material": "wear_boots__shoe_leather",
+      "ratio": 0.22,
+      "polygons_before": 536,
+      "triangles_after": 306
+    },
+    {
+      "object": "wear_boots__Shoe_Stitch",
+      "material": "wear_boots__shoe_stitch",
+      "ratio": 0.22,
+      "polygons_before": 1972,
+      "triangles_after": 890
+    },
+    {
+      "object": "wear_loafers__Shoe_Rubber",
+      "material": "wear_loafers__shoe_rubber",
+      "ratio": 0.22,
+      "polygons_before": 588,
+      "triangles_after": 290
+    },
+    {
+      "object": "wear_loafers__Shoe_Leather",
+      "material": "wear_loafers__shoe_leather",
+      "ratio": 0.22,
+      "polygons_before": 488,
+      "triangles_after": 248
+    },
+    {
+      "object": "wear_loafers__Shoe_Stitch",
+      "material": "wear_loafers__shoe_stitch",
+      "ratio": 0.22,
+      "polygons_before": 1064,
+      "triangles_after": 470
+    },
+    {
+      "object": "wear_loafers__Skin",
+      "material": "wear_loafers__skin",
+      "ratio": 0.22,
+      "polygons_before": 52,
+      "triangles_after": 40
+    }
+  ]
+}

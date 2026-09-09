@@ -1,0 +1,95 @@
+.social-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #0e251d88;
+  backdrop-filter: blur(5px);
+}
+
+.social-panel {
+  display: flex;
+  flex-direction: column;
+  width: 460px;
+  max-width: 100%;
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+  color: #f6f4e9;
+  background: #263f34;
+  border: 1px solid #e1e8bc33;
+  border-radius: 12px;
+  box-shadow: 0 25px 100px #10271d66;
+}
+
+.social-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 25px 24px 20px; }
+.social-header h2 { font: 400 35px/1.1 'Instrument Serif', Georgia, serif; margin-top: 8px; }
+.social-header .eyebrow { font-size: 8px; letter-spacing: 1.4px; }
+.social-close { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; margin: -9px -10px 0 0; border-radius: 5px; background: transparent; color: #dce6c9; }
+.social-close:hover { background: #e9efb415; }
+.social-content { min-height: 0; padding: 0 24px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #829278 transparent; }
+.social-section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.social-section-heading h3 { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.5; }
+.social-copy { margin-top: 8px; color: #c5d0bc; font-size: 11px; line-height: 1.7; }
+.social-connection { display: inline-flex; align-items: center; gap: 6px; color: #c5d0bc; font-size: 10px; line-height: 1.5; }
+.social-connection::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #a9bba7; }
+.social-connection.is-connected { color: var(--lime); }
+.social-connection.is-connected::before { background: #c5d391; }
+.social-microphone { display: flex; align-items: center; gap: 12px; margin: 17px 0 14px; }
+.social-mic-icon { display: grid; place-items: center; flex-shrink: 0; width: 38px; height: 38px; border: 1px solid #d7e2b533; border-radius: 50%; color: #c5d0bc; }
+.social-microphone strong { display: block; font-size: 12px; font-weight: 550; line-height: 1.5; }
+.social-microphone div > span { display: block; margin-top: 2px; color: #b9c9af; font-size: 10px; line-height: 1.6; }
+.social-microphone.is-on .social-mic-icon { color: var(--lime); border-color: #d7e2b577; background: #e4ebbd13; }
+.social-voice-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.social-voice-actions > .social-button { flex: 1 1 auto; }
+.social-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 13px; border: 1px solid #dce6b944; border-radius: 4px; background: #dce6b90b; color: #e5ead4; font-size: 11px; font-weight: 550; line-height: 1.5; }
+.social-button:not(:disabled):hover { background: #e9efb41d; border-color: #dce6b977; }
+.social-button.is-primary { background: var(--lime); border-color: var(--lime); color: var(--ink); font-weight: 650; }
+.social-button.is-primary:not(:disabled):hover { background: #f3f6cf; border-color: #f3f6cf; }
+.social-button[aria-pressed='true'] { background: #e4ebbd20; border-color: #dce6b97a; color: var(--lime); }
+.social-panel button:focus-visible { outline: 2px solid var(--lime); outline-offset: 3px; }
+.social-panel button:disabled { opacity: .55; cursor: default; }
+.social-audio-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 14px; }
+.social-audio-notice p { flex: 1 1 150px; color: #d9dfc3; font-size: 11px; line-height: 1.6; }
+.social-audio-notice .social-button { font-size: 10px; }
+.social-audio-notice svg { width: 16px; height: 16px; }
+.social-error { margin-top: 12px; padding: 10px 12px; border-left: 2px solid #e4b885; color: #ffe2bd; background: #ffe2bd08; font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+.social-neighbours, .social-blocked { margin-top: 22px; padding-top: 19px; border-top: 1px solid #d7e2b526; }
+.social-count { color: #c5d0bc; font-size: 11px; font-variant-numeric: tabular-nums; }
+.social-list { list-style: none; padding: 0; margin: 10px 0 0; }
+.social-person { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 11px 0; border-top: 1px solid #d7e2b514; }
+.social-person:first-child { border-top: 0; }
+.social-person-mark { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; border: 1px solid #d7e2b533; border-radius: 50%; background: #e4ebbd0c; color: #dce6c9; font: 400 19px/1 'Instrument Serif', Georgia, serif; }
+.social-person-mark.is-speaking { color: var(--ink); background: var(--lime); border-color: var(--lime); }
+.social-person-name { flex: 1; min-width: 0; }
+.social-person-name strong { display: block; overflow-wrap: anywhere; font-size: 12px; font-weight: 550; line-height: 1.5; }
+.social-person-name > span { display: block; margin-top: 3px; color: #b9c9af; font-size: 10px; line-height: 1.5; }
+.social-person-actions { display: flex; flex-shrink: 0; gap: 6px; }
+.social-person .social-button { padding: 9px 11px; min-width: 54px; font-size: 10px; }
+.social-empty { margin-top: 12px; padding: 14px 0 5px; color: #b9c9af; font-size: 11px; line-height: 1.7; }
+.social-empty.is-compact { padding: 0; }
+.social-blocked { padding-bottom: 20px; }
+.social-blocked-person { gap: 16px; }
+.social-footer { flex-shrink: 0; border-top: 1px solid #d7e2b526; padding: 14px 24px; color: #b9c9af; font-size: 9px; line-height: 1.6; }
+
+@media (max-width: 480px) {
+  .social-backdrop { align-items: flex-end; padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .social-panel { width: 100%; max-height: calc(100dvh - 24px - env(safe-area-inset-bottom)); }
+  .social-header { padding: 21px 20px 18px; }
+  .social-header h2 { font-size: 32px; }
+  .social-content { padding: 0 20px; }
+  .social-person { flex-wrap: wrap; }
+  .social-person-actions { width: 100%; padding-left: 42px; }
+  .social-person-actions .social-button { flex: 1; }
+  .social-footer { padding: 12px 20px; }
+}
+
+@media (max-height: 500px) {
+  .social-backdrop { padding: 12px; }
+  .social-panel { max-height: calc(100dvh - 24px); }
+  .social-header { padding-top: 16px; padding-bottom: 14px; }
+  .social-header h2 { font-size: 29px; margin-top: 5px; }
+  .social-footer { padding-top: 9px; padding-bottom: 9px; }
+}

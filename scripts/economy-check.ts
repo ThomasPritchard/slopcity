@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import { loadEnvFile } from 'node:process';
+import { randomUUID } from 'node:crypto';
+import { Pool } from 'pg';
+import { GuestRepository } from '../server/persistence/guests.ts';
+import { EconomyRepository,EconomyError } from '../server/persistence/economy.ts';
+loadEnvFile('.env');
+const admin=new Pool({connectionString:process.env.DATABASE_URL});const schema=`economy_test_${randomUUID().replaceAll('-','')}`;
+const url=new URL(process.env.DATABASE_URL!);url.searchParams.set('options',`-c search_path=${schema}`);
+const guests=new GuestRepository(url.toString());let economy=new EconomyRepository(guests.pool);
+try{
+ await admin.query(`CREATE SCHEMA ${schema}`);await guests.initialise();await economy.initialise();await guests.initialise();await economy.initialise();
+ const id=(await guests.create({name:'Economy test',shirt:0,skin:0})).profile.id;
+ const states=await Promise.all(Array.from({length:8},()=>economy.ensure(id)));assert.ok(states.every(s=>s.balance===1000&&s.owned.length===3));
+ assert.equal((await guests.pool.query("SELECT count(*)::int AS count FROM economy_ledger WHERE kind='grant'")).rows[0].count,1);
+ const purchases=await Promise.all(Array.from({length:8},()=>economy.purchase(id,'oat-knit','same-request')));assert.ok(purchases.every(s=>s.balance===780));
+ assert.equal((await economy.purchase(id,'oat-knit','same-request',()=>false)).balance,780);
+ await assert.rejects(economy.purchase(id,'ink-knit','new-outside-request',()=>false),(e:EconomyError)=>e.code==='outside_shop');
+ await assert.rejects(economy.purchase(id,'oat-knit','owned-outside-request',()=>false),(e:EconomyError)=>e.code==='outside_shop');
+ await assert.rejects(economy.purchase(id,'ink-knit','same-request',()=>false),(e:EconomyError)=>e.code==='request_conflict');
+ const concurrent=await Promise.all([economy.purchase(id,'oat-knit','other-request'),economy.purchase(id,'oat-knit','third-request')]);assert.ok(concurrent.every(s=>s.balance===780));
+ let s=await economy.ensure(id);await assert.rejects(economy.equip(id,'ink-knit',s.revision),(e:EconomyError)=>e.code==='not_owned');
+ s=await economy.equip(id,'oat-knit',s.revision);assert.equal(s.outfit.top,'oat-knit');await assert.rejects(economy.equip(id,'starter-utility',1),(e:EconomyError)=>e.code==='stale_revision');
+ await economy.purchase(id,'oxblood-boots','boots-request');await assert.rejects(economy.purchase(id,'rust-bomber','retry-request'),(e:EconomyError)=>e.code==='insufficient_funds');
+ const epoch=randomUUID();await economy.openSession(id,epoch);await economy.checkpoint(id,epoch,599999);
+ s=await economy.checkpoint(id,epoch,600000);assert.equal(s.balance,400);assert.equal(s.salaryProgressMs,0);
+ await Promise.all(Array.from({length:8},()=>economy.checkpoint(id,epoch,600000)));assert.equal((await economy.ensure(id)).balance,400);
+ const epoch2=randomUUID();await economy.checkpoint(id,epoch,600123);await economy.openSession(id,epoch2);
+ await assert.rejects(economy.checkpoint(id,epoch,1200000),(e:EconomyError)=>e.code==='stale_session');
+ s=await economy.checkpoint(id,epoch2,600000-123);assert.equal(s.balance,500);assert.equal(s.salaryProgressMs,0);
+ s=await economy.purchase(id,'rust-bomber','retry-request');assert.equal(s.balance,80);
+ const reconnected=new Pool({connectionString:url.toString()});
+ try{economy=new EconomyRepository(reconnected);await economy.initialise();assert.deepEqual(await economy.ensure(id),s);assert.deepEqual(await economy.purchase(id,'rust-bomber','retry-request'),s);}finally{await reconnected.end();}
+ assert.equal((await guests.pool.query("SELECT count(*)::int AS count FROM economy_ledger WHERE kind='salary'")).rows[0].count,2);
+ console.log('PASS: atomic grant, concurrent purchase/replay, ownership/revision, insufficient-funds retry, checkpoint replay/fencing/reconnect and repository restart.');
+}finally{await guests.close();await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);await admin.end();}

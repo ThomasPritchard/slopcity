@@ -1,0 +1,11 @@
+# Guest identity integration
+
+Set DATABASE_URL and APP_ORIGIN (default http://localhost:5173). Initialise one GuestRepository before serving traffic; close it on shutdown. There is no memory fallback. The migration runs under a transaction and advisory lock. The process uses one SessionRegistry; multiple server processes require a shared admission mechanism before scaling.
+
+mountGuestRoutes(app, repository, registry) mounts /api/guest, /api/profile and /api/blocks. Expose these externally under /game/api and strip /game at the proxy, because the credential cookie has Path=/game. WebSocket and matchmaking URLs also need that prefix. HTTPS APP_ORIGIN enables Secure. POST /guest accepts name/shirt/skin and returns the saved profile with id/revision/blocks; it reuses a valid cookie. Invalid existing credentials return 401. PATCH /profile accepts those cosmetics plus revision and returns 409 for stale revision or active admission. blocks is private owner state, never include it in the replicated room schema.
+
+authenticateGuest(cookieHeader, repository) resolves a PrivateGuestProfile or null. isAllowedOrigin(origin) performs exact configured-origin validation. Room auth must check both, then onJoin call registry.claim(profile.id, client.sessionId, roomId); false rejects the new admission. Release with the same id/sessionId/roomId on leave. get(id) returns active ownership. Profile updates reserve admission until the save finishes. Refresh the authenticated profile after claim if auth preceded another profile edit. onBlocksChanged(listener) returns an unsubscribe callback; committed PUT/DELETE notify the owner ID. Call repository.blocks(id) to refresh cached blocks.
+
+Credentials are 32 random bytes, only SHA256 hashes stored in PostgreSQL. Public IDs are unrelated random UUIDs. Never log cookie/header bodies or credential queries. Expiry is fixed at 90 days and reuse does not extend it. Guest identity is device/browser dependent; account recovery is outside this phase.
+
+Run node --import tsx --test tests/guest.test.ts for boundary checks. DATABASE_URL=... node --import tsx scripts/guest-check.ts uses a random temporary schema and drops it, leaving application profile records untouched; its database role needs CREATE SCHEMA permission.

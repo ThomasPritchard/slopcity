@@ -1,0 +1,106 @@
+name: slop-city
+
+x-service: &service
+  platform: ${SLOP_PLATFORM:-linux/amd64}
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '3'
+
+services:
+  postgres:
+    <<: *service
+    image: slop-city-postgres:${RELEASE_TAG:-local}
+    build:
+      context: .
+      target: postgres
+    environment:
+      POSTGRES_DB: slop_city
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+      - app_password
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    networks: [database]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d slop_city']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    stop_grace_period: 35s
+
+  game:
+    <<: *service
+    image: slop-city-game:${RELEASE_TAG:-local}
+    build:
+      context: .
+      target: game
+    init: true
+    env_file: ${DEPLOY_DIR:-./.deploy}/game.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [database, application]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 35s
+
+  livekit:
+    <<: *service
+    image: livekit/livekit-server:v1.13.6
+    command: ['--config', '/etc/livekit.yaml']
+    volumes:
+      - ${DEPLOY_DIR:-./.deploy}/livekit.yaml:/etc/livekit.yaml:ro
+    networks: [application]
+    ports:
+      - '${BIND_IP:-0.0.0.0}:${RTC_TCP_PORT:-7881}:7881/tcp'
+      - '${BIND_IP:-0.0.0.0}:${RTC_UDP_PORT:-7882}:7882/udp'
+      - '${BIND_IP:-0.0.0.0}:${TURN_UDP_PORT:-3478}:3478/udp'
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 35s
+
+  edge:
+    <<: *service
+    image: slop-city-edge:${RELEASE_TAG:-local}
+    build:
+      context: .
+      target: edge
+    volumes:
+      - ${DEPLOY_DIR:-./.deploy}/caddy.json:/etc/caddy/slop-city.json:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [application]
+    ports:
+      - '${BIND_IP:-0.0.0.0}:${HTTP_PORT:-80}:80/tcp'
+      - '${BIND_IP:-0.0.0.0}:${HTTPS_PORT:-443}:443/tcp'
+    depends_on:
+      game:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+    security_opt: [no-new-privileges:true]
+
+networks:
+  database:
+    internal: true
+  application:
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+secrets:
+  postgres_password:
+    file: ${DEPLOY_DIR:-./.deploy}/postgres-password
+  app_password:
+    file: ${DEPLOY_DIR:-./.deploy}/app-password

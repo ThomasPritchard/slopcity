@@ -1,0 +1,35 @@
+import {chromium} from 'playwright';
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+await mkdir('output/playwright', {recursive:true});
+const browser=await chromium.launch({headless:true});
+const out='output/playwright';
+try {
+const page=await browser.newPage({viewport:{width:1440,height:960}});const errors: string[]=[];
+page.on('pageerror',e=>errors.push(e.message));
+await page.goto(process.env.GAME_URL || 'http://localhost:5173');
+await page.getByRole('textbox',{name:'WHAT SHOULD WE CALL YOU?'}).fill('Tom');
+await page.getByRole('button',{name:'Enter',exact:true}).click({timeout:90000});
+await page.waitForTimeout(1200);
+await page.screenshot({path:`${out}/10-character-refined.png`});
+await page.getByRole('button',{name:'View face',exact:true}).click();await page.waitForTimeout(900);
+await page.screenshot({path:`${out}/11-original-stare.png`});
+await page.getByRole('button',{name:'View shoes',exact:true}).click();await page.waitForTimeout(900);
+await page.screenshot({path:`${out}/12-sneakers.png`});
+await page.getByRole('button',{name:'View outfit',exact:true}).click();
+await page.getByRole('button',{name:'Outfit colour 3',exact:true}).click();
+await page.getByRole('button',{name:'Rotate character left',exact:true}).click();
+await page.waitForTimeout(900);await page.screenshot({path:`${out}/13-jacket-angle.png`});
+await page.setViewportSize({width:390,height:844});await page.waitForTimeout(900);
+assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+await page.screenshot({path:`${out}/14-mobile-character.png`});
+await page.getByRole('button',{name:'View face',exact:true}).click();
+await page.waitForTimeout(900);await page.screenshot({path:`${out}/15-mobile-face.png`});
+await page.setViewportSize({width:1440,height:960});
+await page.getByRole('button',{name:'Join the square',exact:true}).click();
+await page.getByRole('button',{name:'Open town map',exact:true}).waitFor();
+await page.getByRole('button',{name:'Wave to neighbours',exact:true}).click();await page.waitForTimeout(500);
+await page.screenshot({path:`${out}/16-wave.png`});
+assert.deepEqual(errors,[]);
+console.log('PASS: character view presets, colour, rotation, mobile layouts, join and wave; no page errors.');
+} finally {await browser.close();}

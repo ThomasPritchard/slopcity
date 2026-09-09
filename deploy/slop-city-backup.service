@@ -1,0 +1,10 @@
+[Unit]
+Description=Slop City PostgreSQL backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/slop-city
+ExecStart=/bin/sh /opt/slop-city/deploy/backup.sh
+UMask=0077
