@@ -1,6 +1,8 @@
-# Self-hosted alpha on Hetzner
+# Self-hosted alpha
 
 The deployment target is one Linux VPS for approximately ten friends: the built browser game, one Node/Colyseus process, PostgreSQL 18 and LiveKit voice. Docker Compose manages the services. No GPU is required. This is a single-server alpha with maintenance interruptions, not a highly available or horizontally scaled service.
+
+The current deployment is an Ubuntu VM behind a router, reached through Cloudflare Tunnel at `https://slopcity.fun`. It uses the tunnel/nginx variant below. The direct Hetzner setup remains an alternative for a machine with its own public IP.
 
 ## Provision the VPS
 
@@ -34,7 +36,7 @@ Install Docker Engine and the Compose plugin using [Docker's Ubuntu instructions
 
 For a fresh Ubuntu 24.04 host, `sudo sh deploy/bootstrap-ubuntu.sh YOUR_USERNAME` performs the Docker installation from its official apt repository, grants that user Docker access and prepares `/opt/slop-city`. It leaves nginx and firewall configuration unchanged and refuses to remove conflicting packages automatically. Reconnect SSH after it finishes. If Node is not installed on the host, use `sh deploy/configure.sh GAME_DOMAIN VOICE_DOMAIN TURN_DOMAIN PUBLIC_IPV4` instead of `npm run deploy:configure`; the wrapper runs the generator in a Node 24 container as your user.
 
-The local project already includes its Git ignore rules, binary attributes, lockfile, Docker build and GitHub Actions CI. Create a **private** remote when ready; no remote is assumed by this configuration. Clone the reviewed repository into `/opt/slop-city`. Do not copy the Mac's `.env`, `.local` database or development credentials. The VPS starts with a fresh guest database; migrating development profiles is a separate deliberate operation.
+The project includes its Git ignore rules, binary attributes, lockfile, Docker build and GitHub Actions CI. The user-approved public repository is [ThomasPritchard/slopcity](https://github.com/ThomasPritchard/slopcity). Clone the reviewed repository into `/opt/slop-city`. Do not copy the Mac's `.env`, `.local` database or development credentials. The server starts with a fresh guest database; migrating development profiles is a separate deliberate operation.
 
 ```sh
 cd /opt/slop-city
@@ -65,7 +67,7 @@ sh deploy/compose.sh logs --tail 80 game
 
 Open the site from a computer and a physical phone on a different network. Create guests, join the same town, exchange chat, enable voice and test both directions. Place a fictional-credit wager, wait for settlement, reload, and confirm the balance persists. Check a planned restart with players connected. Verify voice on a network where UDP is blocked to exercise TURN/TLS, not just the happy path. A container build or voice-token response does not prove microphone media or public-network connectivity.
 
-The production browser uses `/game` on its own origin, preserving the HttpOnly/Secure/SameSite guest cookie. LiveKit signalling uses the separate `voice` hostname. Caddy serves only the built `dist` files, rejects dotfiles, revalidates unversioned models and caches hashed JS/CSS assets. No Vite development server is shipped.
+The production browser uses `/game` on its own origin, preserving the HttpOnly/Secure/SameSite guest cookie. LiveKit signalling uses `/voice` in tunnel mode or the separate `voice` hostname in direct mode. Caddy serves only the built `dist` files, rejects dotfiles, revalidates unversioned models and caches hashed JS/CSS assets. No Vite development server is shipped.
 
 ## Back up and restore
 
@@ -115,7 +117,7 @@ docker compose --env-file .deploy-smoke/compose.env down --volumes
 
 The final command is safe only for this disposable `slop-city-smoke` project. Local HTTPS uses Caddy's test CA and loopback port 8443. The test client explicitly handles that CA boundary; never disable certificate verification in the production application. Local media port translation differs from the VPS and is not a public voice test.
 
-GitHub Actions runs unit tests, TypeScript/frontend/server builds and the disposable Compose integration check. It does not publish images or deploy the site. The first remote workflow run remains to be verified after a private remote exists.
+GitHub Actions runs unit tests, TypeScript/frontend/server builds and the disposable Compose integration check. It does not publish images or deploy the site. [Run 34400476576](https://github.com/ThomasPritchard/slopcity/actions/runs/34400476576) passed for the deployed application revision `b88a5fd`.
 
 ## Scope remaining before opening access
 

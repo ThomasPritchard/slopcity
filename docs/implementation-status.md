@@ -86,7 +86,15 @@ Startup validates production configuration and takes a schema-scoped database ow
 
 Verified on 2026-09-09: all 45 tests passed with the isolated PostgreSQL tests enabled; frontend and compiled-server builds passed. Linux AMD64 containers ran under Docker on this Mac, with the game reporting x64/UID1000/Node24.20.0. The integration check passed HTTPS assets/private-file rejection, secure cookies, ten WSS protocol clients with shared chat/wave, voice token and API routing, a TURN/TLS authentication challenge, game restart persistence and a custom-format database dump restored into a separate temporary database. The backup shell helper also produced a dump. The existing casino protocol journey passed after the server lifecycle changes. Headless Chromium loaded the Docker-served 3D changing room, joined town, sent chat and restored the guest after reload; screenshots are under ignored `output/playwright/deployment/`.
 
-The Git candidate tree passed a redacted secret scan. No public deployment or remote workflow run has occurred. Actual public ACME issuance, cross-network voice media/TURN fallback, physical-device performance and a ten-person playtest remain live-VPS checks. Local Docker success does not establish those results. Off-server backup storage and uptime notifications must still be configured for the real host.
+The Git candidate tree passed a redacted secret scan. The later live deployment is recorded below; the local checks alone do not establish public-network results.
+
+## Live deployment — 2026-09-09
+
+Application revision `b88a5fd` is deployed from the approved public GitHub repository to `/opt/slop-city` on the Ubuntu VM. Cloudflare Tunnel serves `https://slopcity.fun` through host nginx and the loopback Docker gateway on port 9080. The database and game containers report healthy; the public health endpoint returns `{"status":"ok"}`. GitHub Actions run 34400476576 passed, including the container integration checks. The updated local suite passed all 46 tests and both production builds.
+
+Headless Chromium verified the actual public site with normal TLS certificate validation: production assets and the 3D changing room, guest creation, town admission, chat through HTTPS/WSS, secure HttpOnly guest cookies and profile recovery after reload, with no page errors. Live screenshots are `output/playwright/deployment/live-changing-room.png` and `live-town.png` (ignored local artifacts). This check used Performance mode and does not establish physical-device performance.
+
+The first private database backup was created and the daily local backup timer is active. LiveKit signalling responds through `/voice`; actual public audio remains unverified and requires router forwarding for UDP 7882, with TCP 7881 as an optional fallback. TURN is disabled in this tunnel deployment. Cross-network microphone testing, physical-device performance, a ten-person playtest, off-server backup storage and uptime notifications remain outstanding. Cloudflare provides public HTTPS; direct Caddy ACME issuance was not tested on this host.
 
 ## Limits
 
