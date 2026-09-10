@@ -5,8 +5,9 @@ import type { Position } from './world.ts';
 export const BENCHES = [
   { id: 'fountain-west', x: -5.8, z: 1, heading: -Math.PI / 2 },
   { id: 'fountain-east', x: 5.8, z: 1, heading: Math.PI / 2 },
-  { id: 'south-west', x: -10, z: -7, heading: Math.PI },
-  { id: 'south-east', x: 10, z: -7, heading: Math.PI },
+  // Arrival benches face north into the square, with the planting behind their backs.
+  { id: 'south-west', x: -10, z: -7, heading: 0 },
+  { id: 'south-east', x: 10, z: -7, heading: 0 },
 ] as const;
 export type Seat = Position & { id: string; benchId: string; heading: number; exit: Position };
 export const SIT_REACH = 2;

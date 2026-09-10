@@ -1,7 +1,7 @@
 import { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
 import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera';
-import { Vector2, Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
 import { PointLight } from '@babylonjs/core/Lights/pointLight';
@@ -14,7 +14,7 @@ import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { InstancedMesh } from '@babylonjs/core/Meshes/instancedMesh';
 import { Ray } from '@babylonjs/core/Culling/ray';
-import { WALLS, SHIRTS, district, move, type Position, type Profile } from '../../shared/world';
+import { WALLS, PLANTING_BEDS, SHIRTS, district, move, type Position, type Profile } from '../../shared/world';
 
 import { type Appearance, type Outfit } from '../../shared/catalog';
 import { CASINO_ANCHORS, type CasinoAnchor, type CasinoState, type CasinoPrivateState, type SlotSymbol } from '../../shared/casino';
@@ -22,7 +22,10 @@ import { BENCHES } from '../../shared/social';
 import { AuthoredAssets, CitizenModel } from './assets';
 import { CasinoTableArt, drawSlotSymbol } from './casinoArt';
 import { WaterMaterial } from '@babylonjs/materials/water/waterMaterial';
-import { Texture } from '@babylonjs/core/Materials/Textures/texture';
+import { FountainWater } from './fountain';
+import { LAMP_POSTS, LampPostLighting } from './lampPosts';
+import { Vegetation } from './vegetation';
+import { DayCycle } from './dayCycle';
 import { HDRCubeTexture } from '@babylonjs/core/Materials/Textures/hdrCubeTexture';
 import { MirrorTexture } from '@babylonjs/core/Materials/Textures/mirrorTexture';
 import { Plane } from '@babylonjs/core/Maths/math.plane';
@@ -46,7 +49,6 @@ export class TownScene {
   private keys = new Set<string>();
   private touch = { x: 0, z: 0 };
   private remote = new Map<string, PlayerView>();
-  private particles: Mesh[] = [];
   private lastStats = 0;
   private low = false;
   private reducedMotion = false;
@@ -74,6 +76,11 @@ export class TownScene {
   private mode: 'welcome' | 'customise' | 'wardrobe' | 'playing' = 'welcome';
   private mirror!: MirrorTexture;
   private water!: WaterMaterial;
+  private fountain?: FountainWater;
+  private lampPosts: TransformNode[] = [];
+  private lampLighting?: LampPostLighting;
+  private vegetation?: Vegetation;
+  private dayCycle?: DayCycle;
   private casinoFocus: CasinoAnchor | null = null;
   private rouletteWheel!: TransformNode;
   private rouletteBall!: Mesh;
@@ -190,28 +197,23 @@ export class TownScene {
     }
     return root;
   }
-  private tree(x: number, z: number, scale = 1) { this.placeAsset('tree', x, .62, z, 0, scale); }
   private bench(x: number, z: number, rotation: number) { this.placeAsset('bench', x, 0, z, rotation); }
   private buildWorld(): Mesh {
     this.box('base', 0, -.22, 0, 220, .4, 220, '#b2b6a3', false);
-    this.box('square', 0, -.04, 0, 54, .1, 54, '#d5cbb8', false);
-    // Wide pale paths and inset paving lines make the architecture legible from the arrival camera.
-    this.box('main promenade', 0, .022, -7, 8, .012, 39, '#e3dcca', false);
-    this.box('cross promenade', 0, .026, -2, 52, .01, 5, '#e3dcca', false);
-    for (let i = -26; i <= 26; i += 2) {
-      this.box('paving joint', i, .032, 0, .016, .008, 52, '#c4bba9', false);
-      this.box('paving joint', 0, .033, i, 52, .008, .016, '#c4bba9', false);
-    }
+    // Ground is an authored, batched surface: patterned stone, dressed borders and gravel.
+    // Flat receivers keep the existing movement plane and avoid self-shadowing overlays.
+    const ground = this.assets.place('town-ground', 0, 0, 0);
+    for (const mesh of ground.getChildMeshes()) mesh.receiveShadows = true;
     for (const wall of WALLS) {
-      const mesh = this.box(wall.kind, wall.x, wall.h / 2, wall.z, wall.w, wall.h, wall.d, wall.kind === 'planter' ? '#9f9f88' : '#e6dcc8');
+      const mesh = this.box(wall.kind, wall.x, wall.h / 2, wall.z, wall.w, wall.h, wall.d, '#e6dcc8', wall.kind !== 'planter');
+      // Invisible bounds retain camera avoidance; the authored masonry supplies the visible shadow.
+      if (wall.kind === 'planter') mesh.visibility = 0;
       this.walls.push(mesh);
-      if (wall.kind === 'planter') {
-        mesh.visibility = 0;
-        this.placeAsset('planter', wall.x, 0, wall.z);
-        this.tree(wall.x, wall.z, .9);
-      }
     }
-    for (const x of [-22, -17, 17, 23]) { this.tree(x, -20, 1.2); }
+    for (const bed of PLANTING_BEDS) {
+      this.placeAsset(bed.asset, bed.x, 0, bed.z);
+      this.placeAsset('tree', bed.x, .52, bed.z, bed.rotation, bed.treeScale);
+    }
     // Casino facade, arcade and open doorway.
     this.box('casino floor', 0, .045, 20, 31.5, .04, 11.4, '#72756b', false);
     this.box('casino lintel', 0, 4.8, 13.9, 32.8, 2.4, .9, '#e4dac5');
@@ -224,9 +226,9 @@ export class TownScene {
     }
     for (const x of [-16, -2.3, 2.3, 16]) this.box('entry column', x, 2.2, 12.4, .35, 4.4, .4, '#d2c5a8');
     this.box('entry canopy', 0, 4.4, 12.4, 33, .2, 3.5, '#40534a');
-    this.sign('THE MERIDIAN', 0, 5.0, 13.36, 10, 1.7);
-    this.sign('C A S I N O', 0, 3.77, 11.98, 2.4, .5, '#d9cda7', '#40534a');
-    this.sign('A little luck. Good company.', 0, 3.6, 25.68, 10, 2, '#ece1c1', '#536355');
+    this.placeAsset('casino-sign', 0, 5.4, 13.36, Math.PI);
+    this.placeAsset('casino-entry-sign', 0, 3.77, 11.98, Math.PI);
+    this.placeAsset('casino-tagline', 0, 4.35, 25.68, Math.PI);
     this.placeAsset('casino-kit', 0, 0, 0, Math.PI);
     const venueLight = new PointLight('Casino soft fill', new Vector3(0,4,20), this.scene);
     venueLight.diffuse = new Color3(1,.96,.89); venueLight.intensity = .22; venueLight.range = 13;
@@ -254,8 +256,8 @@ export class TownScene {
       this.box('shop awning', 17.4, 4.4, z, 2, .17, 6.5, '#697961');
     }
     this.box('shop lintel', 18, 4.45, -2, .6, 1.1, 4, '#d9cdb5');
-    this.sign('FORM & THREAD', 17.5, 4.48, -2, 5.5, .9, '#eee7d4', '#4f6456', Math.PI / 2);
-    this.sign('Find your everyday.', 25.68, 3, -2, 6, 1.4, '#5a6151', '#dfd3bc', Math.PI / 2);
+    this.placeAsset('shop-sign', 17.5, 4.48, -2, -Math.PI / 2);
+    this.placeAsset('shop-tagline', 25.68, 3, -2, -Math.PI / 2);
     this.placeAsset('clothing-shop', 22, 0, -2, Math.PI);
     // Western streetscape and distant skyline. These buildings are outside the walkable area.
     for (let i = 0; i < 7; i++) {
@@ -269,44 +271,15 @@ export class TownScene {
       this.box('skyline', -50 + i * 13, h / 2, 50 + (i % 3) * 7, 9, h, 12, ['#a2b1ae', '#b3b9af', '#c3c4b7'][i % 3], false);
       for (let floor = 3; floor < h; floor += 3) this.box('skyline band', -50 + i * 13, floor, 43.95 + (i % 3) * 7, 8, .65, .04, '#90a5a3', false);
     }
-    for (const x of [-6.5, 6.5]) for (const z of [-12, 8]) this.placeAsset('lamp', x, 0, z);
+    this.lampPosts = LAMP_POSTS.map(({ x, z }) => this.placeAsset('lamp', x, 0, z));
     for (const bench of BENCHES) this.bench(bench.x, bench.z, bench.heading);
     this.placeAsset('fountain', 0, 0, 1);
-    const water = MeshBuilder.CreateDisc('Fountain water surface', { radius: 2.79, tessellation: 96 }, this.scene);
-    water.rotation.x = Math.PI / 2; water.position.set(0, .43, 1);
-    this.water = new WaterMaterial('Living fountain water', this.scene, new Vector2(512, 512));
-    this.water.bumpTexture = new Texture('/textures/water-normal.png', this.scene);
-    this.water.windForce = 1.4; this.water.waveHeight = .009; this.water.waveLength = .16;
-    this.water.waveSpeed = .4; this.water.bumpHeight = .12;
-    this.water.waterColor = new Color3(.08, .19, .17); this.water.colorBlendFactor = .2;
-    this.water.waterColor2 = new Color3(.06, .15, .14); this.water.colorBlendFactor2 = .25;
-    this.water.backFaceCulling = false; water.material = this.water;
-    // Reflect only the fountain and nearby authored props, never citizens or distant buildings.
-    for (const mesh of this.scene.meshes) {
-      mesh.computeWorldMatrix(true);
-      const position = mesh.getAbsolutePosition();
-      if (/^(fountain|bench|lamp|planter|tree)\//.test(mesh.name) && Math.hypot(position.x, position.z - 1) < 14 && mesh.isVisible) this.water.addToRenderList(mesh);
-    }
+    this.fountain = new FountainWater(this.scene);
+    this.water = this.fountain.water;
     this.setReducedMotion(this.reducedMotion);
     this.updateWaterQuality();
-    // Thin continuous arcs and animated droplets give the jets a sense of flow.
-    const jetMat = new StandardMaterial('Clear fountain jets', this.scene);
-    jetMat.diffuseColor = new Color3(.65,.82,.78); jetMat.specularColor = Color3.White(); jetMat.alpha = .38;
-    for (let i = 0; i < 8; i++) {
-      const angle = i / 8 * Math.PI * 2;
-      const path = Array.from({length: 32}, (_, j) => {
-        const t = j / 31, r = .65 + t * 1.65;
-        return new Vector3(Math.cos(angle)*r, .43+Math.sin(t*Math.PI)*.8, 1+Math.sin(angle)*r);
-      });
-      const jet = MeshBuilder.CreateTube('Water jet', { path, radius: .012, tessellation: 6 }, this.scene); jet.material = jetMat;
-    }
-    for (let i = 0; i < 40; i++) {
-      const drop = MeshBuilder.CreateSphere('Spray', { diameter: .025, segments: 4 }, this.scene);
-      drop.material = jetMat; this.particles.push(drop);
-    }
-    this.sign('TOWN SQUARE', -5.8, 1.25, -15, 3.4, .75, '#dce4b4', '#314a40');
-    this.box('wayfinding post', -5.8, .6, -15, .06, 1.2, .08, '#314a40');
-    return water;
+    this.placeAsset('signpost', -5.8, .01, -15, Math.PI);
+    return this.fountain.surface;
   }
 
   private async initialise() {
@@ -327,6 +300,13 @@ export class TownScene {
       material.diffuseColor = Color3.Black(); material.reflectionTexture = this.mirror; mesh.material = material;
     }
     this.studio.setEnabled(false);
+    this.vegetation = new Vegetation(this.scene);
+    this.vegetation.setQuality(this.low);
+    this.vegetation.setReducedMotion(this.reducedMotion);
+    this.lampLighting = new LampPostLighting(this.scene, this.lampPosts);
+    this.lampLighting.setQuality(this.low);
+    this.dayCycle = new DayCycle(this.scene, this.scene.getLightByName('sun') as DirectionalLight, this.scene.getLightByName('sky') as HemisphericLight, this.lampLighting);
+    if (this.casinoState) this.dayCycle.synchronise(Date.now() + this.casinoTimeOffset);
     await this.scene.whenReadyAsync();
     this.resize();
   }
@@ -405,7 +385,7 @@ export class TownScene {
     }
     for (const [id, avatar] of this.avatars) if (!players.has(id)) { avatar.label.material?.dispose(false, true); avatar.model.dispose(); this.avatars.delete(id); }
   }
-  syncCasino(state: CasinoState) { this.casinoState=state; this.casinoTimeOffset=state.serverTime-Date.now(); this.tableCards.sync(state); }
+  syncCasino(state: CasinoState) { this.casinoState=state; this.casinoTimeOffset=state.serverTime-Date.now(); this.tableCards.sync(state); this.dayCycle?.synchronise(state.serverTime); }
   syncCasinoPrivate(value:CasinoPrivateState){this.tableCards.syncPrivate(value);}
   focusCasino(anchor: CasinoAnchor | null) {
     if (anchor && !this.casinoFocus) this.saveView();
@@ -469,22 +449,27 @@ export class TownScene {
     this.low = low;
     // Scaling is CSS pixels / render pixels: performance is CSS resolution.
     this.engine.setHardwareScalingLevel(1 / (low ? 1 : Math.min(window.devicePixelRatio || 1, 1.75)));
+    // Keep the depth-sampler type stable across quality changes (including shader fallbacks).
+    // Changing PCF to a colour shadow map leaves stale sampler bindings in WebKit.
+    this.shadows.usePercentageCloserFiltering = true;
+    this.shadows.filteringQuality = low ? ShadowGenerator.QUALITY_LOW : ShadowGenerator.QUALITY_HIGH;
+    const shadowSize = low ? 1024 : 2048;
+    if (this.shadows.mapSize !== shadowSize) this.shadows.mapSize = shadowSize;
     this.shadows.getShadowMap()!.refreshRate = low ? 2 : 1;
-    this.shadows.usePercentageCloserFiltering = !low;
+    this.lampLighting?.setQuality(low);
+    this.vegetation?.setQuality(low);
     this.updateWaterQuality();
   }
   private updateWaterQuality() {
     if (!this.water) return;
     const active = this.mode !== 'wardrobe' && this.mode !== 'customise' && !this.casinoFocus;
-    const rate = active ? (this.low ? 3 : 1) : 0;
-    if (this.water.reflectionTexture) this.water.reflectionTexture.refreshRate = rate;
-    if (this.water.refractionTexture) this.water.refractionTexture.refreshRate = rate;
+    this.fountain?.setQuality(this.low, active);
   }
   setReducedMotion(reduced: boolean) {
     this.reducedMotion = reduced;
     this.tableCards?.setReducedMotion(reduced);
-    if (this.water) { this.water.waveSpeed = reduced ? 0 : .4; this.water.windForce = reduced ? 0 : 1.4; }
-    for (const drop of this.particles) drop.setEnabled(!reduced);
+    this.fountain?.setReducedMotion(reduced);
+    this.vegetation?.setReducedMotion(reduced);
   }
   setInteractionFocus(anchor: CasinoAnchor | null) {
     if (!this.interactionMarker && anchor) {
@@ -542,13 +527,9 @@ export class TownScene {
       this.camera.radius = this.appliedRadius = frame.startRadius+(frame.radius-frame.startRadius)*ease;
       if (t === 1) this.framing = null;
     }
-    for (const [i, drop] of this.particles.entries()) {
-      drop.setEnabled(!this.reducedMotion && Vector3.DistanceSquared(this.camera.target, new Vector3(0,0,1)) < 900);
-      if (!drop.isEnabled()) continue;
-      const t = (this.clock * .7 + i / this.particles.length) % 1;
-      const angle = (i % 8) / 8 * Math.PI * 2, r = .65 + t * 1.65;
-      drop.position.set(Math.cos(angle) * r, .43 + Math.sin(t * Math.PI) * .8, 1 + Math.sin(angle) * r);
-    }
+    this.dayCycle?.update(this.mode === 'customise' || this.mode === 'wardrobe');
+    this.vegetation?.update(dt, !document.hidden && this.mode !== 'customise' && this.mode !== 'wardrobe');
+    this.fountain?.update(dt, this.camera);
     if (this.mode === 'customise' || this.mode === 'wardrobe') { this.preview?.animate(false); return; }
     if (!this.localId || !this.avatars.has(this.localId)) return;
     const forward = Number(this.keys.has('KeyW') || this.keys.has('ArrowUp')) - Number(this.keys.has('KeyS') || this.keys.has('ArrowDown')) - this.touch.z;

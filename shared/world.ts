@@ -8,6 +8,14 @@ export type Profile = { name: string; shirt: number; skin: number };
 export type Position = { x: number; z: number };
 export type Input = { x: number; z: number; seq: number };
 export type Wall = { x: number; z: number; w: number; d: number; h: number; kind: 'wall' | 'planter' };
+// Visual beds and authoritative movement use the same footprints, including the arrival trees.
+export const PLANTING_BEDS = [
+  { x: -10, z: 4, w: 4, d: 3, h: .6, asset: 'planter', treeScale: .9, rotation: .15 },
+  { x: 10, z: 4, w: 4, d: 3, h: .6, asset: 'planter', treeScale: .92, rotation: 1.7 },
+  { x: -10, z: -11, w: 4, d: 3, h: .6, asset: 'planter', treeScale: .9, rotation: 3.0 },
+  { x: 10, z: -11, w: 4, d: 3, h: .6, asset: 'planter', treeScale: .94, rotation: 4.4 },
+  ...[-22, -17, 17, 23].map((x, i) => ({ x, z: -20, w: 2.6, d: 2.6, h: .6, asset: 'entrance-planter', treeScale: 1.04, rotation: i * 1.6 })),
+] as const;
 // World coordinates in metres. Shared collision data is also used to build visible geometry.
 export const WALLS: Wall[] = [
   { x: 0, z: 27, w: 54, d: 1, h: 1, kind: 'wall' },
@@ -26,10 +34,7 @@ export const WALLS: Wall[] = [
   { x: 22, z: -12, w: 8, d: .5, h: 5, kind: 'wall' },
   { x: 22, z: 8, w: 8, d: .5, h: 5, kind: 'wall' },
   { x: 26, z: -2, w: .5, d: 20, h: 5, kind: 'wall' },
-  { x: -10, z: 4, w: 4, d: 3, h: .6, kind: 'planter' },
-  { x: 10, z: 4, w: 4, d: 3, h: .6, kind: 'planter' },
-  { x: -10, z: -11, w: 4, d: 3, h: .6, kind: 'planter' },
-  { x: 10, z: -11, w: 4, d: 3, h: .6, kind: 'planter' },
+  ...PLANTING_BEDS.map(({ x, z, w, d, h }) => ({ x, z, w, d, h, kind: 'planter' as const })),
 ];
 const CASINO_SOLIDS = [
   {x:-8,z:20,w:5.1,d:2.3},

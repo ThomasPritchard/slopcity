@@ -6,7 +6,7 @@ const fixture='output/playwright/world-polish-fixture.html';
 await writeFile(fixture,`<!doctype html><style>html,body,canvas{margin:0;width:100%;height:100%;display:block;overflow:hidden}</style><canvas></canvas><script type="module">import{TownScene}from'/src/world/scene.ts';const w=new TownScene(document.querySelector('canvas'));window.world=w;await w.ready;w.enter('local');window.ready=true;</script>`);
 const browser=await webkit.launch({headless:true});const page=await browser.newPage({viewport:{width:1100,height:800}});const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
 try{
- await page.goto(`http://localhost:5173/${fixture}`);await page.waitForFunction(()=>!!(window as any).ready);
+ await page.goto(`${process.env.GAME_URL || 'http://localhost:5173'}/${fixture}`);await page.waitForFunction(()=>!!(window as any).ready);
  const immediate=await page.evaluate(()=>{
   const w=(window as any).world;const base={name:'Neighbour',profileId:'guest',heading:Math.PI,moving:false,seatId:'',wave:0,skin:0,shirt:0,top:'starter-utility',bottoms:'starter-chinos',shoes:'starter-sneakers'};
   const players=new Map([['local',{...base,x:0,z:-12}],['remote',{...base,x:0,z:2}]]);(window as any).players=players;w.sync(players);
@@ -26,7 +26,7 @@ try{
  await page.evaluate(()=>{const w=(window as any).world;w.setQuality(true);w.focusCasino({id:'blackjack-1',game:'blackjack',x:3,z:19,name:'Blackjack'});});await page.waitForTimeout(400);assert.equal((await view()).water,0);
  await page.evaluate(()=>(window as any).world.focusCasino(null));await page.waitForTimeout(500);const casino=await view();assert.ok(Math.abs(casino.alpha+1.1)<.01&&Math.abs(casino.radius-9)<.05);assert.equal(casino.water,3);
  await page.evaluate(()=>{const w=(window as any).world;w.setReducedMotion(true);w.syncCasino({serverTime:Date.now(),tables:[{id:'roulette-1',game:'roulette',roundId:'r',phase:'spinning',deadline:Date.now()+5000,result:null,betCount:1,history:[]}]});});
- const wheel=()=>page.evaluate(()=>{const w=(window as any).world;return{angle:w.scene.transformNodes.find((n:any)=>n.name==='roulette-wheel-instance').rotation.y,spray:w.scene.meshes.filter((m:any)=>m.name==='Spray'&&m.isEnabled()).length};});
+ const wheel=()=>page.evaluate(()=>{const w=(window as any).world;return{angle:w.scene.transformNodes.find((n:any)=>n.name==='roulette-wheel-instance').rotation.y,spray:Number(w.scene.getMeshByName('Fountain spray').isEnabled())};});
  await page.waitForTimeout(100);const still=await wheel();await page.waitForTimeout(250);assert.deepEqual(await wheel(),still);assert.equal(still.spray,0);
  await page.evaluate(()=>{const w=(window as any).world;w.setReducedMotion(false);});await page.waitForTimeout(250);assert.notEqual((await wheel()).angle,still.angle);
  const materialsBefore=await page.evaluate(()=>(window as any).world.scene.materials.length);
