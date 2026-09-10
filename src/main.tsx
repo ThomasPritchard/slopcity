@@ -20,8 +20,18 @@ import { CASINO_ANCHORS, CASINO_INTERACTION_RADIUS, type CasinoState, type Casin
 import { LocationAnnouncement } from './ui/LocationAnnouncement';
 import { loadPreferences, savePreferences, type Preferences } from './settings/preferences';
 import { TownAudio } from './audio/TownAudio';
+import { checkChat, moderationNoticeKey, type ModerationNoticeKey } from '../shared/moderation.ts';
 
 type Chat = { id: string; profileId: string; name: string; body: string };
+type ChatLine = { id: string; system?: boolean; profileId?: string; name?: string; body: string };
+// Local-only chat panel guidance shown when moderation intervenes. Never sent to the server and
+// never visible to anyone else; the server remains the authority on what is actually delivered.
+const SYSTEM_LINES: Record<ModerationNoticeKey, string> = {
+  profanity: 'Extreme profanity is not tolerated in Slop City. If you keep going, chat may be disabled for you for a while.',
+  url: "Links can't be posted in chat right now.",
+  flood: 'Easy now — too many messages too quickly.',
+  repeat: "That's a repeat of your last message.",
+};
 function savedProfile(): Profile {
   try { return parseProfile(JSON.parse(localStorage.getItem('slop-city-profile') || '{}')); }
   catch { return parseProfile({}); }
@@ -87,8 +97,10 @@ function App() {
   const [panel, setPanel] = useState<'map' | 'settings' | null>(null);
   const [chatOpen, setChatOpen] = useState(() => !matchMedia('(pointer: coarse)').matches);
   const [chatFocused, setChatFocused] = useState(false);
-  const [messages, setMessages] = useState<Chat[]>([]);
+  const [messages, setMessages] = useState<ChatLine[]>([]);
   const [message, setMessage] = useState('');
+  const [silencedUntil, setSilencedUntil] = useState(0);
+  const [silencedSeconds, setSilencedSeconds] = useState(0);
   const [hint, setHint] = useState(true);
   const low = preferences.low;
   const [wave, setWave] = useState(false);
@@ -96,6 +108,12 @@ function App() {
   const [stick, setStick] = useState({ x: 0, z: 0 });
   const chatEnd = useRef<HTMLDivElement>(null);
   const joystick = useRef<HTMLDivElement>(null);
+  const systemSeq = useRef(0);
+  const shownSystem = useRef(new Set<ModerationNoticeKey>());
+  const silencedAnnounced = useRef(false);
+  function pushSystem(body: string) {
+    setMessages(previous => [...previous.slice(-79), { id: `system-${systemSeq.current++}`, system: true, body }]);
+  }
 
   function acceptWallet(state:WalletState,accruing?:boolean) {
     const previous=walletRef.current;
@@ -152,6 +170,20 @@ function App() {
     return () => { viewport?.removeEventListener('resize', update); viewport?.removeEventListener('scroll', update); };
   }, []);
   useEffect(() => { chatEnd.current?.scrollIntoView({ block: 'nearest' }); }, [messages, chatOpen]);
+  useEffect(() => {
+    if (!silencedUntil) return;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((silencedUntil - Date.now()) / 1000));
+      setSilencedSeconds(left);
+      if (!left) {
+        if (silencedAnnounced.current) pushSystem('Chat is available again. Welcome back.');
+        silencedAnnounced.current = false;
+        setSilencedUntil(0);
+      }
+    };
+    tick(); const timer = setInterval(tick, 250);
+    return () => clearInterval(timer);
+  }, [silencedUntil]);
   useEffect(() => { world.current?.setPaused(panel !== null || socialOpen || shopMode!==null || casinoTable!==null || phase !== 'playing'); }, [panel, socialOpen, shopMode, casinoTable, phase]);
   useEffect(() => {
     const outfit={...STARTER_OUTFIT,...wallet?.outfit};
@@ -248,12 +280,28 @@ function App() {
       });
       connected.send('casino-command',{requestId:crypto.randomUUID(),action:'sync'});
       connected.onMessage<VoiceNeighbour[]>('voice-neighbours', targets => voiceClient.current?.setTargets(targets));
-      connected.onMessage<string>('notice', text => { setNotice(text); setTimeout(() => setNotice(''), 3500); });
+      connected.onMessage<string>('notice', text => {
+        const key = moderationNoticeKey(text);
+        if (key) {
+          if (!shownSystem.current.has(key)) { shownSystem.current.add(key); pushSystem(SYSTEM_LINES[key]); }
+          return;
+        }
+        setNotice(text); setTimeout(() => setNotice(''), 3500);
+      });
       connected.onMessage<Chat>('chat', value => setMessages(previous => [...previous.slice(-79), value]));
+      connected.onMessage<{ seconds?: number }>('silenced', value => {
+        const seconds = Math.max(0, Math.floor(Number(value?.seconds) || 0));
+        if (seconds > 0 && !silencedAnnounced.current) {
+          silencedAnnounced.current = true;
+          pushSystem(`Chat is disabled for you for ${seconds}s. Please keep it friendly.`);
+        }
+        setSilencedSeconds(seconds); setSilencedUntil(seconds > 0 ? Date.now() + seconds * 1000 : 0);
+      });
       connected.onError((_code, text) => setError(text || 'The connection encountered a problem.'));
       connected.onLeave(() => {
         if (room.current !== connected) return;
         room.current = null; setShopMode(null);setCasinoTable(null);setCasinoState({serverTime:Date.now(),tables:[]});setCasinoPrivate({rouletteBets:[]});casinoPending.current=null;if(casinoTimeout.current)clearTimeout(casinoTimeout.current);setCasinoBusy(false);setCasinoRetry(false);world.current?.focusCasino(null); if(walletRef.current)acceptWallet(walletRef.current,false); void voiceClient.current?.leave(); voiceClient.current?.setTargets([]); setSocialOpen(false); setMuted(new Set()); world.current?.sync(new Map()); setPlayers(new Map()); setPhase('disconnected');
+        setSilencedUntil(0); setSilencedSeconds(0); silencedAnnounced.current = false;
         setError('You have left the town. Rejoin to continue.');
       });
       try { localStorage.setItem('slop-city-profile', JSON.stringify(clean)); } catch { /* A restricted browser can still play. */ }
@@ -269,8 +317,15 @@ function App() {
     catch { setNotice('That change could not be saved. Please try again.'); }
   }
   function sendChat(event: React.FormEvent) {
-    event.preventDefault(); if (!message.trim() || !room.current) return;
-    room.current.send('chat', message.trim()); setMessage(''); canvas.current?.focus();
+    event.preventDefault();
+    const body = message.trim(); if (!body || !room.current || silencedUntil > 0) return;
+    const verdict = checkChat(body);
+    if (!verdict.ok) {
+      // Instant feedback only; the server still decides. Keep the draft so it can be edited.
+      if (!shownSystem.current.has(verdict.reason)) { shownSystem.current.add(verdict.reason); pushSystem(SYSTEM_LINES[verdict.reason]); }
+      return;
+    }
+    room.current.send('chat', body); setMessage(''); canvas.current?.focus();
   }
   function doWave() {
     if (wave || !room.current) return;
@@ -357,7 +412,7 @@ function App() {
       <LocationAnnouncement key={stats.district} name={stats.district}/>
       {hint && <aside className="welcome-hint"><button className="close" aria-label="Dismiss welcome" onClick={() => setHint(false)}><Icon kind="close" size={16}/></button><span className="eyebrow">GOOD TO SEE YOU, {profile.name.toUpperCase()}</span><h2>Make yourself at home.</h2><p>Take a walk. Meet a neighbour.<br/>There’s no rush to be anywhere.</p></aside>}
       <div className="bottom-left">
-        {chatOpen && <section className="chat-panel" aria-label="Town chat"><div className="chat-title"><span className="live-dot"/> TOWN CHAT <span>{players.size} in town</span></div><div className="chat-history" role="log" aria-live="polite">{messages.length === 0 && <p className="chat-empty">A simple hello goes a long way.</p>}{messages.map((m, i) => <p key={i}><strong>{m.name}</strong> {m.body}</p>)}<div ref={chatEnd}/></div><form onSubmit={sendChat}><input aria-label="Message to town" placeholder="Say something…" value={message} maxLength={240} onFocus={() => { setChatFocused(true); releaseStick(); world.current?.setPaused(true); }} onBlur={() => { setChatFocused(false); world.current?.setPaused(panel !== null || socialOpen || casinoTable!==null || shopMode!==null); }} onChange={e => setMessage(e.target.value)}/><button aria-label="Send message" onMouseDown={event => event.preventDefault()} disabled={!message.trim()}><Icon kind="arrow" size={18}/></button></form></section>}
+        {chatOpen && <section className="chat-panel" aria-label="Town chat"><div className="chat-title"><span className="live-dot"/> TOWN CHAT {silencedUntil > 0 && <i className="chat-silenced" style={{ fontStyle: 'normal', color: '#f0d9a0' }}>Silenced · {silencedSeconds}s</i>} <span>{players.size} in town</span></div><div className="chat-history" role="log" aria-live="polite">{messages.length === 0 && <p className="chat-empty">A simple hello goes a long way.</p>}{messages.map((m, i) => m.system ? <p className="chat-system" key={m.id}>[SYSTEM] {m.body}</p> : <p key={i}><strong>{m.name}</strong> {m.body}</p>)}<div ref={chatEnd}/></div><form onSubmit={sendChat}><input aria-label="Message to town" placeholder={silencedUntil > 0 ? 'Silenced for a moment…' : 'Say something…'} disabled={silencedUntil > 0} value={message} maxLength={240} onFocus={() => { setChatFocused(true); releaseStick(); world.current?.setPaused(true); }} onBlur={() => { setChatFocused(false); world.current?.setPaused(panel !== null || socialOpen || casinoTable!==null || shopMode!==null); }} onChange={e => setMessage(e.target.value)}/><button aria-label="Send message" onMouseDown={event => event.preventDefault()} disabled={!message.trim() || silencedUntil > 0}><Icon kind="arrow" size={18}/></button></form></section>}
         <div className="identity"><span className="identity-dot" style={{ background: SHIRTS[profile.shirt] }}/><span>{profile.name}<small>NEW NEIGHBOUR</small></span><span className="identity-status">IN TOWN</span></div>
       </div>
       <div className="controls-hint"><kbd>W</kbd><span className="key-stack"><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Walk</span><span className="divider"/>Drag to look<span className="divider"/>Scroll to zoom</div>

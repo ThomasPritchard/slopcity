@@ -15,6 +15,7 @@
     "test:character": "node --import tsx scripts/character-check.ts",
     "postinstall": "node scripts/patch-sdk.mjs",
     "test:wave": "node --import tsx scripts/wave-check.ts",
+    "test:chat": "node --import tsx scripts/chat-browser-check.ts",
     "test:startup": "node --import tsx scripts/startup-check.ts",
     "services:start": "node scripts/services.mjs",
     "services:stop": "node scripts/services.mjs stop",

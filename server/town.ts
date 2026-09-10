@@ -11,6 +11,8 @@ import { authenticateGuest, isAllowedOrigin } from './guest.ts';
 import type { PrivateGuestProfile } from '../shared/profile.ts';
 import { requestSit, requestStand } from './seating.ts';
 import { voiceGain, type VoiceNeighbour } from '../shared/voice.ts';
+import { checkChat, MODERATION_NOTICES, sanitizeChatBody } from '../shared/moderation.ts';
+import { ChatDiscipline } from './moderation.ts';
 
 export class TownRoom extends Room<{ state: TownState }> {
   maxClients = CAPACITY;
@@ -18,6 +20,7 @@ export class TownRoom extends Room<{ state: TownState }> {
   private movementInputs = new Map<string, { input: Input; at: number }>();
   private chatAt = new Map<string, number>();
   private waveAt = new Map<string, number>();
+  private discipline = new ChatDiscipline();
 
   private blocked = new Map<string, Set<string>>();
   private hearing = new Map<string, Map<string, number>>();
@@ -120,10 +123,27 @@ export class TownRoom extends Room<{ state: TownState }> {
       if (typeof value !== 'string') return;
       const now = performance.now();
       if (now - (this.chatAt.get(client.sessionId) ?? -10000) < 800) return;
-      const body = value.normalize('NFKC').replace(/[\p{C}]/gu, '').trim().slice(0, 240);
       const citizen = this.state.players.get(client.sessionId);
-      if (!body || !citizen) return;
+      if (!citizen) return;
+      const silenced = this.discipline.silenceRemaining(citizen.profileId);
+      if (silenced > 0) { this.chatAt.set(client.sessionId, now); client.send('silenced', { seconds: Math.ceil(silenced / 1000) }); return; }
+      const body = sanitizeChatBody(value);
+      if (!body) return;
       this.chatAt.set(client.sessionId, now);
+      const verdict = checkChat(body);
+      if (!verdict.ok) {
+        const { silencedMs } = this.discipline.recordOffence(citizen.profileId);
+        client.send('notice', verdict.reason === 'url' ? MODERATION_NOTICES.url : MODERATION_NOTICES.profanity);
+        if (silencedMs > 0) client.send('silenced', { seconds: Math.ceil(silencedMs / 1000) });
+        return;
+      }
+      if (this.discipline.isRepeat(client.sessionId, body)) { client.send('notice', MODERATION_NOTICES.repeat); return; }
+      if (this.discipline.flooding(client.sessionId)) {
+        const { silencedMs } = this.discipline.recordOffence(citizen.profileId);
+        client.send('notice', MODERATION_NOTICES.flood);
+        if (silencedMs > 0) client.send('silenced', { seconds: Math.ceil(silencedMs / 1000) });
+        return;
+      }
       for (const receiver of this.clients) {
         const target = this.state.players.get(receiver.sessionId);
         if (target && !this.isBlocked(citizen.profileId, target.profileId)) receiver.send('chat', { id: client.sessionId, profileId: citizen.profileId, name: citizen.name, body });
@@ -168,6 +188,7 @@ export class TownRoom extends Room<{ state: TownState }> {
     // Freeze accrual immediately; retain admission ownership until its final write settles.
     const stopping = ownsSession ? salary.stop(client.sessionId) : Promise.resolve();
     if(ownsSession)this.blocked.delete(profile.id);
+    this.discipline.dispose(client.sessionId);
     for (const map of [this.movementInputs, this.chatAt, this.waveAt, this.hearing, this.hearingJson]) map.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.wallets.delete(client.sessionId); this.accruing.delete(client.sessionId);
