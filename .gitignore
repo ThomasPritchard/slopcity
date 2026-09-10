@@ -20,3 +20,6 @@ backups/
 *.pem
 *.key
 *.crt
+
+# Project-local server access skill; keep host details out of the public repo.
+/.agents/skills/slop-city-vps/

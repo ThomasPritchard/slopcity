@@ -76,11 +76,11 @@ All browser automation must stay **headless/background**, without stealing scree
 
 The live site is `https://slopcity.fun`. It runs on an Ubuntu VM behind a router using Cloudflare Tunnel, host nginx and a loopback Docker gateway. The original direct-IP Hetzner proposal is an alternative, not the current routing setup. Development and production databases/configuration are separate.
 
-For SSH/navigation, use the `slop-city-vps` skill when available (on Tom's Mac: `~/.codex/skills/slop-city-vps/SKILL.md`). It records the nonstandard SSH port, correct production checkout and password boundaries. If unavailable, use `docs/deployment.md` and request missing connection details only when needed. Verify live state instead of treating recorded health or revisions as current.
+For SSH/navigation, use the project-local `slop-city-vps` skill at `.agents/skills/slop-city-vps/SKILL.md` when available. It records the nonstandard SSH port, correct production checkout and password boundaries. This local skill is ignored by Git and is not included in a fresh clone. If unavailable, use `docs/deployment.md` and request missing connection details only when needed. Verify live state instead of treating recorded health or revisions as current.
 
 Use `sh deploy/compose.sh` from the production checkout; it selects the configured tunnel override. Do not replace it with a bare/default Compose invocation. Keep one game process per database schema: startup's ownership lock protects migrations and unfinished-wager recovery. An authorized `deploy/update.sh` release is a stop/start operation that interrupts players.
 
-Never commit or print `.env`, `.deploy/`, `.local/`, backups, database URLs, generated LiveKit secrets, Cloudflare tokens or SSH private keys. Use `config --quiet` for Compose validation; expanded configuration contains credentials. Preserve the existing ignore rules and keep local infrastructure details in the personal VPS skill rather than duplicating them here.
+Never commit or print `.env`, `.deploy/`, `.local/`, backups, database URLs, generated LiveKit secrets, Cloudflare tokens or SSH private keys. Use `config --quiet` for Compose validation; expanded configuration contains credentials. Preserve the existing ignore rules and keep local infrastructure details in the project-local VPS skill rather than duplicating them here.
 
 Never run `docker compose down --volumes` against production. The destructive deployment test belongs only to its disposable smoke project. A restore replaces saved player state and requires a deliberately selected dump and the documented maintenance procedure. Preserve unrelated nginx sites and host services; do not bypass an interactive sudo password through Docker's root-equivalent capabilities.
 
