@@ -47,7 +47,9 @@ export class CasinoService {
  private blocked(id: CasinoTableId) { return [...this.pending.values()].some(p => p.tableId === id); }
  private near(profileId: string, id: CasinoTableId) {
   const actor = this.hooks.actor(profileId), anchor = CASINO_ANCHORS.find(a => a.id === id);
-  return !!actor && !!anchor && actor.x > -17 && actor.x < 17 && actor.z > 12 && actor.z < 28 && Math.hypot(actor.x - anchor.x, actor.z - anchor.z) <= CASINO_INTERACTION_RADIUS;
+  // Blackjack interaction belongs to the south side of the table; standing behind the dealer never qualifies.
+  const behind = !!actor && !!anchor && anchor.game === 'blackjack' && actor.z > anchor.z + .8;
+  return !!actor && !!anchor && !behind && actor.x > -17 && actor.x < 17 && actor.z > 12 && actor.z < 28 && Math.hypot(actor.x - anchor.x, actor.z - anchor.z) <= CASINO_INTERACTION_RADIUS;
  }
  private eligible(profileId: string, id: CasinoTableId, sessionId: string) {
   if (this.closed || this.hooks.actor(profileId)?.sessionId !== sessionId) fail('session_ended', 'This game session has ended');
@@ -251,7 +253,8 @@ export class CasinoService {
  private async finishBlackjack(table: Blackjack) {
   // Cards are drawn once; a settlement retry reuses the completed dealer hand.
   const hands = [...table.seats.values()].flatMap(s => s.hands);
-  if (hands.some(h => total(h.cards).total <= 21 && !(natural(h.cards) && !h.split))) while (total(table.dealer).total < 17) table.dealer.push(this.draw(table));
+  // The dealer completes to 17+ while any unbusted hand is live; naturals already pay before totals compare.
+  if (hands.some(h => total(h.cards).total <= 21)) while (total(table.dealer).total < 17) table.dealer.push(this.draw(table));
   const entries = hands.flatMap(h => { const result = blackjackReturn(h.cards, table.dealer, h.stake, h.split); return h.wagers.map((id, i) => ({ id, returned: i === 0 ? result.returned : 0, outcome: { cards: h.cards, dealer: table.dealer, result: result.outcome } })); });
   const wallets = await this.repository.settle(entries);
   for (const [profileId, wallet] of wallets) this.hooks.wallet(profileId, wallet);

@@ -93,12 +93,12 @@ export class CasinoTableArt {
     const covered=new Set<number>();
     if(roulette){
       const bets=this.privateState.rouletteBets.filter(bet=>bet.roundId===roulette.roundId);
-      const point=(number:number)=>number===0?{x:-7.055,z:19.005}:{x:-7.58+(number-1)%3*.53,z:19.175+Math.floor((number-1)/3)*.15};
+      const point=(number:number)=>number===0?{x:-7.05,z:20.74}:{x:-8.05+(number-1)%6*.4,z:20.525-Math.floor((number-1)/6)*.15};
       bets.forEach(({bet},index)=>{let x=0,z=0;for(const number of bet.numbers){covered.add(number);const p=point(number);x+=p.x;z+=p.z;}
         this.chip(`roulette-own-${index}`,x/bet.numbers.length+(index%3-1)*.04,z/bet.numbers.length,bet.stake,activeChips);
       });
-      if(roulette.game==='roulette'&&roulette.betCount>bets.length)this.chip('roulette-others',-8.16,19.24,(roulette.betCount-bets.length)*10,activeChips);
-      for(const number of covered){let mesh=this.highlights.get(number);if(!mesh){mesh=MeshBuilder.CreateGround(`roulette-coverage-${number}`,{width:number===0?1.55:.49,height:.135},this.scene);mesh.material=this.highlightMaterial;this.highlights.set(number,mesh);}const p=point(number);mesh.position.set(p.x,1.229,p.z);mesh.setEnabled(true);}
+      if(roulette.game==='roulette'&&roulette.betCount>bets.length)this.chip('roulette-others',-5.70,19.24,(roulette.betCount-bets.length)*10,activeChips);
+      for(const number of covered){let mesh=this.highlights.get(number);if(!mesh){mesh=MeshBuilder.CreateGround(`roulette-coverage-${number}`,{width:number===0?2.36:.38,height:.13},this.scene);mesh.material=this.highlightMaterial;this.highlights.set(number,mesh);}const p=point(number);mesh.position.set(p.x,1.229,p.z);mesh.setEnabled(true);}
     }
     for(const[key,mesh]of this.chips)if(!activeChips.has(key))mesh.setEnabled(false);
     for(const[number,mesh]of this.highlights)if(!covered.has(number))mesh.setEnabled(false);

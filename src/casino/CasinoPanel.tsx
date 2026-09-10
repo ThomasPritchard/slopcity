@@ -151,7 +151,7 @@ function BlackjackHand({ hand, active, index, multiple }: { hand: BlackjackHandV
   return <div className={`blackjack-hand${active ? ' is-active' : ''}`}>
     <div className="blackjack-hand-heading"><span>{multiple ? `Hand ${index + 1}` : 'Hand'}{active ? ' · playing' : ''}</span>{hand.cards.length > 0 && <strong>{hand.soft ? 'Soft ' : ''}{hand.total}</strong>}</div>
     <div className="casino-cards">{hand.cards.length ? hand.cards.map((card, cardIndex) => <PlayingCard key={cardIndex} card={card} />) : <p className="casino-muted">Cards are dealt when betting closes.</p>}</div>
-    <p className="blackjack-hand-outcome">{hand.outcome === 'blackjack' ? 'Blackjack' : hand.outcome === 'win' ? 'Win' : hand.outcome === 'lose' ? 'Lost' : hand.outcome === 'push' ? 'Push' : hand.state === 'bust' ? 'Bust' : hand.state === 'stood' ? 'Standing' : hand.state === 'blackjack' ? 'Blackjack' : `${hand.stake} staked`}{hand.returned !== undefined && <strong>{credits(hand.returned)} returned</strong>}</p>
+    <p className="blackjack-hand-outcome">{hand.outcome === 'blackjack' ? 'Blackjack' : hand.outcome === 'win' ? 'Win' : hand.outcome === 'lose' ? 'Lost' : hand.outcome === 'push' ? 'Push' : hand.state === 'bust' ? 'Bust' : hand.state === 'stood' ? 'Standing' : hand.state === 'blackjack' ? 'Blackjack' : `${hand.stake} staked`}{(hand.returned ?? 0) > 0 && <strong>{credits(hand.returned ?? 0)} returned</strong>}</p>
   </div>;
 }
 
@@ -159,6 +159,7 @@ function Blackjack({ table, now, profileId, balance, busy, send, actionHost }: {
   const [stake, setStake] = useState(CASINO_MIN_STAKE);
   const ownHands = useRef<HTMLDivElement>(null);
   const ownSeat = table.seats.find(seat => seat.player.profileId === profileId);
+  const leavePending = !!ownSeat && !ownSeat.player.connected && ownSeat.hands.length > 0;
   const activeSeat = table.seats.find(seat => seat.seat === table.activeSeat);
   const betting = table.phase === 'betting' && now < table.deadline;
   const yourTurn = table.phase === 'playing' && table.activeSeat === ownSeat?.seat && now < table.deadline;
@@ -167,7 +168,7 @@ function Blackjack({ table, now, profileId, balance, busy, send, actionHost }: {
   useEffect(() => {
     if (actionHost && yourTurn) ownHands.current?.scrollIntoView({ block: 'nearest' });
   }, [actionHost, yourTurn, table.activeHand]);
-  const leaveButton = <button type="button" className="casino-text-button" disabled={busy || !ownSeat?.player.connected} onClick={() => send({ action: 'leave', tableId: table.id })}>{ownSeat?.player.connected ? 'Leave seat' : 'Seat inactive'}</button>;
+  const leaveButton = <button type="button" className="casino-text-button" disabled={busy || leavePending || !ownSeat?.player.connected} onClick={() => send({ action: 'leave', tableId: table.id })}>{leavePending ? 'Leaving…' : ownSeat?.player.connected ? 'Leave seat' : 'Seat inactive'}</button>;
   const actionSummary = <><span>{yourTurn && activeHand ? `Your turn · ${activeHand.soft ? 'soft ' : ''}${activeHand.total}` : label}<small>{yourTurn && ownSeat && ownSeat.hands.length > 1 ? `Hand ${(table.activeHand ?? 0) + 1} · ` : ''}{table.deadline > now ? `${Math.ceil((table.deadline - now) / 1000)}s remaining` : 'Waiting for the table'}</small></span>{leaveButton}</>;
   const wagerControls = <><StakeControl value={stake} onChange={setStake} disabled={busy} /><button type="button" className="casino-primary" disabled={busy || balance < stake} onClick={() => send({ action: 'blackjack-bet', tableId: table.id, roundId: table.roundId, stake })}>{busy ? 'Placing bet…' : balance < stake ? 'Not enough credits' : `Bet ${stake} credits`}</button></>;
   const handControls = activeHand && <div className="blackjack-actions" role="group" aria-label="Your available actions">{(['hit', 'stand', 'double', 'split'] as const).map(move => <button key={move} type="button" className={move === 'hit' ? 'casino-primary' : 'casino-secondary'} disabled={busy || !activeHand.actions.includes(move) || ((move === 'double' || move === 'split') && balance < activeHand.stake)} onClick={() => send({ action: 'blackjack-action', tableId: table.id, roundId: table.roundId, hand: table.activeHand!, move })}>{move === 'double' ? `Double · +${activeHand.stake}` : move === 'split' ? `Split · +${activeHand.stake}` : move[0].toUpperCase() + move.slice(1)}</button>)}</div>;
@@ -184,7 +185,7 @@ function Blackjack({ table, now, profileId, balance, busy, send, actionHost }: {
     <div className={`blackjack-seats${ownSeat ? ' has-own-seat' : ''}`} role="group" aria-label="Blackjack seats">
       {Array.from({ length: 5 }, (_, seatNumber) => {
         const seat = table.seats.find(entry => entry.seat === seatNumber);
-        return seat ? <div key={seatNumber} className={`blackjack-seat${seat.player.profileId === profileId ? ' is-yours' : ''}${table.activeSeat === seatNumber ? ' is-active' : ''}`}><span className="blackjack-seat-number">{String(seatNumber + 1).padStart(2, '0')}</span><strong>{seat.player.profileId === profileId ? 'You' : seat.player.name}</strong><small>{!seat.player.connected ? 'Away' : table.activeSeat === seatNumber ? 'Playing' : seat.hands.length ? 'Bet placed' : 'Seated'}</small></div>
+        return seat ? <div key={seatNumber} className={`blackjack-seat${seat.player.profileId === profileId ? ' is-yours' : ''}${table.activeSeat === seatNumber ? ' is-active' : ''}`}><span className="blackjack-seat-number">{String(seatNumber + 1).padStart(2, '0')}</span><strong>{seat.player.profileId === profileId ? 'You' : seat.player.name}</strong><small>{!seat.player.connected ? 'Away' : table.phase === 'result' && seat.hands.length ? 'Round complete' : table.activeSeat === seatNumber ? 'Playing' : seat.hands.length ? 'Bet placed' : 'Seated'}</small></div>
           : <button key={seatNumber} type="button" className="blackjack-seat is-empty" disabled={busy || !!ownSeat || table.phase === 'paused'} onClick={() => send({ action: 'blackjack-join', tableId: table.id, seat: seatNumber })} aria-label={`Take seat ${seatNumber + 1}`}><span className="blackjack-seat-number">{String(seatNumber + 1).padStart(2, '0')}</span><strong>Join</strong><small>Open seat</small></button>;
       })}
     </div>
@@ -192,6 +193,7 @@ function Blackjack({ table, now, profileId, balance, busy, send, actionHost }: {
 
     {ownSeat ? <section className="blackjack-player-controls" aria-label="Your blackjack controls">
       <div className="casino-section-heading"><h3>Your place</h3>{!actionHost && leaveButton}</div>
+      {leavePending && <p className="casino-muted" role="status">Leaving after this hand settles…</p>}
       {ownSeat.hands.length === 0 && betting && !actionHost ? wagerControls : null}
       {ownSeat.hands.length === 0 && !betting && <p className="casino-muted">You have a seat. Betting opens with the next round.</p>}
       {ownSeat.hands.length > 0 && <div ref={ownHands} className={`blackjack-hands${ownSeat.hands.length > 1 ? ' is-split' : ''}`}>{ownSeat.hands.map((hand, index) => <BlackjackHand key={index} hand={hand} index={index} multiple={ownSeat.hands.length > 1} active={yourTurn && table.activeHand === index} />)}</div>}

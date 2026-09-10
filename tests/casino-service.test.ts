@@ -50,7 +50,8 @@ test('Blackjack hit/stand replay consumes no extra card and dealer hole remains 
  await t.service.dispose();
 });
 test('Blackjack natural pays 3:2, dealer peek pushes natural and defeats split-style ordinary 21', async () => {
- const win = setup(['A', '9', 'K', '7']); await win.begin(100); assert.equal(win.table().phase, 'result'); assert.equal(win.repo.wallet('alice').balance, 1150); await win.service.dispose();
+ // Extra shoe cards let the dealer complete to 17+ once natural-only hands stopped excluding the draw.
+ const win = setup(['A', '9', 'K', '7', '2', '3', '4', '6']); await win.begin(100); assert.equal(win.table().phase, 'result'); assert.equal(win.repo.wallet('alice').balance, 1150); await win.service.dispose();
  const push = setup(['A', 'A', 'K', 'Q']); await push.begin(10); assert.equal(push.table().phase, 'result'); assert.equal(push.repo.wallet('alice').balance, 1000); await push.service.dispose();
  const lose = setup(['5', 'A', '6', 'Q']); await lose.begin(10); assert.equal(lose.table().phase, 'result'); assert.equal(lose.repo.wallet('alice').balance, 990); await lose.service.dispose();
 });

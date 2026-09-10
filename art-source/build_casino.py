@@ -52,12 +52,32 @@ wheel_x,wheel_y=-9.37,20
 bowl=lathe('Wheel bowl',[(.30,1.19),(.79,1.19),(.98,1.36),(1.01,1.39),(1.015,1.43),(.96,1.43),(.78,1.30),(.3,1.24)],wood,96)
 bowl.location.x=wheel_x;bowl.location.y=wheel_y
 for radius,z in [(1.0,1.43),(.79,1.30)]:tube('Bowl inlay',[(wheel_x+radius*math.cos(i/96*math.tau),wheel_y+radius*math.sin(i/96*math.tau),z) for i in range(97)],.008,brass,sides=6)
-for col in range(4):cube('Betting grid',(-7.85+col*.53,20,1.212),(.013,1.80,.012),cream,.001)
-for row in range(13):cube('Betting grid',(-7.055,19.10+row*.15,1.212),(1.59,.009,.012),cream,.001)
-cube('Zero border',(-7.055,18.93,1.212),(1.59,.009,.012),cream,.001)
-for x in [-7.85,-6.26]:cube('Zero side',(x,19.015,1.212),(.013,.17,.012),cream,.001)
-text_mesh('0',(-7.055,18.965,1.222),.11,cream,True)
-for n in range(1,37):text_mesh(str(n),(-7.58+(n-1)%3*.53,19.12+(n-1)//3*.15,1.222),.095,cream,True)
+# Betting layout mirrors the 2D number board: zero band across the top, six columns of
+# six numbers reading row-major (1..6 in the first row), then dozens, column marks and
+# the even-money row, with red/black cell fills from the shared red-number set.
+reds={1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36}
+for n in range(1,37):
+    cx,cy=-8.05+(n-1)%6*.40,20.525-(n-1)//6*.15
+    cube('Number fill',(cx,cy,1.203),(.388,.138,.006),red if n in reds else black,0)
+    text_mesh(str(n),(cx,cy,1.222),.095,cream,True)
+for col in range(7):cube('Betting grid',(-8.25+col*.40,20.17,1.212),(.013,.90,.012),cream,.001)
+for row in range(7):cube('Betting grid',(-7.05,19.72+row*.15,1.212),(2.40,.009,.012),cream,.001)
+cube('Betting grid',(-7.05,20.86,1.212),(2.40,.009,.012),cream,.001)
+for x in [-8.25,-5.85]:cube('Zero side',(x,20.74,1.212),(.013,.24,.012),cream,.001)
+text_mesh('0',(-7.05,20.74,1.222),.11,cream,True)
+for i in range(4):cube('Dozen border',(-8.25+i*.80,19.645,1.212),(.013,.15,.012),cream,.001)
+cube('Betting grid',(-7.05,19.57,1.212),(2.40,.009,.012),cream,.001)
+for i,label in enumerate(['1ST 12','2ND 12','3RD 12']):text_mesh(label,(-7.85+i*.80,19.645,1.222),.062,cream,True)
+for col in range(7):cube('Even border',(-8.25+col*.40,19.495,1.212),(.013,.15,.012),cream,.001)
+cube('Betting grid',(-7.05,19.42,1.212),(2.40,.009,.012),cream,.001)
+for i,label in enumerate(['1–18','EVEN','RED','BLACK','ODD','19–36']):
+    cx=-8.05+i*.40
+    if label in ('RED','BLACK'):cube('Even fill',(cx,19.495,1.203),(.388,.138,.006),red if label=='RED' else black,0)
+    text_mesh(label,(cx,19.495,1.222),.055,cream,True)
+for y in [20.44,20.17,19.90]:
+    for dy in [-.065,.065]:cube('Column mark',(-5.70,y+dy,1.212),(.17,.009,.012),cream,.001)
+    for dx in [-.085,.085]:cube('Column mark',(-5.70+dx,y,1.212),(.013,.13,.012),cream,.001)
+    text_mesh('2:1',(-5.70,y,1.222),.05,cream,True)
 text_mesh('EUROPEAN  /  SINGLE ZERO',(-8,18.85,1.207),.12,cream,True)
 # D-shaped blackjack tables. Player chairs follow a fixed five-place arc.
 seat_offsets=[(-1.8,-.6),(-1.15,-1.5),(0,-1.9),(1.15,-1.5),(1.8,-.6)]

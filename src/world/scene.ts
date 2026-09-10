@@ -17,7 +17,7 @@ import { Ray } from '@babylonjs/core/Culling/ray';
 import { WALLS, SHIRTS, district, move, type Position, type Profile } from '../../shared/world';
 
 import { type Appearance, type Outfit } from '../../shared/catalog';
-import { CASINO_ANCHORS, type CasinoAnchor, type CasinoState, type CasinoPrivateState } from '../../shared/casino';
+import { CASINO_ANCHORS, type CasinoAnchor, type CasinoState, type CasinoPrivateState, type SlotSymbol } from '../../shared/casino';
 import { BENCHES } from '../../shared/social';
 import { AuthoredAssets, CitizenModel } from './assets';
 import { CasinoTableArt, drawSlotSymbol } from './casinoArt';
@@ -84,6 +84,14 @@ export class TownScene {
   private ballRadius = .64;
   private reelTextures = new Map<string, DynamicTexture>();
   private reelKeys = new Map<string, string>();
+  private slotSpins = new Map<string,{spinning:boolean;p0:number;settle:number}>();
+  private slotOffsets = new Map<string,number>();
+  // Deterministic per-machine spin phase from the anchor id; no runtime randomness.
+  private slotOffset(id: string): number {
+    let hash = [...id].reduce((value, char) => (Math.imul(value, 31) + char.charCodeAt(0)) | 0, 7);
+    hash = Math.imul(hash ^ hash >>> 16, 0x45d9f3b);
+    return ((hash ^ hash >>> 16) >>> 0) % 1000;
+  }
   private tableCards!: CasinoTableArt;
 
   constructor(readonly canvas: HTMLCanvasElement, low = false) {
@@ -233,8 +241,10 @@ export class TownScene {
       const material=new StandardMaterial(`reels-${anchor.id}`,this.scene);material.diffuseTexture=texture;material.emissiveColor=new Color3(.65,.65,.65);material.specularColor=Color3.Black();
       const screen=MeshBuilder.CreatePlane(`screen-${anchor.id}`,{width:1.05,height:.45},this.scene);screen.position.set(anchor.x,1.49,23.45);screen.material=material;
       this.reelTextures.set(anchor.id,texture);
-      // Upload an initial frame before scene readiness; live state arrives after joining.
-      texture.drawText('7       7       7',null,165,'bold 106px Georgia','#922d35','#eee3bf',true);
+      // Neutral idle frame: no winning combination before the server publishes a result.
+      const context=texture.getContext() as CanvasRenderingContext2D;context.fillStyle='#eee3bf';context.fillRect(0,0,768,256);
+      context.fillStyle='#b9a780';for(const x of [128,384,640]){context.beginPath();context.arc(x,128,15,0,Math.PI*2);context.fill();}
+      texture.update();
     }
     // Clothing store: window bays and open centre doorway.
     this.box('shop floor', 22, .05, -2, 7.5, .05, 19.5, '#dfd3bc', false);
@@ -420,18 +430,36 @@ export class TownScene {
       } else {
         this.wheelVelocity=this.reducedMotion?0:this.wheelVelocity*Math.exp(-dt*4);this.rouletteWheel.rotation.y+=this.wheelVelocity*dt;
         const index=order.indexOf(roulette.result??roulette.history[0]??0);
-        const target=(index+.5)/37*Math.PI*2-(this.rouletteWheel.rotation.y-Math.PI);
+        // GLB pockets face local (cos t,0,-sin t), so the world ball angle for pocket i is -(R+t_i).
+        const target=-(index+.5)/37*Math.PI*2-this.rouletteWheel.rotation.y;
         const difference=Math.atan2(Math.sin(target-this.ballAngle),Math.cos(target-this.ballAngle));
         this.ballAngle+=difference*(this.reducedMotion?1:Math.min(1,dt*7));this.ballRadius+=(.64-this.ballRadius)*(this.reducedMotion?1:Math.min(1,dt*6));
       }
-      this.rouletteBall.position.set(-9.37+Math.cos(this.ballAngle)*this.ballRadius,1.355+(this.ballRadius-.64)*.36,20+Math.sin(this.ballAngle)*this.ballRadius);
+      this.rouletteBall.position.set(-9.37+Math.cos(this.ballAngle)*this.ballRadius,1.358+(this.ballRadius-.64)*.36,20+Math.sin(this.ballAngle)*this.ballRadius);
     }
+    const cycle:readonly SlotSymbol[]=['cherry','lemon','bar','seven'];
     for(const table of this.casinoState.tables) if(table.game==='slots') {
-      const symbols=table.phase==='spinning'&&!this.reducedMotion?Array.from({length:3},(_,i)=>(['cherry','lemon','bar','seven'] as const)[(Math.floor(now/100)+i)%4]):table.reels;
+      const spin=this.slotSpins.get(table.id)??{spinning:false,p0:0,settle:0};
+      let offset=this.slotOffsets.get(table.id);
+      if(offset===undefined){offset=this.slotOffset(table.id);this.slotOffsets.set(table.id,offset);}
+      const spinning=table.phase==='spinning';
+      let symbols:readonly (SlotSymbol|undefined)[];
+      if(spinning&&!this.reducedMotion) {
+        const p=(now+offset)/100;
+        symbols=Array.from({length:3},(_,i)=>cycle[(Math.floor(p)+i)%4]);
+        spin.p0=Math.floor(p);spin.settle=0;
+      } else if(!this.reducedMotion&&!spinning&&table.reels.length===3&&(spin.settle?now<spin.settle+300:spin.spinning)) {
+        // Brief deceleration when the published result lands, so the reels appear to stop.
+        if(!spin.settle){spin.settle=now;spin.p0++;}
+        const u=Math.min(1,(now-spin.settle)/300);
+        symbols=Array.from({length:3},(_,i)=>cycle[(Math.floor(spin.p0+3*(u-u*u/2))+i)%4]);
+        if(u===1)spin.settle=0;
+      } else {symbols=table.reels;spin.settle=0;}
+      spin.spinning=spinning;this.slotSpins.set(table.id,spin);
       const key=symbols.join(',');if(this.reelKeys.get(table.id)===key)continue;this.reelKeys.set(table.id,key);
       const texture=this.reelTextures.get(table.id);if(!texture)continue;
       const ctx=texture.getContext() as CanvasRenderingContext2D;ctx.fillStyle='#eee3bf';ctx.fillRect(0,0,768,256);ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 106px Georgia';
-      for(let i=0;i<3;i++){drawSlotSymbol(ctx,symbols[i]??'seven',128+i*256);if(i){ctx.fillStyle='#b9a780';ctx.fillRect(i*256,0,5,256);}}
+      for(let i=0;i<3;i++){const symbol=symbols[i];if(symbol)drawSlotSymbol(ctx,symbol,128+i*256);else{ctx.fillStyle='#b9a780';ctx.beginPath();ctx.arc(128+i*256,128,15,0,Math.PI*2);ctx.fill();}if(i){ctx.fillStyle='#b9a780';ctx.fillRect(i*256,0,5,256);}}
       texture.update();
     }
   }
@@ -495,7 +523,7 @@ export class TownScene {
   private visibility = () => { if (document.hidden) this.blur(); };
   private resize = () => {
     this.engine.resize();
-    if(this.casinoFocus) {this.camera.viewport=innerWidth<700 && innerHeight>innerWidth?new Viewport(0,.55,1,.45):new Viewport(0,0,innerWidth<1100?.55:.67,1);return;}
+    if(this.casinoFocus) {this.camera.viewport=innerWidth<700 && innerHeight>innerWidth?new Viewport(0,.55,1,.45):new Viewport(0,0,innerWidth<1100?.55:1-Math.max(.33,476/innerWidth),1);return;}
     if(this.mode==='playing')this.camera.viewport=new Viewport(0,0,1,1);
     if (this.mode === 'wardrobe') this.camera.viewport = innerWidth < 700 && innerHeight > innerWidth ? new Viewport(0,.52,1,.48) : new Viewport(0,0,innerWidth < 1000 ? .58 : .72,1);
     if (this.mode === 'customise') this.camera.viewport = innerWidth < 700 ? new Viewport(0,.42,1,.58) : new Viewport(0,0,.72,1);

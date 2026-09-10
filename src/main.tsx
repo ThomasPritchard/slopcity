@@ -291,7 +291,13 @@ function App() {
   const neighbours = [...players.entries()].filter(([id]) => id !== room.current?.sessionId).map(([sessionId, player]) => ({ sessionId, profileId: player.profileId, name: player.name, distance: localPlayer ? Math.hypot(player.x-localPlayer.x,player.z-localPlayer.z) : 0, muted: muted.has(sessionId), blocked: guest?.blocks.includes(player.profileId) ?? false, speaking: voiceState.speaking.includes(sessionId) })).sort((a,b) => a.distance-b.distance);
   const nearbyGames = localPlayer && stats.district === 'The Meridian Casino' && !casinoTable && !shopMode && !panel && !socialOpen && (!chatOpen || !matchMedia('(pointer: coarse)').matches) ? CASINO_ANCHORS.filter(anchor => Math.hypot(localPlayer.x-anchor.x, localPlayer.z-anchor.z) <= CASINO_INTERACTION_RADIUS).sort((a,b) => Math.hypot(localPlayer.x-a.x,localPlayer.z-a.z)-Math.hypot(localPlayer.x-b.x,localPlayer.z-b.z)) : [];
   const [hoveredGame, setHoveredGame] = useState<CasinoTableId | null>(null);
-  const focusGame = nearbyGames.find(anchor => anchor.id === hoveredGame) ?? nearbyGames[0] ?? null;
+  const [pickedGame, setPickedGame] = useState<CasinoTableId | null>(null);
+  const pickedAnchor = pickedGame ? nearbyGames.find(anchor => anchor.id === pickedGame) ?? null : null;
+  const focusGame = pickedAnchor ?? nearbyGames.find(anchor => anchor.id === hoveredGame) ?? nearbyGames[0] ?? null;
+  useEffect(() => {
+    if (pickedGame && !nearbyGames.some(anchor => anchor.id === pickedGame)) setPickedGame(null);
+    if (hoveredGame && !nearbyGames.some(anchor => anchor.id === hoveredGame)) setHoveredGame(null);
+  }, [nearbyGames, pickedGame, hoveredGame]);
   useEffect(() => { world.current?.setInteractionFocus(focusGame); }, [focusGame?.id]);
   const playing = phase === 'playing';
   const customising = phase === 'customising' || phase === 'joining';
@@ -345,7 +351,7 @@ function App() {
       {voiceState.status !== 'off' && <button className="voice-status" onClick={event => { event.currentTarget.focus(); setSocialOpen(true); }} aria-label="Open voice controls">{voiceState.status === 'connected' ? voiceState.micEnabled ? 'Voice · Mic on' : 'Voice · Mic off' : voiceState.status === 'connecting' ? 'Voice connecting…' : 'Voice disconnected'}</button>}
       <SocialPanel open={socialOpen} onClose={() => setSocialOpen(false)} voice={voiceState} neighbours={neighbours} blockedProfiles={(guest?.blocks ?? []).map(profileId => ({profileId, name: knownNames.current.get(profileId) ?? 'Guest not in town'}))} onJoinVoice={() => void voiceClient.current?.join()} onLeaveVoice={() => void voiceClient.current?.leave()} onToggleMic={() => void voiceClient.current?.toggleMicrophone()} onResumeAudio={() => void voiceClient.current?.resumeAudio()} onMute={muteNeighbour} onBlock={id => void blockNeighbour(id,true)} onUnblock={id => void blockNeighbour(id,false)}/>
 
-      {nearbyGames.length > 0 && <div className="casino-entry" aria-label="Nearby casino games">{nearbyGames.map(anchor=><button key={anchor.id} aria-current={focusGame?.id===anchor.id ? 'true' : undefined} onPointerEnter={()=>setHoveredGame(anchor.id)} onPointerLeave={()=>setHoveredGame(null)} onFocus={()=>setHoveredGame(anchor.id)} onBlur={()=>setHoveredGame(null)} onClick={()=>openCasino(anchor.id)}>Open {anchor.name}</button>)}</div>}
+      {nearbyGames.length > 0 && <div className="casino-entry" aria-label="Nearby casino games">{nearbyGames.map(anchor=><button key={anchor.id} aria-current={focusGame?.id===anchor.id ? 'true' : undefined} style={nearbyGames.length>1&&focusGame&&focusGame.id!==anchor.id?{opacity:.72}:undefined} onPointerEnter={()=>setHoveredGame(anchor.id)} onPointerLeave={()=>setHoveredGame(null)} onFocus={()=>setHoveredGame(anchor.id)} onBlur={()=>setHoveredGame(null)} onPointerDown={()=>{setPickedGame(anchor.id);setHoveredGame(anchor.id);world.current?.setInteractionFocus(anchor);}} onClick={()=>{setPickedGame(anchor.id);setHoveredGame(anchor.id);world.current?.setInteractionFocus(anchor);openCasino(anchor.id);}}>Open {anchor.name}</button>)}</div>}
       <CasinoPanel open={casinoTable!==null} table={casinoState.tables.find(table=>table.id===casinoTable)??null} serverTime={casinoState.serverTime} profileId={guest?.id??''} balance={wallet?.balance??0} privateState={casinoPrivate} busy={casinoBusy} error={casinoError} notice={casinoNotice} onCommand={command=>sendCasino(command)} onClose={closeCasino}/>
       {casinoRetry && <button className="casino-retry" onClick={()=>{if(casinoPending.current)sendCasino(casinoPending.current,true);}}>Retry last casino action</button>}
       <LocationAnnouncement key={stats.district} name={stats.district}/>

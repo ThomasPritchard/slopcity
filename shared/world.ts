@@ -41,8 +41,8 @@ export function isWalkable(x: number, z: number): boolean {
   if (Math.abs(x) > 26 || Math.abs(z) > 26) return false;
   if (Math.hypot(x - FOUNTAIN.x, z - FOUNTAIN.z) < FOUNTAIN.radius + radius) return false;
   if(CASINO_SOLIDS.some(w=>Math.abs(x-w.x)<w.w/2+radius && Math.abs(z-w.z)<w.d/2+radius))return false;
-  // The curved card-table front leaves space for the seated players' feet.
-  for(const centre of [3,10])if(z>18.9 && z<19.7 && Math.abs(x-centre)<2.55 || z<=18.9 && ((x-centre)/2.55)**2+((z-18.9)/1.4)**2<1)return false;
+  // The curved card-table front leaves space for the seated players' feet; the dealer's side stays a dead zone.
+  for(const centre of [3,10])if(z>18.9 && z<19.7 && Math.abs(x-centre)<2.55 || z>=19.7 && z<21.2 && Math.abs(x-centre)<2.55 || z<=18.9 && ((x-centre)/2.55)**2+((z-18.9)/1.4)**2<1)return false;
   return !WALLS.some(w => Math.abs(x - w.x) < w.w / 2 + radius && Math.abs(z - w.z) < w.d / 2 + radius);
 }
 export function move(position: Position, input: Pick<Input, 'x' | 'z'>, seconds: number): Position {
