@@ -13,7 +13,7 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { CINEMA_LAYOUT } from '../../shared/cinemaLayout';
 import { communitySlide, type Programme } from '../../shared/community';
 
-/** The physical screen shows our own approved images. Provider video stays in its official player. */
+/** Approved reel and fallback artwork beneath the world-aligned official player. */
 export class CinemaDisplay {
   readonly root: TransformNode;
   private screen: DynamicTexture;
@@ -84,7 +84,7 @@ export class CinemaDisplay {
       ctx.fillStyle='#df987d';ctx.font='27px sans-serif';ctx.fillText('ON AIR',960,312);
       ctx.fillStyle='#f3ead4';ctx.font='104px Georgia';ctx.fillText('BridgeMind',960,470);
       ctx.font='42px Georgia';ctx.fillText('The stream that brings us together.',960,586);
-      ctx.fillStyle='#c8b88a';ctx.font='28px sans-serif';ctx.fillText('TAKE A SEAT · CHOOSE WATCH TOGETHER',960,789);
+      ctx.fillStyle='#c8b88a';ctx.font='28px sans-serif';ctx.fillText('FIND A CLEAR VIEW · SOUND FOLLOWS YOUR DISTANCE',960,789);
     } else if(slide?.kind==='image') {
       const info=slide.image;
       let pic=this.pictures.get(info.imageUrl);

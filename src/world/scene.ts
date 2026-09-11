@@ -2,6 +2,7 @@ import { CreditBoard } from './creditBoard';
 import { createMemoriesBoard } from './memoriesBoard';
 import { nearMemoriesBoard, MEMORIES_BOARD } from '../../shared/memories';
 import { CinemaDisplay } from './cinema';
+import { WorldCinemaPlayer } from './cinemaPlayer';
 import { CINEMA_LAYOUT, inCinema } from '../../shared/cinemaLayout';
 import type { Programme } from '../../shared/community';
 import { nearCreditBoard, type CreditLeaderboard } from '../../shared/creditLeaderboard';
@@ -135,11 +136,12 @@ export class TownScene {
   private creditBoard!: CreditBoard;
   private memoriesBoard!: ReturnType<typeof createMemoriesBoard>;
   private cinema!: CinemaDisplay;
+  private cinemaPlayer!: WorldCinemaPlayer;
   private communityFocus: 'board' | 'cinema' | null = null;
   private tableCards!: CasinoTableArt;
 
   constructor(readonly canvas: HTMLCanvasElement, low = false) {
-    this.engine = new Engine(canvas, true, { stencil: true, preserveDrawingBuffer: true }, true);
+    this.engine = new Engine(canvas, true, { alpha: true, stencil: true, preserveDrawingBuffer: true }, true);
     this.low = low;
     this.engine.setHardwareScalingLevel(1 / (low ? 1 : Math.min(window.devicePixelRatio || 1, 1.75)));
     this.scene = new Scene(this.engine);
@@ -181,6 +183,10 @@ export class TownScene {
     this.tableCards = new CasinoTableArt(this.scene);
     this.ready = this.initialise();
     this.scene.onBeforeRenderObservable.add(() => this.update());
+    this.scene.onAfterRenderObservable.add(() => {
+      this.cinemaPlayer?.setListenerPosition(this.localId ? this.avatars.get(this.localId)?.root.position ?? null : null);
+      this.cinemaPlayer?.update();
+    });
     window.addEventListener('keydown', this.keyDown);
     canvas.addEventListener('pointerdown', this.playerPointerDown);
     canvas.addEventListener('pointermove', this.playerPointerMove);
@@ -336,6 +342,7 @@ export class TownScene {
     cinemaAsset.scaling.x = -1;
     for (const point of CINEMA_LAYOUT.trees) this.placeAsset('tree',point.x,0,point.z,0,.8);
     this.cinema = new CinemaDisplay(this.scene);
+    this.cinemaPlayer = new WorldCinemaPlayer(this.scene, this.camera, this.canvas);
     for (const bench of BENCHES) this.bench(bench.x, bench.z, bench.heading);
     this.memoriesBoard = createMemoriesBoard(this.scene);
     for (const mesh of this.memoriesBoard.root.getChildMeshes()) this.shadows.addShadowCaster(mesh);
@@ -471,8 +478,10 @@ export class TownScene {
   syncCreditLeaderboard(snapshot: CreditLeaderboard | null, unavailable: boolean) { this.creditBoard?.sync(snapshot, unavailable); }
   syncCommunity(programme: Programme | null) {
     this.cinema?.sync(programme);
+    this.cinemaPlayer?.sync(programme);
     this.memoriesBoard?.sync(programme?.images ?? []);
   }
+  setCinemaPlaybackEnabled(enabled: boolean) { this.cinemaPlayer?.setEnabled(enabled); }
   focusCommunity(view: 'board' | 'cinema' | null) {
     if(view && !this.communityFocus)this.saveView();
     const previous=this.communityFocus;this.communityFocus=view;this.blur();
@@ -549,6 +558,7 @@ export class TownScene {
   }
   private playerPointerDown = (event: PointerEvent) => {
     if (event.button !== 0) return;
+    this.canvas.focus({ preventScroll: true });
     this.pointerStarts.set(event.pointerId, { x: event.clientX, y: event.clientY, cancelled: this.pointerStarts.size > 0 });
     if (this.pointerStarts.size > 1) for (const start of this.pointerStarts.values()) start.cancelled = true;
   };
@@ -560,6 +570,9 @@ export class TownScene {
   private playerPointerUp = (event: PointerEvent) => {
     const start = this.pointerStarts.get(event.pointerId); this.pointerStarts.delete(event.pointerId);
     if (!start || start.cancelled || this.paused || this.mode !== 'playing' || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) return;
+    // A touch has no hover: its first tap hands input to the native player. Do
+    // not turn that same tap into a cinema-menu action which destroys the iframe.
+    if (this.cinemaPlayer?.usesNativeControls) return;
     const rect = this.canvas.getBoundingClientRect();
     const proxies = new Map([...this.avatars.entries()].filter(([id]) => id !== this.localId).map(([id, avatar]) => [avatar.hit, id]));
     const citizenMeshes = new Set([...this.avatars.values()].flatMap(avatar => avatar.model.meshes));
@@ -786,6 +799,7 @@ export class TownScene {
     }
   }
   dispose() {
+    this.cinemaPlayer?.dispose();
     this.blur(); window.removeEventListener('keydown', this.keyDown); window.removeEventListener('keyup', this.keyUp);
     window.removeEventListener('blur', this.blur); document.removeEventListener('visibilitychange', this.visibility); window.removeEventListener('resize', this.resize);
     this.canvas.removeEventListener('pointerdown', this.playerPointerDown); this.canvas.removeEventListener('pointermove', this.playerPointerMove);

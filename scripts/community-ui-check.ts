@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { webkit, type Locator, type Page } from 'playwright';
+import { webkit, type BrowserContext, type Locator, type Page } from 'playwright';
 import { FIRST_MEMORY } from '../shared/memories.ts';
-import { COMMUNITY_LIMITS, communitySlide, type Programme } from '../shared/community.ts';
+import { BRIDGEMIND_TWITCH_CHANNEL, COMMUNITY_LIMITS, communitySlide, type Programme, type ProgrammeSettings } from '../shared/community.ts';
 
 const endpoint = process.env.GAME_URL || 'http://localhost:5173';
 const output = 'output/playwright/community-ui';
@@ -18,11 +18,37 @@ const errors: string[] = [];
 const checks: string[] = [];
 let sharedReel: { elapsedMs: number; clockSkewMs: number; before: unknown; after: unknown } | undefined;
 let page: Page | undefined;
+// Only Twitch detection is controlled. Images, schedules, revisions and writes use the real API.
+let mockedTwitchLive = false;
+let savedProgrammeSettings: ProgrammeSettings | undefined;
+function withMockedTwitch(programme: Programme): Programme {
+ const curatedYouTube = savedProgrammeSettings?.mode === 'live' && savedProgrammeSettings.platform === 'youtube';
+ return { ...programme,
+  mode: mockedTwitchLive || curatedYouTube ? 'live' : 'intermission',
+  platform: mockedTwitchLive ? 'twitch' : savedProgrammeSettings?.platform ?? programme.platform,
+  twitchChannel: BRIDGEMIND_TWITCH_CHANNEL,
+  youtubeVideoId: savedProgrammeSettings?.youtubeVideoId ?? programme.youtubeVideoId,
+  liveDetection: { status: mockedTwitchLive ? 'live' : 'offline', checkedAt: programme.serverNowMs },
+ };
+}
+async function mockTwitchDetection(context: BrowserContext) {
+ await context.route(/\/game\/api\/community\/(programme|admin)$/, async route => {
+  if (route.request().method() !== 'GET') { await route.continue(); return; }
+  const response = await route.fetch();
+  if (!response.ok()) { await route.fulfill({ response }); return; }
+  const body = await response.json();
+  if (new URL(route.request().url()).pathname.endsWith('/admin')) {
+   savedProgrammeSettings = body.settings;
+   await route.fulfill({ response, json: { ...body, programme: withMockedTwitch(body.programme) } });
+  } else await route.fulfill({ response, json: withMockedTwitch(body) });
+ });
+}
 async function visibleControl(control: Locator, height: number, width: number) {
  const box = await control.boundingBox(); assert.ok(box && box.height >= 44 && box.y >= 0 && box.y + box.height <= height && box.x >= 0 && box.x + box.width <= width, 'Control is visible and at least 44px high');
 }
 try {
  const context = await browser.newContext({ viewport: { width:1440, height:960 }, hasTouch:true });
+ await mockTwitchDetection(context);
  await context.addInitScript(() => { localStorage.setItem('slop-city-comfort', JSON.stringify({ low:true, motion:'reduced', effects:0, ambience:0 })); if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => { throw Error('No real microphone in community acceptance'); }; });
  // Provider documents are isolated: these checks prove deliberate mounting and layout, not live media.
  await context.route('https://player.twitch.tv/**', route => route.fulfill({ contentType:'text/html', body:'<!doctype html><html><meta charset="utf-8"><body style="margin:0;background:#10261b;color:#fff;font:18px sans-serif;display:grid;place-content:center;height:100vh"><p>Official player frame · local acceptance response</p><button>Provider playback control</button></body></html>' }));
@@ -53,10 +79,11 @@ try {
  await page.getByRole('button',{name:'Enter',exact:true}).click(); await page.getByRole('button',{name:'Join the square',exact:true}).click();
  await page.getByRole('button',{name:'Open community memories',exact:true}).waitFor(); const welcome=page.getByRole('button',{name:'Dismiss welcome',exact:true});if(await welcome.isVisible())await welcome.click();
  await page.getByRole('button',{name:'Open community memories',exact:true}).click(); panel=page.getByRole('dialog',{name:'Slop City memories',exact:true});
- // Real public programme and client polling, with an independently skewed browser clock.
+ // Real programme clock, images and client polling with mocked Twitch offline status and an independently skewed browser clock.
  // Samples are at least 2.2 seconds from a slide boundary; one real advance takes <=24.4 seconds.
  const reelStarted = performance.now(), skewedContext = await browser.newContext({ viewport:{width:1440,height:960} });
  try {
+  await mockTwitchDetection(skewedContext);
   await skewedContext.addInitScript(() => { const now=Date.now.bind(Date); Date.now=()=>now()+20_000; localStorage.setItem('slop-city-comfort',JSON.stringify({low:true,motion:'reduced',effects:0,ambience:0})); if(navigator.mediaDevices)navigator.mediaDevices.getUserMedia=async()=>{throw Error('No real microphone in shared reel acceptance');}; });
   const skewedPage=await skewedContext.newPage();skewedPage.on('pageerror',error=>errors.push(error.message));
   const remaining=()=>Math.max(1,30_000-(performance.now()-reelStarted));
@@ -84,7 +111,7 @@ try {
   const after=await sample();assert.equal(after.revision,before.revision,'No programme mutation created the transition');assert.equal(after.slideIndex,before.slideIndex+1,'Both views advanced across one real slide boundary');assert.notDeepEqual(after.reel,before.reel,'The displayed reel content actually changed');
   sharedReel={elapsedMs:Math.round(performance.now()-reelStarted),clockSkewMs,before:{revision:before.revision,slideIndex:before.slideIndex,phaseMs:before.phaseMs,reel:before.reel},after:{revision:after.revision,slideIndex:after.slideIndex,phaseMs:after.phaseMs,reel:after.reel}};
   assert.ok(sharedReel.elapsedMs<=30_000,'Two-context acceptance adds at most 30 seconds');
-  checks.push('Two real contexts with a 20-second browser clock skew match the public intermission programme and stay aligned across a real slide advance');
+  checks.push('Two real contexts with a 20-second browser clock skew match the real programme clock with mocked Twitch offline status and stay aligned across a real slide advance');
   console.log(`PASS: two-context real reel advance with +20s clock skew (${sharedReel.elapsedMs}ms)`);
   await page.getByRole('dialog',{name:'The Bridge Picture House',exact:true}).getByRole('button',{name:'Memories board',exact:true}).click();
   panel=page.getByRole('dialog',{name:'Slop City memories',exact:true});
@@ -117,21 +144,24 @@ try {
  await admin.getByRole('button',{name:'Memories board',exact:true}).click();panel=page.getByRole('dialog',{name:'Slop City memories',exact:true});await panel.getByRole('button',{name:`Open photo: ${title}`,exact:true}).waitFor();
  checks.push('Real admin login, private image preview, approval publication, feature and ordering; private media denied to anonymous context');
  await panel.getByRole('button',{name:'Tom’s review desk',exact:false}).click();admin=page.getByRole('dialog',{name:'Community review desk',exact:true});await admin.getByRole('button',{name:'Programme',exact:true}).click();
- await admin.getByLabel('Screen mode',{exact:true}).selectOption('live');await admin.getByLabel('Live platform',{exact:true}).selectOption('twitch');
+ mockedTwitchLive = true;
+ await admin.getByLabel('Live platform',{exact:true}).selectOption('twitch');
+ assert.equal(await admin.getByLabel('Screen mode',{exact:true}).isDisabled(),true);
  assert.equal(await admin.getByLabel('BridgeMind Twitch channel',{exact:true}).getAttribute('readonly'),'');
  await admin.getByRole('button',{name:'Add a scheduled stream',exact:false}).click();await admin.getByLabel('Event 1',{exact:true}).fill('Local acceptance screening');await admin.getByLabel('Starts at (UTC)',{exact:true}).fill('2026-09-12T18:30');
  await admin.getByRole('button',{name:'Save programme',exact:true}).click();await page.waitForFunction(async()=>{const value=await(await fetch('/game/api/community/programme')).json();return value.mode==='live'&&value.platform==='twitch'&&value.schedule.some((entry:{title:string})=>entry.title==='Local acceptance screening');});
  await admin.getByRole('button',{name:'Picture house',exact:true}).click();const cinema=page.getByRole('dialog',{name:'The Bridge Picture House',exact:true});
  await cinema.getByRole('button',{name:'Watch together',exact:false}).waitFor();assert.equal(await page.locator('iframe').count(),0,'No provider frame before deliberate Watch');
  for(const[label,width,height]of[['desktop',1440,960],['portrait',390,844],['landscape',844,390]]as const){await page.setViewportSize({width,height});await cinema.getByRole('button',{name:'Watch together',exact:false}).click();const watch=page.getByRole('dialog',{name:'Watch at The Bridge Picture House',exact:true});await visibleControl(watch.getByRole('button',{name:'Close player',exact:true}),height,width);if(width<400){assert.equal(await watch.locator('iframe').count(),0);await watch.getByRole('heading',{name:'A little more room for the show.',exact:true}).waitFor();await watch.getByRole('link',{name:'Open on Twitch',exact:false}).first().waitFor();}else{await watch.locator('iframe').waitFor();const box=await watch.locator('iframe').boundingBox();assert.ok(box&&box.width>=400&&box.height>=300);assert.match(await watch.locator('iframe').getAttribute('src')??'',/channel=bridgemindai&parent=localhost/);}await page.screenshot({path:`${output}/twitch-${label}.png`});await watch.getByRole('button',{name:'Close player',exact:true}).click();assert.equal(await page.locator('iframe').count(),0);}
- checks.push('Saved UTC schedule and manual live programme; Twitch deliberately mounted, starts muted, portrait rotate/link fallback, desktop and 844×390 player >=400×300, close unmounts iframe');
- await cinema.getByRole('button',{name:'Tom’s review desk',exact:false}).click();admin=page.getByRole('dialog',{name:'Community review desk',exact:true});await admin.getByRole('button',{name:'Programme',exact:true}).click();await admin.getByLabel('Live platform',{exact:true}).selectOption('youtube');await admin.getByLabel('BridgeMind YouTube video ID',{exact:true}).fill('jNQXAC9IVRw');await admin.getByRole('button',{name:'Save programme',exact:true}).click();await page.waitForFunction(async()=>{const value=await(await fetch('/game/api/community/programme')).json();return value.platform==='youtube';});await admin.getByRole('button',{name:'Picture house',exact:true}).click();await page.setViewportSize({width:390,height:844});await cinema.getByRole('button',{name:'Watch together',exact:false}).click();const youtube=page.getByRole('dialog',{name:'Watch at The Bridge Picture House',exact:true});await youtube.locator('iframe').waitFor();assert.match(await youtube.locator('iframe').getAttribute('src')??'',/youtube.com\/embed\/jNQXAC9IVRw\?autoplay=1&mute=1&controls=1/);await page.screenshot({path:`${output}/youtube-portrait.png`});await page.keyboard.press('Escape');assert.equal(await page.locator('iframe').count(),0);
- checks.push('Curated YouTube ID uses official embed with visible controls, starts muted, fits portrait and unmounts on Escape; provider responses mocked, media unverified');
+ checks.push('Saved UTC schedule with mocked Twitch live detection; Twitch deliberately mounted, starts muted, portrait rotate/link fallback, desktop and 844×390 player >=400×300, close unmounts iframe');
+ mockedTwitchLive = false;
+ await cinema.getByRole('button',{name:'Tom’s review desk',exact:false}).click();admin=page.getByRole('dialog',{name:'Community review desk',exact:true});await admin.getByRole('button',{name:'Programme',exact:true}).click();await admin.getByLabel('Live platform',{exact:true}).selectOption('youtube');await admin.getByLabel('Screen mode',{exact:true}).selectOption('live');await admin.getByLabel('BridgeMind YouTube video ID',{exact:true}).fill('jNQXAC9IVRw');await admin.getByRole('button',{name:'Save programme',exact:true}).click();await page.waitForFunction(async()=>{const value=await(await fetch('/game/api/community/programme')).json();return value.platform==='youtube'&&value.mode==='live';});await admin.getByRole('button',{name:'Picture house',exact:true}).click();await page.setViewportSize({width:390,height:844});await cinema.getByRole('button',{name:'Watch together',exact:false}).click();const youtube=page.getByRole('dialog',{name:'Watch at The Bridge Picture House',exact:true});await youtube.locator('iframe').waitFor();assert.match(await youtube.locator('iframe').getAttribute('src')??'',/youtube.com\/embed\/jNQXAC9IVRw\?autoplay=1&mute=1&controls=1/);await page.screenshot({path:`${output}/youtube-portrait.png`});await page.keyboard.press('Escape');assert.equal(await page.locator('iframe').count(),0);
+ checks.push('With mocked Twitch offline detection, curated YouTube ID uses official embed with visible controls, starts muted, fits portrait and unmounts on Escape; provider responses mocked, media unverified');
  // Leave the disposable town in intermission and remove the test image/schedule through real routes.
  await cinema.getByRole('button',{name:'Tom’s review desk',exact:false}).click();admin=page.getByRole('dialog',{name:'Community review desk',exact:true});await admin.getByRole('button',{name:'Programme',exact:true}).click();await admin.getByLabel('Screen mode',{exact:true}).selectOption('intermission');await admin.getByRole('button',{name:'Remove event 1',exact:true}).click();await admin.getByRole('button',{name:'Save programme',exact:true}).click();await page.waitForFunction(async()=>{const value=await(await fetch('/game/api/community/programme')).json();return value.mode==='intermission';});
  await admin.getByRole('button',{name:'Review queue',exact:false}).click();await admin.getByLabel('Show',{exact:true}).selectOption('approved');card=admin.locator('.community-review-image').filter({hasText:title});await card.getByRole('button',{name:'Reject',exact:true}).click();await card.waitFor({state:'detached'});await admin.getByLabel('Show',{exact:true}).selectOption('rejected');card=admin.locator('.community-review-image').filter({hasText:title});await card.getByRole('button',{name:'Remove',exact:true}).click();await card.getByRole('button',{name:'Remove image',exact:true}).click();await card.waitFor({state:'detached'});await admin.getByRole('button',{name:'Sign out',exact:true}).click();await admin.getByLabel('Admin password',{exact:true}).waitFor();
  checks.push('Rejection, explicit permanent removal and admin sign out');
  assert.deepEqual(errors,[]);
- await writeFile(`${output}/results.json`,JSON.stringify({checkedAt:new Date().toISOString(),endpoint,checks,sharedReel,errors,limits:['Headless WebKit emulates viewport sizes; no physical device performance claim.','Provider documents locally fulfilled; no live broadcast or audio proof.']},null,2));
+ await writeFile(`${output}/results.json`,JSON.stringify({checkedAt:new Date().toISOString(),endpoint,checks,sharedReel,errors,limits:['Headless WebKit emulates viewport sizes; no physical device performance claim.','Twitch live/offline status is a browser response fixture over the real local API; no live detection proof.', 'Provider documents locally fulfilled; no live broadcast or audio proof.']},null,2));
  console.log(`PASS: ${checks.length} community UI journeys; results in ${output}/results.json`);
 } catch(error) {await page?.screenshot({path:`${output}/failure.png`}).catch(()=>{});throw error;}finally{await browser.close();}

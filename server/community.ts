@@ -1,3 +1,4 @@
+import type { TwitchLiveService, TwitchLiveSnapshot } from './twitchLive.ts';
 import express,{type Application,type Request,type Response,type NextFunction} from 'express';
 import sharp from 'sharp';
 import { clientAddress } from './clientAddress.ts';
@@ -6,7 +7,7 @@ import type { SafetyService } from './safety.ts';
 import { authenticateGuest,isAllowedOrigin } from './guest.ts';
 import { validProfileId,type GuestRepository } from './persistence/guests.ts';
 import { CommunityError,type CommunityRepository } from './persistence/community.ts';
-import { COMMUNITY_LIMITS as LIMITS,BRIDGEMIND_TWITCH_CHANNEL,type ProgrammeSettings } from '../shared/community.ts';
+import { COMMUNITY_LIMITS as LIMITS,BRIDGEMIND_TWITCH_CHANNEL,type ProgrammeSettings,type Programme } from '../shared/community.ts';
 import { CommunityAdminSessions,RequestLimiter,verifyCommunityPassword } from './communityAuth.ts';
 export async function normalizeCommunityImage(base64:unknown){
  if(typeof base64!=='string'||!base64.length||base64.length>Math.ceil(LIMITS.inputBytes/3)*4||(base64.length%4!==0||! /^[A-Za-z0-9+/]+={0,2}$/.test(base64)))throw new CommunityError('Choose a JPEG, PNG or WebP image up to 4 MiB');
@@ -23,24 +24,30 @@ export function validateProgramme(value:any):ProgrammeSettings {
  const ids=new Set<string>();const schedule=value.schedule.map((entry:any)=>{if(!entry||typeof entry.id!=='string'||! /^[A-Za-z0-9_-]{1,64}$/.test(entry.id)||ids.has(entry.id)||!['twitch','youtube'].includes(entry.platform)||typeof entry.startsAt!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(entry.startsAt)||(!Number.isFinite(Date.parse(entry.startsAt))||new Date(entry.startsAt).toISOString().slice(0,19)!==entry.startsAt.slice(0,19)))throw new CommunityError('Invalid schedule entry');ids.add(entry.id);return {id:entry.id,title:text(entry.title,100,true),startsAt:new Date(entry.startsAt).toISOString(),platform:entry.platform};});
  return {mode:value.mode,platform:value.platform,twitchChannel:BRIDGEMIND_TWITCH_CHANNEL,youtubeVideoId:value.youtubeVideoId,schedule};
 }
-export function mountCommunityRoutes(app:Application,guests:GuestRepository,repository:CommunityRepository,options:{passwordHash?:string;adminSessions?:CommunityAdminSessions;safety?:SafetyService}={}){
+export function resolveCommunityProgramme(programme:Programme,detection?:TwitchLiveSnapshot):Programme {
+ if(!detection)return programme;
+ const liveDetection={status:detection.status,checkedAt:detection.checkedAt};
+ if(detection.isLive===true)return {...programme,mode:'live',platform:'twitch',twitchChannel:BRIDGEMIND_TWITCH_CHANNEL,liveDetection};
+ return {...programme,mode:programme.mode==='live'&&programme.platform==='youtube'?'live':'intermission',liveDetection};
+}
+export function mountCommunityRoutes(app:Application,guests:GuestRepository,repository:CommunityRepository,options:{passwordHash?:string;adminSessions?:CommunityAdminSessions;safety?:SafetyService;twitchLive?:Pick<TwitchLiveService,'snapshot'>}={}){
  const router=express.Router(),sessions=options.adminSessions??new CommunityAdminSessions();const passwordHash=options.passwordHash??process.env.COMMUNITY_ADMIN_PASSWORD_HASH??'';
  router.use((req,res,next)=>{if(options.safety&&!clientAddress(req.headers)){res.status(503).json({error:'Game gateway unavailable.'});return;}next();});
  const loginIP=new RequestLimiter(5,15*60_000),loginGlobal=new RequestLimiter(50,15*60_000),uploadGuest=new RequestLimiter(10,60*60_000),uploadIP=new RequestLimiter(30,60*60_000),uploadGlobal=new RequestLimiter(100,60*60_000);let decoders=0;
  router.use((req,res,next)=>{res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');if(!['GET','HEAD'].includes(req.method)&&!isAllowedOrigin(req.headers.origin)){res.status(403).json({error:'Origin not allowed'});return;}res.locals.admin=sessions.valid(req.headers.cookie);next();});
  router.post('/admin/login',(req,res,next)=>{if(!passwordHash){res.status(503).json({error:'Community administration is not configured'});return;}if(!loginGlobal.take('all')||!loginIP.take(clientAddress(req.headers)??req.socket.remoteAddress??'unknown')){res.status(429).json({error:'Too many login attempts'});return;}next();},express.json({limit:'2kb'}),async(req,res)=>{if(typeof req.body?.password!=='string'||!await verifyCommunityPassword(req.body.password,passwordHash)){res.status(401).json({error:'Invalid password'});return;}res.setHeader('Set-Cookie',sessions.cookie(sessions.create(),req.headers.origin?.startsWith('https:')??false));res.sendStatus(204);});
- router.get('/programme',async(_req,res)=>res.json(await repository.programme()));
+ router.get('/programme',async(_req,res)=>res.json(resolveCommunityProgramme(await repository.programme(),options.twitchLive?.snapshot())));
  router.get('/images/:id',async(req,res)=>{if(!validProfileId(req.params.id))throw new CommunityError('Image unavailable',404);const bytes=await repository.image(req.params.id,{public:true});if(!bytes)throw new CommunityError('Image unavailable',404);res.type('image/webp').send(bytes);});
  router.use('/admin',(req,res,next)=>{if(!res.locals.admin){res.status(401).json({error:passwordHash?'Administrator sign-in required':'Community administration is not configured',configured:!!passwordHash});return;}next();});
  const adminRequests=new RequestLimiter(180,60_000);
  router.use('/admin',(req,res,next)=>{if(!adminRequests.take(sessions.token(req.headers.cookie))){res.setHeader('Retry-After','60');res.status(429).json({error:'Too many admin requests. Please wait.'});return;}next();});
  if(options.safety)mountSafetyAdmin(router,options.safety);
  router.post('/admin/logout',(req,res)=>{sessions.revoke(req.headers.cookie);res.setHeader('Set-Cookie',sessions.cookie('',req.headers.origin?.startsWith('https:')??false));res.sendStatus(204);});
- router.get('/admin',async(_req,res)=>res.json({programme:await repository.programme(),images:await repository.list(),configured:true}));
+ router.get('/admin',async(_req,res)=>{const programme=await repository.programme();const {mode,platform,twitchChannel,youtubeVideoId,schedule}=programme;res.json({programme:resolveCommunityProgramme(programme,options.twitchLive?.snapshot()),settings:{mode,platform,twitchChannel,youtubeVideoId,schedule},images:await repository.list(),configured:true});});
  router.use('/admin',express.json({limit:'16kb'}));
  router.patch('/admin/images/:id',async(req,res)=>{const p=req.body;if(!validProfileId(req.params.id)||!p||!Object.keys(p).length||Object.keys(p).some(k=>!['status','featured','sortOrder'].includes(k))||(p.status!==undefined&&!['approved','rejected'].includes(p.status))||(p.featured!==undefined&&typeof p.featured!=='boolean')||(p.sortOrder!==undefined&&(!Number.isSafeInteger(p.sortOrder)||Math.abs(p.sortOrder)>10000)))throw new CommunityError('Invalid moderation change');res.json(await repository.moderate(req.params.id,p));});
  router.delete('/admin/images/:id',async(req,res)=>{if(!validProfileId(req.params.id))throw new CommunityError('Image unavailable',404);await repository.remove(req.params.id);res.sendStatus(204);});
- router.put('/admin/programme',async(req,res)=>{if(!Number.isSafeInteger(req.body?.expectedRevision)||req.body.expectedRevision<1)throw new CommunityError('Current programme revision required');res.json(await repository.update(validateProgramme(req.body),req.body.expectedRevision));});
+ router.put('/admin/programme',async(req,res)=>{if(!Number.isSafeInteger(req.body?.expectedRevision)||req.body.expectedRevision<1)throw new CommunityError('Current programme revision required');res.json(resolveCommunityProgramme(await repository.update(validateProgramme(req.body),req.body.expectedRevision),options.twitchLive?.snapshot()));});
  router.use('/submissions',async(req,res,next)=>{const guest=await authenticateGuest(req.headers.cookie,guests);if(!guest&&!res.locals.admin){res.status(401).json({error:'Restore your guest profile first'});return;}res.locals.owner=guest?.id??null;if(req.method==='POST'&&(!uploadGlobal.take('all')||!uploadIP.take(clientAddress(req.headers)??req.socket.remoteAddress??'unknown')||!uploadGuest.take(guest?.id??'admin'))){res.status(429).json({error:'Submission rate limit reached'});return;}next();});
  router.get('/submissions',async(_req,res)=>res.json({submissions:res.locals.owner?await repository.list(res.locals.owner):await repository.list()}));
  router.get('/submissions/:id/image',async(req,res)=>{if(!validProfileId(req.params.id))throw new CommunityError('Image unavailable',404);const bytes=await repository.image(req.params.id,{admin:res.locals.admin,owner:res.locals.owner});if(!bytes)throw new CommunityError('Image unavailable',404);res.setHeader('Cache-Control','private, no-store');res.type('image/webp').send(bytes);});

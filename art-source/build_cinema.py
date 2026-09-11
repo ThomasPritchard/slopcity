@@ -278,9 +278,10 @@ def build_lights():
             block('Garden string light cast post',x,1.93,z,.07,3.10,.07,green,.015)
             block('Garden string post bronze collar',x,3.40,z,.095,.05,.095,bronze,.011)
             ellipsoid('Garden string post finial',town(x,3.50,z),(.07,.07,.065),bronze,segments=12,rings=6)
+    # Keep the warm strings along the side beds; the entrance strand crossed
+    # the projected broadcast from the square and the rear seating terrace.
     paths=[((-23.9,3.43,-9.4),(-16.6,3.43,-9.4),.23,12),
-           ((-23.9,3.43,5.4),(-16.6,3.43,5.4),.23,12),
-           ((-16.6,3.43,-9.4),(-16.6,3.43,5.4),.50,22)]
+           ((-23.9,3.43,5.4),(-16.6,3.43,5.4),.23,12)]
     for i,(a,b,sag,count) in enumerate(paths):
         def point(t):
             return town(a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t-4*sag*t*(1-t),a[2]+(b[2]-a[2])*t)

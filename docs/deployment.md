@@ -128,7 +128,7 @@ References: [LiveKit single-VM deployment](https://docs.livekit.io/transport/sel
 
 ## Cinema and community uploads
 
-The cinema’s approved images and private submission queue live in PostgreSQL, so existing database dumps include them. Migration 008 is applied during the normal single-owner startup. The live/intermission programme and schedule are controlled from Tom’s review desk; a schedule time alone does not switch on a stream. Twitch is restricted to BridgeMind’s channel. YouTube video selection is trusted manual administrator curation; ownership of an entered video ID is not automatically verified.
+The cinema’s approved images and private submission queue live in PostgreSQL, so existing database dumps include them. Migration 008 is applied during the normal single-owner startup. Twitch live status is detected server-side every 30 seconds when `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET` are set in the private production game environment. Confirmed Twitch live status overrides the saved reel or curated YouTube fallback; a schedule time alone does not switch on a stream. See [Twitch setup](cinema-stream-setup.md). Twitch is restricted to BridgeMind’s channel. YouTube video selection is trusted manual administrator curation; ownership of an entered video ID is not automatically verified.
 
 Before a separately authorised deployment, configure the administrator password on the production checkout with a local Node runtime:
 

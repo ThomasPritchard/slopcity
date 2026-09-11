@@ -120,7 +120,7 @@ function App() {
   const [error, setError] = useState('');
   const [players, setPlayers] = useState(new Map<string, PlayerView>());
   const [stats, setStats] = useState<SceneStats>({ fps: 0, district: 'Town Square', x: 0, z: -17 });
-  const community = useCommunity();
+  const community = useCommunity(true, phase === 'playing');
   const [panel, setPanel] = useState<'map' | 'settings' | 'leaderboard' | 'memory' | 'cinema' | 'submit' | 'admin' | null>(null);
   const communityViewChanged=useCallback((view:CommunityView)=>setPanel(view==='board'?'memory':view),[]);
   const [chatOpen, setChatOpen] = useState(() => !matchMedia('(pointer: coarse)').matches);
@@ -233,6 +233,7 @@ function App() {
     return () => clearInterval(timer);
   }, [silencedUntil]);
   useEffect(() => { if(ready) world.current?.syncCommunity(community.programme); }, [community.programme, ready]);
+  useEffect(() => { if(ready) world.current?.setCinemaPlaybackEnabled(phase === 'playing' && panel === null && !socialOpen && !selectedNeighbour && !shopMode && !casinoTable); }, [ready,phase,panel,socialOpen,selectedNeighbour,shopMode,casinoTable]);
   useEffect(() => { if(ready)world.current?.focusCommunity(phase==='playing' ? panel==='memory'?'board':panel==='cinema'?'cinema':null : null); }, [panel,phase,ready]);
   useEffect(() => { world.current?.setPaused(panel !== null || socialOpen || selectedNeighbour !== null || chatFocused || shopMode!==null || casinoTable!==null || phase !== 'playing'); }, [panel, socialOpen, selectedNeighbour, chatFocused, shopMode, casinoTable, phase]);
   useEffect(() => {

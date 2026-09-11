@@ -4,7 +4,7 @@ export interface CommunityImage { id:string; title:string; credit:string; imageU
 export interface CommunitySubmission extends CommunityImage { status:'pending'|'approved'|'rejected'; createdAt:string }
 export interface ScheduleEntry { id:string; title:string; startsAt:string; platform:'twitch'|'youtube' }
 // YouTube video IDs are manually curated by the trusted administrator; ownership is not API-verified.
-export interface Programme { revision:number; epochMs:number; serverNowMs:number; mode:'intermission'|'live'; platform:'twitch'|'youtube'; twitchChannel:string; youtubeVideoId:string; schedule:ScheduleEntry[]; images:CommunityImage[] }
+export interface Programme { revision:number; epochMs:number; serverNowMs:number; mode:'intermission'|'live'; platform:'twitch'|'youtube'; twitchChannel:string; youtubeVideoId:string; schedule:ScheduleEntry[]; images:CommunityImage[]; liveDetection?:{status:'checking'|'live'|'offline'|'unknown'|'unconfigured';checkedAt:number|null} }
 export type ProgrammeSettings = Pick<Programme,'mode'|'platform'|'twitchChannel'|'youtubeVideoId'|'schedule'>;
 export const COMMUNITY_LIMITS = { inputBytes:4*1024*1024, pixels:12_000_000, outputBytes:1024*1024, pendingPerGuest:5, pendingGlobal:50, retained:200, dailyPerGuest:10, dailyGlobal:100, slideMs:20_000 } as const;
 export const FIRST_COMMUNITY_IMAGE:CommunityImage = { id:'first-memory', title:FIRST_MEMORY.title, credit:'', imageUrl:FIRST_MEMORY.image, width:1122, height:1402, featured:true, sortOrder:-1 };

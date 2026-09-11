@@ -4,9 +4,9 @@
 
 ## Experience and boundaries
 
-The western cinema uses limestone, timber, evergreen framing, shallow seating terraces and warm lighting. Its 16:9 physical screen displays the community reel or an invitation to watch BridgeMind. Selecting “Watch together” opens an accessible watch dialog containing the official Twitch or YouTube player. It does not render an iframe into a Babylon texture. Streams start through a deliberate user action; closing the dialog destroys the player and stops its audio.
+The western cinema uses limestone, timber, evergreen framing, shallow seating terraces and warm lighting. Watch BridgeMind on its physical screen using public channels only. The official browser player is projected behind a transparent, depth-tested opening in the world canvas: trees and characters obscure only their own pixels. The player remains mounted while roaming, including changes in distance, camera angle and temporary loss of view. Twitch audio follows character distance, independently of camera zoom, and preserves native mute choices. The current Twitch world view requires one native play click; autoplay is attempted but not established. Switching tabs retains playback. The separate watch dialog remains available as an alternative. See [stream setup and rendering details](cinema-stream-setup.md).
 
-Between streams, still memes and promos display uncropped for 20 seconds with an optional creator credit. A schedule card appears every three images; an empty schedule says that the next stream is to be announced. Tom selects the live source and returns to intermission through the admin view. Schedule entries are confirmed UTC timestamps, displayed with a timezone; admin input uses explicit timezone handling. Browser player events do not control the shared programme. Automatic source discovery and exact video playback synchronisation are deferred.
+Between streams, still memes and promos display uncropped for 20 seconds with an optional creator credit. A schedule card appears every three images; an empty schedule says that the next stream is to be announced. Server-side Twitch app credentials enable automatic checks of public channel `bridgemindai` every 30 seconds. Confirmed live status takes priority; two successful empty checks return to the reel or an explicitly selected YouTube video. API errors preserve the previous confirmed state. Live transitions leave the saved settings revision and canonical reel epoch untouched. Admin responses include both effective playback and raw settings so saving the schedule cannot accidentally persist a detected mode. Schedule entries are confirmed UTC timestamps, displayed with a timezone; admin input uses explicit timezone handling. Browser player events do not control the shared programme. YouTube channel discovery and exact video playback synchronisation remain deferred; Twitch is the chosen primary source.
 
 The memories board becomes a collection of slightly rotated, cream-bordered Polaroids. Examining it opens a larger board view; clicking or keyboard-activating a photo expands the complete image. Back returns to the board and restores the selected photo's focus. Escape closes the current layer. Preserve `FIRST_MEMORY`, its original image and attribution; approved submissions join both the board and the reel, with admin controls to remove or feature them. Do not create duplicate placeholder memories to fill the board.
 
@@ -39,7 +39,7 @@ Recommended shared shapes (TypeScript notation):
 - `ScheduleEntry`: `{ id: string; title: string; startsAt: string; platform: 'twitch' | 'youtube' }`.
 - `Programme`: `{ revision: number; epochMs: number; serverNowMs: number; mode: 'intermission' | 'live'; platform: 'twitch' | 'youtube'; twitchChannel: string; youtubeVideoId: string; schedule: ScheduleEntry[]; images: CommunityImage[] }`.
 
-Return the epoch and ordered slides from one consistent database snapshot. Clients estimate server clock offset, then advance locally; poll every 15 seconds and refresh on tab visibility. Programme edits atomically increment revision and reset epoch. Image approval/removal also increments programme revision. Display a refresh state on initial failure; stop presenting stale media if the programme cannot refresh for 60 seconds. A removed image can remain visible on connected clients until refresh, so do not promise instantaneous revocation.
+Return the epoch and ordered slides from one consistent database snapshot. Clients estimate server clock offset, then advance locally; poll every 15 seconds and refresh on tab visibility. Programme edits atomically increment revision and reset epoch. Image approval/removal also increments programme revision. Display a refresh state on initial failure; stop presenting stale community images if the programme cannot refresh for 60 seconds. A playing live source continues while background polling reconnects; returning to the tab does not clear and recreate it. A removed image can remain visible on connected clients until refresh, so do not promise instantaneous revocation.
 
 ## Persistence and API
 
@@ -58,7 +58,7 @@ All paths below are external `/game/api/community`; Express mounts the correspon
 | `GET /submissions/:id/image` | `200 image/webp`, otherwise `404` | Owner or admin; `private, no-store` |
 | `POST /admin/login` | `{ password: string }` → `204` and cookie | Rate-limited; same-origin |
 | `POST /admin/logout` | Empty → `204`, revoke token | Admin |
-| `GET /admin` | Programme and bounded review queue, or `401` | Admin |
+| `GET /admin` | Effective programme, raw saved settings and bounded review queue, or `401` | Admin |
 | `PATCH /admin/images/:id` | `{ status?: 'approved' | 'rejected'; featured?: boolean; sortOrder?: number }` → updated metadata | Admin |
 | `DELETE /admin/images/:id` | Empty → `204`; remove bytes and metadata | Admin |
 | `PUT /admin/programme` | Programme settings and expected `revision` → updated programme | Admin; stale revision `409` |
@@ -81,9 +81,9 @@ YouTube uses a validated video ID in its official embed. Tom curates BridgeMind 
 
 Ship in three dependent steps: persistence/auth/upload routes (M), accessible board/submission/admin/watch views (L), then world cinema integration and headless acceptance (L). No substantial existing-system refactor is required.
 
-Acceptance covers unauthenticated/admin spoofing and cross-origin mutations; private image access by a second guest; corrupt, animated and oversized image rejection; concurrent queue caps; approval/removal publication; restart persistence and expired admin sessions; stale programme revision; shared slide timing across two browser contexts; board examine→photo→back focus; desktop, portrait and 844×390 landscape layouts; muted/unmounted player behavior and provider failure. Run affected Node tests, frontend/server builds and database-isolated integration tests; perform actual headless world screenshots and community journeys. Configured embeds and mocked provider responses do not establish a working BridgeMind live broadcast. No production deployment is authorised by this implementation design.
+Acceptance covers unauthenticated/admin spoofing and cross-origin mutations; private image access by a second guest; corrupt, animated and oversized image rejection; concurrent queue caps; approval/removal publication; restart persistence and expired admin sessions; stale programme revision; shared slide timing across two browser contexts; board examine→photo→back focus; desktop, portrait and 844×390 landscape layouts; autoplay fallback, proximity volume, player lifecycle and provider failure. Run affected Node tests, frontend/server builds and database-isolated integration tests; perform actual headless world screenshots and community journeys. Configured embeds and mocked provider responses do not establish a working BridgeMind live broadcast. No production deployment is authorised by this implementation design.
 
-## Verified implementation — 11 September 2026
+## Original community implementation evidence — 11 September 2026
 
 Evidence below applies to the isolated `cinema-community` checkout, including the casino/chat changes present at integration. Separate safety work began changing shared server and proxy files in the main workspace during finalisation; those later edits were preserved and are outside this verification scope.
 
@@ -94,3 +94,9 @@ Evidence below applies to the isolated `cinema-community` checkout, including th
 - The real BridgeMind Twitch embed loaded and reported the channel offline. Provider layout/lifecycle tests used stubbed documents; live broadcast playback, audio, physical-device performance and exact video synchronisation are not established. The 3D screen presents approved stills/schedules and a live invitation; video opens in the official player dialog.
 
 Changes are local and uncommitted. Administrator login remains disabled until Tom sets his own password using `npm run community:admin-password` and restarts the development server. A production release and the host nginx update remain separately authorised operations.
+
+## World playback update — 11 September 2026
+
+The current follow-up replaces the live invitation with the official player in the world. Headless Chromium verified the actual BridgeMind broadcast after a native play click, unchanged iframe identity across walking/camera changes and portrait/landscape resizing, and provider-reported volume rising from 0.77 to 0.94 when approaching and falling to 0.59 when leaving. A 70-second simulated Page Visibility change retained the same unmuted, playing stream and six programme refreshes; its media clock advanced from 25.94 to 98.06 seconds. Headless tabs remained natively visible, so this tests application retention, not OS suspension or physical-phone background audio. Evidence is in ignored `output/playwright/cinema-world-live/`.
+
+Plain Twitch embedding autoplayed in the comparison; scaled and transparent-canvas-covered embedding did not, including an external button calling Twitch's public play API. The world view therefore still needs an initial native play click. Local media evidence is distinct from a production browser check. Approved board images still expire during a programme outage even when the live player is retained.

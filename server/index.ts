@@ -1,3 +1,4 @@
+import { TwitchLiveService } from './twitchLive.ts';
 import { mountCommunityRoutes } from './community.ts';
 import { AddressedHttpServer, clientAddress, proxySecret } from './clientAddress.ts';
 import { guardHttpRequest, mountSafetyGuards } from './safetyRoutes.ts';
@@ -36,6 +37,7 @@ try {
   throw new Error('Database initialisation or wager recovery failed');
 }
 
+const twitchLive = new TwitchLiveService();
 const httpServer = new AddressedHttpServer(addressSecret,guardHttpRequest(safety));
 const transport = new GameTransport({ server: httpServer, maxPayload: 4096, beforeUpgrade: async (_request, context) => {
   try {
@@ -75,13 +77,14 @@ const server = new Server({
       changed: ids => { for(const town of towns.values())town.socialChanged(ids); },
       gifted: async ids => { for(const id of ids){const active=sessions.get(id);if(active){const wallet=await economy.ensure(id);towns.get(active.roomId)?.publishEconomy(id,active.sessionId,wallet);}} },
     });
-    mountCommunityRoutes(app, guests, communityRepository, { safety });
+    mountCommunityRoutes(app, guests, communityRepository, { safety, twitchLive });
     mountGuestRoutes(app, guests, sessions, safety);
   },
 });
 server.define('town', TownRoom);
 let settled = false;
 server.onShutdown(async () => {
+  twitchLive.stop();
   safety.stopLogging();
   // Colyseus invokes this only after room disposal (including casino settlement).
   await guests.close();
@@ -91,6 +94,7 @@ server.onShutdown(async () => {
 async function shutdown(exitCode = 0) {
   if (stopping) return;
   stopping = true;
+  twitchLive.stop();
   const deadline = setTimeout(() => {
     console.error('Graceful shutdown timed out; pending wagers recover on next startup');
     process.exit(1);
@@ -104,6 +108,7 @@ process.once('SIGTERM', () => { void shutdown(); });
 process.once('SIGINT', () => { void shutdown(); });
 try {
   await server.listen(config.port, config.host);
+  twitchLive.start();
   safety.startLogging();
   console.log(`Slop City multiplayer listening on ${config.host}:${config.port}`);
 } catch {
