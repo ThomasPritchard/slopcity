@@ -7,6 +7,7 @@ import { UniformBuffer } from '@babylonjs/core/Materials/uniformBuffer';
 import { VertexBuffer } from '@babylonjs/core/Buffers/buffer';
 import { BoundingInfo } from '@babylonjs/core/Culling/boundingInfo';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { GRAPHICS_PRESETS, resolveGraphicsQuality, type GraphicsQuality } from '../settings/graphics';
 
 class PlantWind extends MaterialPluginBase {
   constructor(material: PBRMaterial, private vegetation: Vegetation, private amplitude: number) {
@@ -46,6 +47,7 @@ export class Vegetation {
   elapsed = 0;
   private reduced = false;
   private detail: Mesh[] = [];
+  private seeds: Mesh[] = [];
   readonly meshes: Mesh[] = [];
   constructor(scene: Scene) {
     const materials = new Set<PBRMaterial>();
@@ -61,6 +63,7 @@ export class Vegetation {
       mesh.setBoundingInfo(new BoundingInfo(bounds.minimum.subtract(padding), bounds.maximum.add(padding)));
       this.meshes.push(mesh);
       if (name === 'Planting grass detail') this.detail.push(mesh);
+      if (name.startsWith('Planting seed')) this.seeds.push(mesh);
       materials.add(mesh.material);
     }
     for (const material of materials) {
@@ -73,5 +76,9 @@ export class Vegetation {
   }
   update(dt: number, active: boolean) { if (!this.reduced && active) this.elapsed += dt; }
   setReducedMotion(reduced: boolean) { this.reduced = reduced; }
-  setQuality(low: boolean) { for (const mesh of this.detail) mesh.setEnabled(!low); }
+  setQuality(quality: GraphicsQuality | boolean) {
+    const budget = GRAPHICS_PRESETS[resolveGraphicsQuality(quality)];
+    for (const mesh of this.detail) mesh.setEnabled(budget.grassDetail);
+    for (const mesh of this.seeds) mesh.setEnabled(budget.seedDetail);
+  }
 }

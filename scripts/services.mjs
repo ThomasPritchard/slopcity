@@ -68,6 +68,7 @@ const settings = {
   DATABASE_URL: `postgresql://slop_city:${secrets.database}@127.0.0.1:55432/slop_city`,
   APP_ORIGIN: 'http://localhost:5173',
   APP_ORIGINS: 'http://127.0.0.1:5173',
+  TURNSTILE_ENABLED: 'false',
   LIVEKIT_URL: 'ws://127.0.0.1:17880',
   LIVEKIT_API_KEY: secrets.apiKey,
   LIVEKIT_API_SECRET: secrets.apiSecret,

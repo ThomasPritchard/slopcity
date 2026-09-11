@@ -11,10 +11,17 @@ export function turnstileConfig(env = process.env): Config {
  const siteKey = env.TURNSTILE_SITE_KEY?.trim() ?? '', secret = env.TURNSTILE_SECRET_KEY?.trim() ?? '';
  const origins = [env.APP_ORIGIN ?? 'http://localhost:5173', ...(env.APP_ORIGINS ?? '').split(',').filter(Boolean)];
  const hostnames = origins.map(v => new URL(v.trim()).hostname);
+ const publicOrigin = hostnames.some(h => h !== 'localhost' && h !== '127.0.0.1' && !h.endsWith('.localhost'));
+ const enabled = env.TURNSTILE_ENABLED?.trim().toLowerCase();
+ if (enabled && enabled !== 'true' && enabled !== 'false') throw new Error('TURNSTILE_ENABLED must be true or false');
+ if (enabled === 'false') {
+  if (env.NODE_ENV === 'production' || publicOrigin) throw new Error('TURNSTILE_ENABLED=false is only allowed for loopback development');
+  return { siteKey: '', secret: '', hostnames };
+ }
  // The disposable HTTPS smoke stack uses production containers on loopback DNS.
  // A public production hostname can never opt out or use Cloudflare's dummy keys.
- const publicProduction = env.NODE_ENV === 'production' && hostnames.some(h => h !== 'localhost' && h !== '127.0.0.1' && !h.endsWith('.localhost'));
- if (!!siteKey !== !!secret || (publicProduction && (!siteKey || /^[123]x0{10}/.test(siteKey) || /^[123]x0{10}/.test(secret)))) throw new Error('Configure a real TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY pair for production');
+ const publicProduction = env.NODE_ENV === 'production' && publicOrigin;
+ if ((enabled === 'true' && !siteKey) || !!siteKey !== !!secret || (publicProduction && (!siteKey || /^[123]x0{10}/.test(siteKey) || /^[123]x0{10}/.test(secret)))) throw new Error('Configure a real TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY pair for production');
  return { siteKey, secret, hostnames };
 }
 type Grant = { credential: string; expires: number; reservation?: string };

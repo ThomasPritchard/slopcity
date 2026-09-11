@@ -7,6 +7,7 @@ import { GlowLayer } from '@babylonjs/core/Layers/glowLayer';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import type { Material } from '@babylonjs/core/Materials/material';
+import { GRAPHICS_PRESETS, resolveGraphicsQuality, type GraphicsQuality } from '../settings/graphics';
 
 export const LAMP_POSTS = [
   { x: -6.5, z: -12 }, { x: -6.5, z: 8 },
@@ -67,8 +68,8 @@ export class LampPostLighting {
     this.glow.intensity = .25 * weight;
   }
 
-  setQuality(low: boolean) {
-    // The actual point lights remain on in performance mode.
-    this.glow.isEnabled = !low;
+  setQuality(quality: GraphicsQuality | boolean) {
+    // All presets retain the actual lights; only decorative bloom changes.
+    this.glow.isEnabled = GRAPHICS_PRESETS[resolveGraphicsQuality(quality)].glow;
   }
 }

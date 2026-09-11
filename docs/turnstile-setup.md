@@ -4,14 +4,27 @@ Slop City verifies a Cloudflare Turnstile token on the server before creating a 
 
 Existing IP, connection, profile-ban and message limits still apply. Verification does not mean a player is trusted forever, and paid human solvers can pass challenges. Sitting quietly or watching the cinema does not trigger automatic checks or bans.
 
+## Local development
+
+The local `.env` can disable verification while retaining the saved widget keys:
+
+```dotenv
+TURNSTILE_ENABLED=false
+```
+
+This is the default written by `npm run services:start` when the flag is absent. Restart the local game server after changing `.env`, then refresh the browser. Guest creation and town entry skip Turnstile; the other safety and entry-mode restrictions still apply.
+
+Use `TURNSTILE_ENABLED=true` with a matching development key pair when testing the real widget. Leaving the flag unset retains the previous behaviour: configured keys enable verification. Public production always requires real keys, and startup rejects `false` when `NODE_ENV=production` or any configured origin is public. Keep the development flag out of `.deploy/game.env`.
+
 ## Cloudflare setup
 
 1. Open **Turnstile** in the [Cloudflare dashboard](https://dash.cloudflare.com/?to=/:account/turnstile) and add a widget named `Slop City production`.
 2. Add `slopcity.fun` as its hostname, without a protocol, port or path. Select **Managed** mode. Leave pre-clearance off; the game verifies tokens through its own API.
 3. Copy the site key and secret key. Keep the secret out of Git, browser code and chat.
-4. Create a separate development widget for `localhost` and `127.0.0.1`. Use that pair in the ignored local `.env`:
+4. If testing verification locally, create a separate development widget for `localhost` and `127.0.0.1`. Use that pair in the ignored local `.env`:
 
    ```dotenv
+   TURNSTILE_ENABLED=true
    TURNSTILE_SITE_KEY=YOUR_DEVELOPMENT_SITE_KEY
    TURNSTILE_SECRET_KEY=YOUR_DEVELOPMENT_SECRET_KEY
    ```
@@ -45,7 +58,7 @@ Entry mode, approvals and admin actions are persisted in migration `010_admissio
 
 ## Verification and troubleshooting
 
-`npm run test:admission` uses a disposable loopback PostgreSQL schema, real HTTP/game WebSockets and headless browser journeys. Only the challenge script and Siteverify provider are simulated, including duplicate rejection. It does not measure Cloudflare's ability to identify attackers. The fixture entry point is excluded from the production server build and refuses non-test/non-loopback databases. Unit tests exercise malformed tokens, hostname/action mismatch, outages, identity binding, reservation expiry, replay, admin persistence and recheck deadlines.
+`npm run test:admission` uses a disposable loopback PostgreSQL schema, real HTTP/game WebSockets and headless browser journeys. Only the challenge script and Siteverify provider are simulated, including duplicate rejection. It explicitly enables verification even when the local `.env` disables it. It does not measure Cloudflare's ability to identify attackers. The fixture entry point is excluded from the production server build and refuses non-test/non-loopback databases. Unit tests exercise the local opt-out and production guard, malformed tokens, hostname/action mismatch, outages, identity binding, reservation expiry, replay, admin persistence and recheck deadlines.
 
 If the check fails, retry it; tokens are single-use and expire after five minutes. Check that the widget contains the hostname actually being visited and that the site/secret keys belong to the same widget. An unavailable script shows a retry action. A provider error refuses entry with a retry message. Never disable production verification to make an automated browser test pass.
 

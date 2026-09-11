@@ -10,6 +10,7 @@ import { ProceduralTexture } from '@babylonjs/core/Materials/Textures/Procedural
 import { WaterMaterial } from '@babylonjs/materials/water/waterMaterial';
 import { BoundingInfo } from '@babylonjs/core/Culling/boundingInfo';
 import { FOUNTAIN_WATER as f, JET_FLIGHT_TIME, JET_RADIAL_SPEED, fountainJetPoint } from './fountainMath';
+import { GRAPHICS_PRESETS, resolveGraphicsQuality, type GraphicsQuality } from '../settings/graphics';
 
 const tau = Math.PI * 2;
 const jetMath = `
@@ -50,7 +51,7 @@ export class FountainWater {
   private readonly impacts: Mesh;
   private readonly effects: ShaderMaterial[] = [];
   private elapsed = 0;
-  private low = false;
+  private quality: GraphicsQuality = 'high';
   private active = true;
   private reduced = false;
 
@@ -216,19 +217,21 @@ void main(){
     mesh.isPickable=false;
   }
 
-  setQuality(low: boolean, active: boolean) {
-    this.low=low;this.active=active;
-    const rate=active?(low?3:1):0;
-    if(this.water.reflectionTexture)this.water.reflectionTexture.refreshRate=rate;
-    if(this.water.refractionTexture)this.water.refractionTexture.refreshRate=rate;
-    this.normals.refreshRate=this.reduced||!active?0:low?2:1;
-    for(const effect of this.effects)effect.setFloat('density',low?.45:1);
+  setQuality(quality: GraphicsQuality | boolean, active: boolean) {
+    this.quality=resolveGraphicsQuality(quality);this.active=active;
+    const budget=GRAPHICS_PRESETS[this.quality];
+    for(const texture of [this.water.reflectionTexture,this.water.refractionTexture])if(texture){
+      if(texture.getSize().width!==budget.waterSize)texture.resize(budget.waterSize);
+      texture.refreshRate=active?budget.waterRefresh:0;
+    }
+    this.normals.refreshRate=this.reduced||!active?0:budget.waterNormalRefresh;
+    for(const effect of this.effects)effect.setFloat('density',budget.sprayDensity);
   }
 
   setReducedMotion(reduced: boolean) {
     this.reduced=reduced;
     this.spray.setEnabled(!reduced&&this.active);
-    this.setQuality(this.low,this.active);
+    this.setQuality(this.quality,this.active);
   }
 
   update(dt: number, camera: ArcRotateCamera) {

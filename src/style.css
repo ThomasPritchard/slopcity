@@ -41,7 +41,8 @@
 .comfort-settings fieldset > small { display: block; margin: 0 0 18px; }
 .comfort-settings input[type='range'] { flex: 1 0 100%; width: 100%; height: 44px; margin: 0; accent-color: var(--lime); cursor: pointer; }
 .comfort-settings input[type='checkbox'] { flex-shrink: 0; }
-.comfort-settings select { max-width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #dce6b95c; border-radius: 4px; background: #193125; color: #f1f1df; font: inherit; font-size: 12px; color-scheme: dark; }
+.comfort-settings select { appearance: none; max-width: 100%; min-height: 44px; padding: 10px 32px 10px 12px; border: 1px solid #dce6b95c; border-radius: 4px; background: #193125 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23f1f1df' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 12px center; color: #f1f1df; font: inherit; font-size: 12px; color-scheme: dark; }
+@media(pointer:coarse) { .comfort-settings select { font-size: 16px; } }
 .comfort-settings select:focus-visible { outline: 2px solid var(--lime); outline-offset: 4px; }
 .comfort-settings output { flex-shrink: 0; min-width: 38px; color: var(--lime); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
 .comfort-settings input:disabled, .comfort-settings select:disabled { opacity: .55; cursor: default; }

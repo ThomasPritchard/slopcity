@@ -95,7 +95,7 @@ try {
   await page.screenshot({ path: `${output}/06-casino-interior.png` });
   console.log('PASS: the casino can be entered through its doorway.');
   await page.getByRole('button', { name: 'Open settings' }).click();
-  await page.getByRole('checkbox').check();
+  await page.getByRole('combobox', { name: 'Graphics quality' }).selectOption('medium');
   const metrics = await page.locator('.diagnostics').innerText();
   const renderer = await page.evaluate(() => {
     const gl = (document.querySelector('#world') as HTMLCanvasElement).getContext('webgl2');

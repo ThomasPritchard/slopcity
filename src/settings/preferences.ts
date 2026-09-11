@@ -1,9 +1,12 @@
-export type Preferences = { low: boolean; motion: 'system' | 'reduced' | 'full'; effects: number; ambience: number };
-export const DEFAULT_PREFERENCES: Preferences = { low: false, motion: 'system', effects: .45, ambience: .35 };
+import { isGraphicsQuality, type GraphicsQuality } from './graphics';
+
+export type Preferences = { graphics: GraphicsQuality; motion: 'system' | 'reduced' | 'full'; effects: number; ambience: number };
+export const DEFAULT_PREFERENCES: Preferences = { graphics: 'high', motion: 'system', effects: .45, ambience: .35 };
 export function parsePreferences(value: unknown): Preferences {
-  const p = value && typeof value === 'object' ? value as Partial<Preferences> : {};
+  const p = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const volume = (value: unknown, fallback: number) => typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback;
-  return { low: p.low === true, motion: p.motion === 'reduced' || p.motion === 'full' ? p.motion : 'system', effects: volume(p.effects, .45), ambience: volume(p.ambience, .35) };
+  const graphics = isGraphicsQuality(p.graphics) ? p.graphics : p.low === true ? 'medium' : 'high';
+  return { graphics, motion: p.motion === 'reduced' || p.motion === 'full' ? p.motion : 'system', effects: volume(p.effects, .45), ambience: volume(p.ambience, .35) };
 }
 export function loadPreferences(): Preferences {
   try { return parsePreferences(JSON.parse(localStorage.getItem('slop-city-comfort') || '{}')); }

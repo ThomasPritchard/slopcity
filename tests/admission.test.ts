@@ -26,6 +26,34 @@ test('public production fails closed on missing, partial or dummy keys; loopback
  assert.equal(turnstileConfig({NODE_ENV:'production',APP_ORIGIN:'https://slopcity.fun',TURNSTILE_SITE_KEY:'real-key',TURNSTILE_SECRET_KEY:'real-secret'}).siteKey,'real-key');
  assert.throws(()=>turnstileConfig({TURNSTILE_SECRET_KEY:'partial'}));
 });
+test('Turnstile can be disabled explicitly only in loopback development, retaining saved keys',()=>{
+ const keys={TURNSTILE_SITE_KEY:'saved-site',TURNSTILE_SECRET_KEY:'saved-secret'};
+ const local={APP_ORIGIN:'http://localhost:5173',APP_ORIGINS:'http://127.0.0.1:5173'};
+ assert.deepEqual(turnstileConfig({...local,...keys,TURNSTILE_ENABLED:'false'}),{siteKey:'',secret:'',hostnames:['localhost','127.0.0.1']});
+ assert.equal(turnstileConfig({...local,...keys,TURNSTILE_ENABLED:'true'}).secret,'saved-secret');
+ assert.equal(turnstileConfig({...local,...keys}).secret,'saved-secret','unset retains existing configured verification');
+ for(const TURNSTILE_ENABLED of ['true','yes','0','disabled'])assert.throws(()=>turnstileConfig({...local,TURNSTILE_ENABLED}),'enabled requires keys and invalid flags are rejected');
+ for(const env of [
+  {NODE_ENV:'production',APP_ORIGIN:'https://slopcity.fun'},
+  {NODE_ENV:'production',APP_ORIGIN:'https://game.localhost:8443'},
+  {APP_ORIGIN:'https://slopcity.fun'},
+  {...local,APP_ORIGINS:'https://slopcity.fun'},
+ ])assert.throws(()=>turnstileConfig({...env,...keys,TURNSTILE_ENABLED:'false'}),/only allowed for loopback development/);
+});
+test('disabled local verification skips the provider and passes, while entry restrictions still apply',async()=>{
+ const {repository}=fixture();
+ const service=new AdmissionService(turnstileConfig({TURNSTILE_ENABLED:'false'}),repository,async()=>{assert.fail('disabled verification must not call Cloudflare');});
+ const id=randomUUID(),browser=cookie();await service.initialise();
+ assert.deepEqual(service.status(),{enabled:false,siteKey:'',mode:'open',verified:false});
+ await service.verify(undefined,'127.0.0.1');
+ assert.equal(service.reserve(id,browser),undefined);
+ assert.doesNotThrow(()=>service.checkUpgrade(id,browser));
+ assert.doesNotThrow(()=>service.consume(id,browser));
+ await service.edit('mode','paused');assert.throws(()=>service.reserve(id,browser),/paused/);
+ await service.edit('mode','approved');assert.throws(()=>service.checkUpgrade(id,browser),/approved guests/);
+ await service.edit('approve',id);assert.doesNotThrow(()=>service.consume(id,browser));
+ await assert.rejects(()=>service.edit('reverify','all'),/Reverification requires Turnstile/);
+});
 test('Siteverify rejects malformed tokens, failure, wrong hostname/action and network outages',async()=>{
  for(const result of [{success:false},{success:true,hostname:'evil.invalid',action:'town_entry'},{success:true,hostname:'localhost',action:'another_form'},{success:true}]) {
   const {service}=fixture(async()=>Response.json(result));

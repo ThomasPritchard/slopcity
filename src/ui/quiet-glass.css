@@ -278,7 +278,11 @@ button:focus-visible{outline-offset:3px}
 @media(pointer:coarse){.toolbar{right:max(12px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom))}}
 
 /* ---------- controls hint: the softest thing on screen ---------- */
-.controls-hint{bottom:26px;padding:5px 11px;border-radius:999px;background:rgba(18,36,29,.5);border:0;font-size:8px;letter-spacing:.4px;color:var(--hud-muted);text-shadow:none;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+/* Reset the older short-window rules that anchor this hint beneath the right toolbar. */
+.controls-hint{left:50%;right:auto;transform:translateX(-50%);bottom:26px;padding:5px 11px;border-radius:999px;background:rgba(18,36,29,.5);border:0;font-size:8px;letter-spacing:.4px;color:var(--hud-muted);text-shadow:none;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+/* Narrow desktop windows cannot fit the hint between both corner panels. Clear
+   the full chat history and tool rows while keeping the hint horizontally centred. */
+@media(pointer:fine) and (min-width:801px) and (max-width:1000px){.controls-hint{bottom:210px}}
 .controls-hint .divider{margin:0 3px;background:var(--hud-hairline-strong)}
 .controls-hint kbd{width:14px;height:15px;font-size:7px;background:rgba(246,244,233,.10);border-color:var(--hud-hairline);color:#f6f4e9}
 

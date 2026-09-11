@@ -36,6 +36,21 @@ export function cinemaPolygonsOverlap(a:readonly CinemaPoint[],b:readonly Cinema
  }
  return true;
 }
+/** Cheap rejection before DOM hit testing or a scene-wide geometry pick. */
+export function cinemaContainsPoint(corners:readonly CinemaPoint[],point:CinemaPoint):boolean {
+ if(corners.length!==4||!Number.isFinite(point.x)||!Number.isFinite(point.y))return false;
+ let direction=0;
+ for(let i=0;i<corners.length;i++){
+  const a=corners[i],b=corners[(i+1)%corners.length];
+  const cross=(b.x-a.x)*(point.y-a.y)-(b.y-a.y)*(point.x-a.x);
+  if(!Number.isFinite(cross))return false;
+  if(Math.abs(cross)<=1e-6)continue;
+  const sign=Math.sign(cross);
+  if(direction&&sign!==direction)return false;
+  direction=sign;
+ }
+ return direction!==0;
+}
 function source(programme:Programme|null):{key:string;url:string;title:string}|null {
  if(!programme||programme.mode!=='live')return null;
  if(programme.platform==='twitch'&&programme.twitchChannel===BRIDGEMIND_TWITCH_CHANNEL)return {key:`twitch:${BRIDGEMIND_TWITCH_CHANNEL}`,url:`https://player.twitch.tv/?channel=${BRIDGEMIND_TWITCH_CHANNEL}&parent=${encodeURIComponent(location.hostname)}&autoplay=true&muted=true`,title:'BridgeMind live on Twitch at The Bridge Picture House'};
@@ -66,6 +81,7 @@ export class WorldCinemaPlayer {
  private portalMaterial:ShaderMaterial;
  private pointer:{x:number;y:number}|null=null;
  private pointerDragging=false;
+ private pointerPick:{frame:number;x:number;y:number;nativeControls:boolean}|null=null;
  private state:CinemaPlayerStatus={mounted:false,reason:'disabled',source:null,projectedWidth:0,projectedHeight:0,blockedBy:null,corners:[]};
  get status():Readonly<CinemaPlayerStatus>{return this.state;}
  get usesNativeControls(){return this.canvas.style.pointerEvents==='none'&&this.screenMesh.material===this.portalMaterial;}
@@ -116,7 +132,7 @@ export class WorldCinemaPlayer {
   if(focused&&this.canvas.isConnected&&!document.hidden)this.canvas.focus({preventScroll:true});
  }
  private reject(reason:CinemaPlayerReason,blockedBy:string|null=null){this.unmount();this.state={...this.state,mounted:false,reason,blockedBy};}
- private releasePointer=()=>{this.pointer=null;this.pointerDragging=false;this.canvas.style.pointerEvents='';};
+ private releasePointer=()=>{this.pointer=null;this.pointerDragging=false;this.pointerPick=null;this.canvas.style.pointerEvents='';};
  // Focusing the native iframe must not put the canvas back between pointerdown and pointerup.
  private focusChanged=()=>{if(!this.surface.contains(document.activeElement))this.releasePointer();};
  private pointerMoved=(event:PointerEvent)=>{
@@ -129,14 +145,20 @@ export class WorldCinemaPlayer {
  private routePointer(){
   if(this.pointerDragging)return;
   let nativeControls=false;
-  if(this.pointer&&this.screenMesh.material===this.portalMaterial&&this.surface.style.visibility!=='hidden'){
-   const{x,y}=this.pointer,rect=this.canvas.getBoundingClientRect();
+  if(this.pointer&&this.screenMesh.material===this.portalMaterial&&this.surface.style.visibility!=='hidden'&&cinemaContainsPoint(this.state.corners,this.pointer)){
+   const{x,y}=this.pointer;
    const foreground=document.elementFromPoint(x,y);
    if(foreground===this.canvas||foreground===this.root||this.surface.contains(foreground)){
-    // Babylon applies hardware scaling internally; pointer coordinates are CSS pixels.
-    const hit=this.scene.pick(x-rect.left,y-rect.top,
-     mesh=>mesh.isEnabled()&&mesh.isVisible&&mesh.visibility>0&&!mesh.infiniteDistance&&mesh.getTotalVertices()>0&&mesh.material?.alpha!==0,false,this.camera);
-    nativeControls=hit?.pickedMesh===this.screenMesh;
+    const rect=this.canvas.getBoundingClientRect(),pickX=x-rect.left,pickY=y-rect.top,frame=this.scene.getFrameId();
+    // Reuse only the same ray in the same rendered frame. Moving avatars and
+    // other occluders are tested afresh next frame, even with a stationary camera.
+    if(this.pointerPick?.frame!==frame||this.pointerPick.x!==pickX||this.pointerPick.y!==pickY){
+     // Babylon applies hardware scaling internally; pointer coordinates are CSS pixels.
+     const hit=this.scene.pick(pickX,pickY,
+      mesh=>mesh.isEnabled()&&mesh.isVisible&&mesh.visibility>0&&!mesh.infiniteDistance&&mesh.getTotalVertices()>0&&mesh.material?.alpha!==0,false,this.camera);
+     this.pointerPick={frame,x:pickX,y:pickY,nativeControls:hit?.pickedMesh===this.screenMesh};
+    }
+    nativeControls=this.pointerPick.nativeControls;
    }
   }
   this.canvas.style.pointerEvents=nativeControls?'none':'';

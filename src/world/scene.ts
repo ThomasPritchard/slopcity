@@ -49,6 +49,7 @@ import { MirrorTexture } from '@babylonjs/core/Materials/Textures/mirrorTexture'
 import { Plane } from '@babylonjs/core/Maths/math.plane';
 import { Viewport } from '@babylonjs/core/Maths/math.viewport';
 import '@babylonjs/core/Rendering/boundingBoxRenderer';
+import { GRAPHICS_PRESETS, graphicsPixelRatio, resolveGraphicsQuality, type GraphicsQuality } from '../settings/graphics';
 
 export type PlayerView = Position & Profile & Outfit & { profileId: string; seatId: string; heading: number; moving: boolean; wave: number; sprinting?: boolean; jumpAt?: number; emoteId?: string; emoteKind?: string; emoteRole?: number; emoteAt?: number };
 export type SceneStats = { fps: number; district: string; x: number; z: number };
@@ -68,7 +69,8 @@ export class TownScene {
   private touch = { x: 0, z: 0 };
   private remote = new Map<string, PlayerView>();
   private lastStats = 0;
-  private low = false;
+  private quality: GraphicsQuality = 'high';
+  private graphics = GRAPHICS_PRESETS.high;
   private reducedMotion = false;
   private resizeObserver: ResizeObserver;
   private resizeFrame = 0;
@@ -140,10 +142,11 @@ export class TownScene {
   private communityFocus: 'board' | 'cinema' | null = null;
   private tableCards!: CasinoTableArt;
 
-  constructor(readonly canvas: HTMLCanvasElement, low = false) {
+  constructor(readonly canvas: HTMLCanvasElement, quality: GraphicsQuality | boolean = 'high') {
     this.engine = new Engine(canvas, true, { alpha: true, stencil: true, preserveDrawingBuffer: true }, true);
-    this.low = low;
-    this.engine.setHardwareScalingLevel(1 / (low ? 1 : Math.min(window.devicePixelRatio || 1, 1.75)));
+    this.quality = resolveGraphicsQuality(quality);
+    this.graphics = GRAPHICS_PRESETS[this.quality];
+    this.engine.setHardwareScalingLevel(1 / graphicsPixelRatio(this.quality, window.devicePixelRatio));
     this.scene = new Scene(this.engine);
     this.scene.clearColor = Color4.FromHexString('#cadbdfff');
     this.scene.ambientColor = new Color3(.15, .15, .15);
@@ -174,7 +177,7 @@ export class TownScene {
     this.shadows.bias = .001;
     this.shadows.normalBias = .02;
     this.shadows.setDarkness(.2);
-    this.setQuality(low);
+    this.setQuality(this.quality);
     this.resizeObserver = new ResizeObserver(() => {
       if (!this.resizeFrame) this.resizeFrame = requestAnimationFrame(() => { this.resizeFrame = 0; this.resize(); });
     });
@@ -379,14 +382,14 @@ export class TownScene {
     this.shopMirror.renderList = this.shopMirrorMeshes;
     this.studio.setEnabled(false);
     this.vegetation = new Vegetation(this.scene);
-    this.vegetation.setQuality(this.low);
+    this.vegetation.setQuality(this.quality);
     this.vegetation.setReducedMotion(this.reducedMotion);
     this.lampLighting = new LampPostLighting(this.scene, this.lampPosts);
     this.cinema.bindLighting(this.scene.getTransformNodeByName('cinema-instance')!,this.scene.transformNodes.filter(node=>node.name==='bench-instance'&&node.position.x<-12),this.lampLighting.glow);
     this.casinoLighting = new CasinoLighting(this.scene, this.lampLighting.glow);
     this.casinoLighting.setReducedMotion(this.reducedMotion);
     this.shopLighting = new ShopLighting(this.scene, this.lampLighting.glow);
-    this.lampLighting.setQuality(this.low);
+    this.lampLighting.setQuality(this.quality);
     this.dayCycle = new DayCycle(this.scene, this.scene.getLightByName('sun') as DirectionalLight, this.scene.getLightByName('sky') as HemisphericLight, this.lampLighting);
     if (this.casinoState) this.dayCycle.synchronise(Date.now() + this.casinoTimeOffset);
     await this.scene.whenReadyAsync();
@@ -592,25 +595,25 @@ export class TownScene {
   };
   setTouch(x: number, z: number) { this.touch = { x, z }; }
   setPaused(paused: boolean) { this.paused = paused; if (paused) this.blur(); }
-  setQuality(low: boolean) {
-    this.low = low;
-    // Scaling is CSS pixels / render pixels: performance is CSS resolution.
-    this.engine.setHardwareScalingLevel(1 / (low ? 1 : Math.min(window.devicePixelRatio || 1, 1.75)));
+  setQuality(quality: GraphicsQuality | boolean) {
+    this.quality = resolveGraphicsQuality(quality);
+    this.graphics = GRAPHICS_PRESETS[this.quality];
+    this.engine.setHardwareScalingLevel(1 / graphicsPixelRatio(this.quality, window.devicePixelRatio));
     // Keep the depth-sampler type stable across quality changes (including shader fallbacks).
     // Changing PCF to a colour shadow map leaves stale sampler bindings in WebKit.
     this.shadows.usePercentageCloserFiltering = true;
-    this.shadows.filteringQuality = low ? ShadowGenerator.QUALITY_LOW : ShadowGenerator.QUALITY_HIGH;
-    const shadowSize = low ? 1024 : 2048;
+    this.shadows.filteringQuality = this.graphics.shadowFilter === 'low' ? ShadowGenerator.QUALITY_LOW : ShadowGenerator.QUALITY_HIGH;
+    const shadowSize = this.graphics.shadowSize;
     if (this.shadows.mapSize !== shadowSize) this.shadows.mapSize = shadowSize;
-    this.shadows.getShadowMap()!.refreshRate = low ? 2 : 1;
-    this.lampLighting?.setQuality(low);
-    this.vegetation?.setQuality(low);
+    this.shadows.getShadowMap()!.refreshRate = this.graphics.shadowRefresh;
+    this.lampLighting?.setQuality(this.quality);
+    this.vegetation?.setQuality(this.quality);
     this.updateWaterQuality();
   }
   private updateWaterQuality() {
     if (!this.water) return;
     const active = this.mode !== 'wardrobe' && this.mode !== 'customise' && !this.casinoFocus;
-    this.fountain?.setQuality(this.low, active);
+    this.fountain?.setQuality(this.quality, active);
   }
   setReducedMotion(reduced: boolean) {
     this.reducedMotion = reduced;
@@ -710,7 +713,7 @@ export class TownScene {
     for (const [id, avatar] of this.avatars) {
       const state = this.remote.get(id); if (!state) continue;
       const detailDistance = Math.hypot(avatar.root.position.x-this.camera.target.x,avatar.root.position.z-this.camera.target.z);
-      const threshold = this.avatars.size >= 32 ? (this.low ? 4 : 6) : (this.low ? 7 : 10);
+      const threshold = this.avatars.size >= 32 ? this.graphics.crowdDetailDistance : this.graphics.characterDetailDistance;
       const lowDetail = id !== this.localId && detailDistance > threshold + (avatar.lowDetail ? -2 : 2);
       if (lowDetail !== avatar.lowDetail) {
         const previous = avatar.model;
@@ -760,7 +763,7 @@ export class TownScene {
       avatar.label.setEnabled(id !== this.localId && Vector3.DistanceSquared(avatar.root.position, this.camera.target) < 225);
       avatar.model.animate(moving, !!state.seatId, { sprinting: id === this.localId ? sprint : !!state.sprinting, jumpAt: hopping ? state.jumpAt : undefined, emoteKind: state.emoteKind, emoteRole: state.emoteRole, emoteAt: state.emoteAt, now });
       if (this.selectionRing && state.profileId === this.selectedProfile) { this.selectionRing.setEnabled(true); this.selectionRing.position.set(avatar.root.position.x, floorHeight(avatar.root.position.x, avatar.root.position.z) + .035, avatar.root.position.z); }
-      const animationRange = moving || avatar.model.isWaving ? (this.low ? 900 : 2025) : (this.low ? 36 : 144);
+      const animationRange = (moving || avatar.model.isWaving ? this.graphics.movingAnimationDistance : this.graphics.idleAnimationDistance) ** 2;
       const animate = id === this.localId || !!state.emoteId || hopping || avatar.model.isTransitioning || Vector3.DistanceSquared(avatar.root.position, this.camera.target) < animationRange;
       avatar.model.setAnimationsActive(animate);
     }
@@ -786,9 +789,9 @@ export class TownScene {
       // Distant citizens retain their silhouette without a second shadow draw pass.
       const shadowCitizens = new Set([...this.avatars.entries()].filter(([id]) => id !== this.localId)
         .sort(([,a],[,b]) => Vector3.DistanceSquared(a.root.position,this.camera.target)-Vector3.DistanceSquared(b.root.position,this.camera.target))
-        .slice(0,this.low ? 4 : 8).map(([id]) => id));
+        .slice(0,this.graphics.shadowNeighbours).map(([id]) => id));
       for (const [id, avatar] of this.avatars) {
-        const near = id === this.localId || shadowCitizens.has(id) && Vector3.DistanceSquared(avatar.root.position, this.camera.target) < (this.low ? 100 : 225);
+        const near = id === this.localId || shadowCitizens.has(id) && Vector3.DistanceSquared(avatar.root.position, this.camera.target) < this.graphics.shadowDistance ** 2;
         for (const mesh of avatar.model.meshes) {
           const list = this.shadows.getShadowMap()!.renderList!;
           if (near && !list.includes(mesh)) this.shadows.addShadowCaster(mesh);
