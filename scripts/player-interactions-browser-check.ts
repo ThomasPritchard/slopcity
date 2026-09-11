@@ -97,6 +97,9 @@ async function openCard(p: Page, name: string) {
   await p.getByRole('button', { name: 'Open neighbours', exact: true }).click();
   await p.mouse.click(8, 8); await p.waitForTimeout(300);
   assert.equal(await p.getByRole('dialog', { name: 'Your neighbours.' }).count(), 1, 'Social persists after a background click');
+  await p.keyboard.press('Escape');
+  await p.getByRole('dialog').waitFor({ state: 'detached' });
+  await p.getByRole('button', { name: 'Open neighbours', exact: true }).click();
   await p.locator('.social-person-name').getByRole('button', { name: `View ${name}`, exact: true }).click();
   await p.getByRole('dialog', { name }).waitFor();
 }
@@ -126,6 +129,9 @@ try {
   await a.getByRole('dialog', { name: 'Bea' }).waitFor();
   await a.mouse.click(8, 8); await a.waitForTimeout(300);
   assert.equal(await a.getByRole('dialog', { name: 'Bea' }).count(), 1, 'Player card persists after a background click');
+  await a.keyboard.press('Escape');
+  await a.getByRole('dialog').waitFor({ state: 'detached' });
+  await openCard(a, 'Bea');
   assert.equal(await a.getByRole('button', { name: /Give credits/ }).isDisabled(), true, 'fresh grant cannot be gifted');
   await a.screenshot({ path: `${output}/player-card-desktop.png` });
   await a.keyboard.press('Tab'); assert.equal(await a.getByRole('dialog').evaluate(dialog => dialog.contains(document.activeElement)), true);

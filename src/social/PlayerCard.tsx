@@ -63,7 +63,7 @@ export function PlayerCard({ person, online, distance, blocked, muted, available
       buttons[(index + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
     }
   }
-  return <div className="social-backdrop player-card-backdrop">
+  return <div className="social-backdrop player-card-backdrop" onPointerDown={event => { if (event.target === event.currentTarget) event.preventDefault(); }}>
     <section ref={panel} className="social-panel player-card" role="dialog" aria-modal="true" aria-labelledby={title} onKeyDown={key}>
       <header className="social-header"><div><span className="eyebrow">A FACE IN THE SQUARE</span><h2 id={title}>{person.name}</h2><p className="player-presence">{blocked ? 'Blocked for you' : !online ? 'Not in this town right now' : `${Math.round(distance)} m away`}{isFriend && !blocked ? ' · Your friend' : ''}</p></div><button ref={close} className="social-close" aria-label="Close player card" onClick={onClose}>×</button></header>
       <div className="social-content player-card-content">
