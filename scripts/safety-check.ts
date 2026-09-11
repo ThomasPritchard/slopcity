@@ -25,7 +25,7 @@ const headers=(ip='203.0.113.200',cookie?:string)=>({'x-slop-proxy-key':key,'x-s
 async function request(path:string,method='GET',body?:unknown,ip?:string,cookie?:string){return fetch(endpoint+path,{method,signal:AbortSignal.timeout(10_000),headers:headers(ip,cookie),...(body===undefined?{}:{body:JSON.stringify(body)})});}
 async function until(fn:()=>boolean|Promise<boolean>,label:string){for(let i=0;i<100;i++){if(await fn())return;await delay(100);}throw new Error(`Timed out: ${label}`);}
 async function start(){
- child=spawn(process.execPath,['--import','tsx','server/index.ts'],{env:{...process.env,DATABASE_URL:isolated.toString(),HOST:'127.0.0.1',PORT:String(port),APP_ORIGIN:origin,NODE_ENV:'test',ABUSE_PROXY_SECRET:key,COMMUNITY_ADMIN_PASSWORD_HASH:passwordHash},stdio:['ignore','pipe','pipe']});
+ child=spawn(process.execPath,['--import','tsx','server/index.ts'],{env:{...process.env,DATABASE_URL:isolated.toString(),HOST:'127.0.0.1',PORT:String(port),APP_ORIGIN:origin,NODE_ENV:'test',TURNSTILE_SITE_KEY:'',TURNSTILE_SECRET_KEY:'',ABUSE_PROXY_SECRET:key,COMMUNITY_ADMIN_PASSWORD_HASH:passwordHash},stdio:['ignore','pipe','pipe']});
  child.stdout!.on('data',v=>{logs+=v.toString();});child.stderr!.on('data',v=>{logs+=v.toString();});
  await until(async()=>{if(child?.exitCode!==null)throw new Error('Isolated server exited before health check.');try{return (await fetch(endpoint+'/health')).ok;}catch{return false;}},'isolated server startup');
 }

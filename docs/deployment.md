@@ -161,3 +161,7 @@ Tunnel mode trusts `CF-Connecting-IP` only because the Docker HTTP origin is pub
 The standalone moderation page is available at `/admin` and `/admin/`; only these entry paths rewrite to the built application index. Game API authorization remains enforced by the server.
 
 Profile creation and edits use the same severe-language blocklist as chat, including its spelling-obfuscation checks; the existing ordinary-swearing allowance is unchanged. Both submitted and sanitised display names are checked in the client and server. Startup scans saved names in pages of 500 and adds permanent guest bans for prohibited names through the existing audited ban repository, skipping guests already banned. This also covers offline profiles. HTTP and WebSocket admission reject prohibited saved names independently of the startup scan. The sweep does not ban IP addresses or delete profiles, balances or purchases. Its startup log records only the number of new bans. Moderators can inspect the resulting guest bans at `/admin`; a prohibited name still cannot enter town after a ban is lifted.
+
+### Turnstile admission and raid controls
+
+Public production requires a matching `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` pair in the private `.deploy/game.env`. See [Turnstile setup and raid controls](turnstile-setup.md) for widget setup, environment placement, verification and the schema-10 rollback boundary. Guest creation and every new town connection require a server-validated check. Admin entry mode and guest approvals persist across releases.

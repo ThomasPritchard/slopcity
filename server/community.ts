@@ -1,3 +1,4 @@
+import type { AdmissionService } from './admission.ts';
 import type { TwitchLiveService, TwitchLiveSnapshot } from './twitchLive.ts';
 import express,{type Application,type Request,type Response,type NextFunction} from 'express';
 import sharp from 'sharp';
@@ -30,7 +31,7 @@ export function resolveCommunityProgramme(programme:Programme,detection?:TwitchL
  if(detection.isLive===true)return {...programme,mode:'live',platform:'twitch',twitchChannel:BRIDGEMIND_TWITCH_CHANNEL,liveDetection};
  return {...programme,mode:programme.mode==='live'&&programme.platform==='youtube'?'live':'intermission',liveDetection};
 }
-export function mountCommunityRoutes(app:Application,guests:GuestRepository,repository:CommunityRepository,options:{passwordHash?:string;adminSessions?:CommunityAdminSessions;safety?:SafetyService;twitchLive?:Pick<TwitchLiveService,'snapshot'>}={}){
+export function mountCommunityRoutes(app:Application,guests:GuestRepository,repository:CommunityRepository,options:{passwordHash?:string;adminSessions?:CommunityAdminSessions;safety?:SafetyService;admission?:AdmissionService;twitchLive?:Pick<TwitchLiveService,'snapshot'>}={}){
  const router=express.Router(),sessions=options.adminSessions??new CommunityAdminSessions();const passwordHash=options.passwordHash??process.env.COMMUNITY_ADMIN_PASSWORD_HASH??'';
  router.use((req,res,next)=>{if(options.safety&&!clientAddress(req.headers)){res.status(503).json({error:'Game gateway unavailable.'});return;}next();});
  const loginIP=new RequestLimiter(5,15*60_000),loginGlobal=new RequestLimiter(50,15*60_000),uploadGuest=new RequestLimiter(10,60*60_000),uploadIP=new RequestLimiter(30,60*60_000),uploadGlobal=new RequestLimiter(100,60*60_000);let decoders=0;
@@ -41,7 +42,7 @@ export function mountCommunityRoutes(app:Application,guests:GuestRepository,repo
  router.use('/admin',(req,res,next)=>{if(!res.locals.admin){res.status(401).json({error:passwordHash?'Administrator sign-in required':'Community administration is not configured',configured:!!passwordHash});return;}next();});
  const adminRequests=new RequestLimiter(180,60_000);
  router.use('/admin',(req,res,next)=>{if(!adminRequests.take(sessions.token(req.headers.cookie))){res.setHeader('Retry-After','60');res.status(429).json({error:'Too many admin requests. Please wait.'});return;}next();});
- if(options.safety)mountSafetyAdmin(router,options.safety);
+ if(options.safety)mountSafetyAdmin(router,options.safety,options.admission);
  router.post('/admin/logout',(req,res)=>{sessions.revoke(req.headers.cookie);res.setHeader('Set-Cookie',sessions.cookie('',req.headers.origin?.startsWith('https:')??false));res.sendStatus(204);});
  router.get('/admin',async(_req,res)=>{const programme=await repository.programme();const {mode,platform,twitchChannel,youtubeVideoId,schedule}=programme;res.json({programme:resolveCommunityProgramme(programme,options.twitchLive?.snapshot()),settings:{mode,platform,twitchChannel,youtubeVideoId,schedule},images:await repository.list(),configured:true});});
  router.use('/admin',express.json({limit:'16kb'}));

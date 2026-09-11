@@ -2,7 +2,7 @@ import { Room, ServerError, type AuthContext, type Client } from '@colyseus/core
 import { Citizen, TownState } from '../shared/state.ts';
 import { CAPACITY, TICK_MS, move, parseInput, isWalkable, canHopAt, type Input } from '../shared/world.ts';
 
-import { guests, sessions, towns, voice, salary, casinoRepository, safety } from './context.ts';
+import { guests, sessions, towns, voice, salary, casinoRepository, safety, admission } from './context.ts';
 import { clientAddress, socketIdentities } from './clientAddress.ts';
 import { SAFETY_LIMITS, SafetyError, TokenBucket } from './safety.ts';
 import { CasinoService } from './casino/service.ts';
@@ -226,10 +226,11 @@ export class TownRoom extends Room<{ state: TownState }> {
     if (!profile) throw new ServerError(401, 'Your guest profile could not be restored.');
     safety.checkProfile(ip,profile);
     safety.limitGuestJoin(ip,profile.id);
-    return { profile };
+    const admissionReservation = admission.reserve(profile.id,context.headers.get('cookie') ?? undefined);
+    return { profile, admissionReservation };
   }
   async onJoin(client: Client) {
-    const auth = client.auth as { profile: PrivateGuestProfile };
+    const auth = client.auth as { profile: PrivateGuestProfile; admissionReservation?: string };
     if (!sessions.claim(auth.profile.id, client.sessionId, this.roomId)) throw new ServerError(409, 'This guest is already in town in another tab.');
     let salaryStarted=false;
     try {
@@ -239,6 +240,8 @@ export class TownRoom extends Room<{ state: TownState }> {
       const profile = await authenticateGuest(identity.cookie, guests);
       if (!profile || profile.id!==auth.profile.id) throw new ServerError(401, 'Your guest profile has expired.');
       safety.checkProfile(identity.ip,profile);
+      admission.consume(profile.id,identity.cookie,auth.admissionReservation);
+      admission.connect(client.sessionId,profile.id,identity.cookie,deadline=>client.send('entry-check',{deadline}),()=>this.stopClient(client,4009,'Please complete a fresh entry check to rejoin.'));
       client.auth = { profile }; // Do not retain the credential after admission.
       delete identity.cookie;
       const wallet = await salary.start(profile.id,client.sessionId,this.roomId);
@@ -258,7 +261,7 @@ export class TownRoom extends Room<{ state: TownState }> {
       const observe=()=>{const now=Date.now();if(now-at>=1000){at=now;count=0;}safety.count('game_messages');if(++count>SAFETY_LIMITS.messagesPerSecond&&!this.stoppedSessions.has(client.sessionId)){safety.eventFor(client.sessionId,'message_flood_disconnected');this.stopClient(client,4008,'Too many game messages. Please wait before rejoining.');}};
       client.ref.prependListener('message',observe);this.frameObservers.set(client.sessionId,observe);
       safety.joined(client.sessionId);
-    } catch (error) { if(salaryStarted)await salary.stop(client.sessionId).catch(()=>{});safety.disconnect(client.sessionId);this.stoppedSessions.delete(client.sessionId);sessions.release(auth.profile.id, client.sessionId, this.roomId);throw error; }
+    } catch (error) { admission.disconnect(client.sessionId); if(salaryStarted)await salary.stop(client.sessionId).catch(()=>{});safety.disconnect(client.sessionId);this.stoppedSessions.delete(client.sessionId);sessions.release(auth.profile.id, client.sessionId, this.roomId);throw error; }
   }
   private stopClient(client:Client,code:number,message:string) {
     this.stoppedSessions.add(client.sessionId);this.movementInputs.delete(client.sessionId);
@@ -270,6 +273,7 @@ export class TownRoom extends Room<{ state: TownState }> {
     const timer=setTimeout(()=>identity?.terminate(),1000);timer.unref();
   }
   async onLeave(client: Client) {
+    admission.disconnect(client.sessionId);
     socketIdentities.delete(client.ref);
     const observer=this.frameObservers.get(client.sessionId);if(observer)client.ref.removeListener('message',observer);this.frameObservers.delete(client.sessionId);
     safety.disconnect(client.sessionId);this.stoppedSessions.delete(client.sessionId);

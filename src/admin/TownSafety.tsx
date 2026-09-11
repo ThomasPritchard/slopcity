@@ -1,3 +1,4 @@
+import { AdmissionControls } from './AdmissionControls';
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { SafetyBan, SafetyGuest, SafetySnapshot } from '../../shared/safety';
 import { CommunityApiError, communityError, communityRequest } from '../community/api';
@@ -134,6 +135,7 @@ export function TownSafety({ onSessionExpired }: { onSessionExpired(): void }) {
    {snapshot.players.length ? <ul className="town-safety-list">{snapshot.players.map(player => <li key={player.sessionId} className="town-safety-player"><div className="town-safety-identity"><strong>{player.name}</strong><span>Guest <code>{player.profileId}</code></span><span>IP <code>{player.ip}</code></span><small>Joined {formatTime(player.joinedAt)}</small></div><div className="town-safety-actions"><button type="button" className="community-secondary" disabled={busy} aria-label={`Ban guest ${player.name}`} onClick={() => chooseTarget('guest', player.profileId)}>Ban guest</button><button type="button" className="community-secondary" disabled={busy} aria-label={`Ban IP for ${player.name}`} onClick={() => chooseTarget('ip', player.ip)}>Ban IP</button></div></li>)}</ul> : <p className="town-safety-empty">No players are connected.</p>}
   </section>}
 
+  <AdmissionControls onSessionExpired={onSessionExpired}/>
   <div className="town-safety-tools">
    <section className="town-safety-section" aria-labelledby={`${id}-search`}>
     <h3 id={`${id}-search`}>Find a guest</h3><p className="town-safety-description">Search saved guests by name or guest ID, including those who have left.</p>

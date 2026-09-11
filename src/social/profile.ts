@@ -11,6 +11,6 @@ export async function restoreGuest(): Promise<PrivateGuestProfile | null> {
   try { return await request<PrivateGuestProfile>('profile'); }
   catch (error) { if (error instanceof ProfileError && error.status === 401) return null; throw error; }
 }
-export const establishGuest = (profile: Profile) => request<PrivateGuestProfile>('guest', 'POST', profile);
+export const establishGuest = (profile: Profile, turnstileToken?: string) => request<PrivateGuestProfile>('guest', 'POST', { ...profile, turnstileToken });
 export const saveGuest = (profile: Profile, revision: number) => request<PrivateGuestProfile>('profile', 'PATCH', { ...profile, revision });
 export const setGuestBlock = (profileId: string, blocked: boolean) => request<{ blocks: string[] }>(`blocks/${encodeURIComponent(profileId)}`, blocked ? 'PUT' : 'DELETE');

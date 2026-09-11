@@ -1,3 +1,4 @@
+import { useAdmission } from './social/useAdmission';
 import { useCreditLeaderboard } from './leaderboard/useCreditLeaderboard';
 import { CreditLeaderboardPanel } from './leaderboard/CreditLeaderboardPanel';
 import { nearCreditBoard } from '../shared/creditLeaderboard';
@@ -71,6 +72,12 @@ function Icon({ kind, size = 20 }: { kind: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[kind] || paths.compass}</svg>;
 }
 function App() {
+  const admission = useAdmission();
+  const [entryDeadline,setEntryDeadline] = useState(0);
+  async function reverifyEntry() {
+    try { await admission.ensure(true); setEntryDeadline(0); setError(''); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Please retry the entry check.'); }
+  }
   const canvas = useRef<HTMLCanvasElement>(null);
   const world = useRef<TownScene | null>(null);
   const room = useRef<Room<unknown, TownState> | null>(null);
@@ -303,7 +310,7 @@ function App() {
     setSaving(true); setError('');
     try {
       if (!guest) {
-        const saved = await establishGuest(parseProfile(profile));
+        const saved = await establishGuest(parseProfile(profile),await admission.requestToken());
         // A blocked cookie must not be presented as a recoverable saved guest.
         const restored = await restoreGuest();
         if (!restored || restored.id !== saved.id) throw new Error('Allow cookies for this site so your guest can be remembered.');
@@ -321,9 +328,11 @@ function App() {
     const clean = parseProfile(profile); setProfile(clean);
     try {
       if (clean.name !== guest.name || clean.shirt !== guest.shirt || clean.skin !== guest.skin) setGuest(await saveGuest(clean, guest.revision));
+      await admission.ensure();
       const endpoint = import.meta.env.VITE_GAME_URL || `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/game`;
       const connected = await new Client(endpoint).joinOrCreate<TownState>('town');
-      room.current = connected; sequence.current = 0;
+      room.current = connected; sequence.current = 0; setEntryDeadline(0);
+      connected.onMessage<{deadline:number}>('entry-check',({deadline})=>{setEntryDeadline(deadline);world.current?.stopMovement();void reverifyEntry();});
       connected.onMessage<EconomyView>('economy',value=>acceptWallet(value,value.accruing));
       connected.onMessage<string>('economy-error',text=>setNotice(text));
       connected.onMessage('social-changed', () => void socialData.refresh());
@@ -368,9 +377,9 @@ function App() {
       connected.onError((_code, text) => setError(text || 'The connection encountered a problem.'));
       connected.onLeave((code) => {
         if (room.current !== connected) return;
-        room.current = null; setSelectedNeighbour(null); setEmoteInbox({ serverTime: 0, incoming: null, outgoing: null }); setShopMode(null);setCasinoTable(null);setCasinoState({serverTime:Date.now(),tables:[]});setCasinoPrivate({rouletteBets:[]});casinoPending.current=null;if(casinoTimeout.current)clearTimeout(casinoTimeout.current);setCasinoBusy(false);setCasinoRetry(false);world.current?.focusCasino(null); if(walletRef.current)acceptWallet(walletRef.current,false); void voiceClient.current?.leave(); voiceClient.current?.setTargets([]); setSocialOpen(false); setMuted(new Set()); world.current?.sync(new Map()); setPlayers(new Map()); setPhase('disconnected');
+        room.current = null; setEntryDeadline(0); setSelectedNeighbour(null); setEmoteInbox({ serverTime: 0, incoming: null, outgoing: null }); setShopMode(null);setCasinoTable(null);setCasinoState({serverTime:Date.now(),tables:[]});setCasinoPrivate({rouletteBets:[]});casinoPending.current=null;if(casinoTimeout.current)clearTimeout(casinoTimeout.current);setCasinoBusy(false);setCasinoRetry(false);world.current?.focusCasino(null); if(walletRef.current)acceptWallet(walletRef.current,false); void voiceClient.current?.leave(); voiceClient.current?.setTargets([]); setSocialOpen(false); setMuted(new Set()); world.current?.sync(new Map()); setPlayers(new Map()); setPhase('disconnected');
         setSilencedUntil(0); setSilencedSeconds(0); silencedAnnounced.current = false;
-        setError(code===4003?'Access to Slop City is currently restricted.':code===4008?'Too many game messages. Please wait before rejoining.':'You have left the town. Rejoin to continue.');
+        setError(code===4009?'Please complete a fresh entry check to rejoin.':code===4003?'Access to Slop City is currently restricted.':code===4008?'Too many game messages. Please wait before rejoining.':'You have left the town. Rejoin to continue.');
       });
       try { localStorage.setItem('slop-city-profile', JSON.stringify(clean)); } catch { /* A restricted browser can still play. */ }
       setNotice(''); world.current.enter(connected.sessionId); setPhase('playing'); setHint(true); setMessages([]);
@@ -530,6 +539,8 @@ function App() {
       {error && <div role="alert" className="connection-alert">{error}</div>}
       {(panel === 'map' || panel === 'settings') && <div className="modal-backdrop" onClick={() => setPanel(null)}><section className="modal" role="dialog" aria-modal="true" aria-label={panel === 'map' ? 'Town map' : 'Settings'} onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') setPanel(null); if (e.key === 'Tab') { const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input,select')]; const first = items[0], last = items[items.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } } }}><button autoFocus className="close" aria-label="Close panel" onClick={() => setPanel(null)}><Icon kind="close"/></button><span className="eyebrow">SLOP CITY</span><h2>{panel === 'map' ? 'Get your bearings.' : 'Make it comfortable.'}</h2>{panel === 'map' ? <><TownMapSvg players={players} sessionId={room.current?.sessionId} labeled ariaLabel="Map of the square: casino north, clothing shop east, picture house west, fountain in the centre"/><p className="map-legend"><span className="live-dot"/> You are in {stats.district}.</p></> : <><div className="comfort-settings"><label className="setting"><span>Performance mode<small>Lighter water and shadows; a smaller render budget.</small></span><input type="checkbox" checked={low} onChange={e => updatePreferences({low:e.target.checked})}/></label><label className="setting"><span>Motion<small>Reduce decorative movement; keep game results visible.</small></span><select aria-label="Motion preference" value={preferences.motion} onChange={e=>updatePreferences({motion:e.target.value as Preferences['motion']})}><option value="system">Follow device</option><option value="reduced">Reduced</option><option value="full">Full</option></select></label><fieldset><legend>City sound</legend><label className="setting"><span>Sound effects <output>{Math.round(preferences.effects*100)}%</output></span><input aria-label="Sound effects volume" type="range" min="0" max="1" step="0.05" value={preferences.effects} onChange={e=>updatePreferences({effects:Number(e.target.value)})}/></label><label className="setting"><span>Fountain ambience <output>{Math.round(preferences.ambience*100)}%</output></span><input aria-label="Fountain ambience volume" type="range" min="0" max="1" step="0.05" value={preferences.ambience} onChange={e=>updatePreferences({ambience:Number(e.target.value)})}/></label><small>Slide to zero to mute. Saved for this browser.</small></fieldset></div><div className="setting"><span>Proximity voice<small>Join from Social. Your microphone starts muted.</small></span><Icon kind="mic"/></div><p className="diagnostics">Rendering at {stats.fps} fps · {players.size} connected<br/>Saved guest · Shared town</p><button className="secondary" onClick={() => { setPanel(null); void room.current?.leave(); }}>Leave the square</button></>}</section></div>}
     </>}
+    {admission.dialog}
+    {playing && entryDeadline > 0 && <div className="entry-check-reminder" role="status">The host requested a fresh entry check. Complete it within two minutes to stay in town.<button onClick={()=>void reverifyEntry()}>Complete entry check</button></div>}
     {(panel==='memory'||panel==='cinema'||panel==='submit'||panel==='admin') && <CommunityPanel initialView={panel==='memory'?'board':panel} onViewChange={communityViewChanged} guestAvailable={!!guest} onClose={()=>setPanel(null)}/>}
   </main>;
 }

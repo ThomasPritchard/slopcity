@@ -16,7 +16,7 @@ import { mountEconomyRoutes } from './economy.ts';
 if (existsSync('.env')) loadEnvFile('.env');
 const config = runtimeConfig();
 const addressSecret = proxySecret();
-const { guests, sessions, voice, towns, economy, casinoRepository, socialRepository, communityRepository, safety } = await import('./context.ts');
+const { guests, sessions, voice, towns, economy, casinoRepository, socialRepository, communityRepository, safety, admission } = await import('./context.ts');
 const { TownRoom } = await import('./town.ts');
 let stopping = false;
 const lock = await acquireRuntimeLock(process.env.DATABASE_URL!, () => {
@@ -30,6 +30,7 @@ try {
   await socialRepository.initialise();
   await communityRepository.initialise();
   await safety.initialise();
+  await admission.initialise();
   const bannedNames = await safety.banProhibitedNames();
   if (bannedNames) console.info(JSON.stringify({event:'prohibited_profile_names_banned',count:bannedNames}));
   await casinoRepository.recoverPending();
@@ -50,6 +51,7 @@ const transport = new GameTransport({ server: httpServer, maxPayload: 4096, befo
     const profile = await authenticateGuest(context.headers.get('cookie') ?? undefined,guests);
     if (!profile) throw new SafetyError(401,'unauthenticated','Restore your guest profile first.');
     safety.checkProfile(ip,profile);
+    admission.checkUpgrade(profile.id,context.headers.get('cookie') ?? undefined);
   } catch(error) {
     const known=error instanceof SafetyError;
     return new Response(known?error.message:'Game unavailable.',{status:known?error.status:503,headers:{'Cache-Control':'no-store',...(known&&error.status===429?{'Retry-After':String(error.retryAfter)}:{})}});
@@ -79,8 +81,8 @@ const server = new Server({
       changed: ids => { for(const town of towns.values())town.socialChanged(ids); },
       gifted: async ids => { for(const id of ids){const active=sessions.get(id);if(active){const wallet=await economy.ensure(id);towns.get(active.roomId)?.publishEconomy(id,active.sessionId,wallet);}} },
     });
-    mountCommunityRoutes(app, guests, communityRepository, { safety, twitchLive });
-    mountGuestRoutes(app, guests, sessions, safety);
+    mountCommunityRoutes(app, guests, communityRepository, { safety, twitchLive, admission });
+    mountGuestRoutes(app, guests, sessions, safety, admission);
   },
 });
 server.define('town', TownRoom);
@@ -88,6 +90,7 @@ let settled = false;
 server.onShutdown(async () => {
   twitchLive.stop();
   safety.stopLogging();
+  admission.stop();
   // Colyseus invokes this only after room disposal (including casino settlement).
   await guests.close();
   await lock.close();
@@ -112,6 +115,7 @@ try {
   await server.listen(config.port, config.host);
   twitchLive.start();
   safety.startLogging();
+  admission.start();
   console.log(`Slop City multiplayer listening on ${config.host}:${config.port}`);
 } catch {
   console.error('Multiplayer listener failed to start');

@@ -1,3 +1,4 @@
+import type { AdmissionService } from './admission.ts';
 import express, { type Application, type Request, type Response, type NextFunction } from 'express';
 import { parseProfile, SHIRTS, SKINS } from '../shared/world.ts';
 import { GuestRepository, CREDENTIAL_SECONDS, validCredential, validProfileId } from './persistence/guests.ts';
@@ -47,7 +48,7 @@ function validCosmetics(value: unknown): boolean {
  const v = value as Record<string, unknown>;
  return typeof v.name === 'string' && v.name.length <= 100 && typeof v.shirt === 'number' && Number.isInteger(v.shirt) && v.shirt >= 0 && v.shirt < SHIRTS.length && typeof v.skin === 'number' && Number.isInteger(v.skin) && v.skin >= 0 && v.skin < SKINS.length;
 }
-export function mountGuestRoutes(app: Application, repository: GuestRepository, sessions: SessionRegistry, safety?: SafetyService) {
+export function mountGuestRoutes(app: Application, repository: GuestRepository, sessions: SessionRegistry, safety?: SafetyService, admission?: AdmissionService) {
  const router = express.Router();
  router.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -55,6 +56,10 @@ export function mountGuestRoutes(app: Application, repository: GuestRepository, 
   next();
  });
  router.use(express.json({ limit: '8kb' }));
+ router.get('/admission', async (req,res) => {
+  const profile = await authenticateGuest(req.headers.cookie,repository);
+  res.json(admission?.status(profile?.id,req.headers.cookie) ?? {enabled:false,siteKey:'',mode:'open',verified:false});
+ });
  router.post('/guest', async (req, res) => {
   const existing = await authenticateGuest(req.headers.cookie, repository);
   if (existing) { res.json(existing); return; }
@@ -63,7 +68,14 @@ export function mountGuestRoutes(app: Application, repository: GuestRepository, 
   const ip=clientAddress(req.headers);
   if(safety){if(!ip)throw new SafetyError(503,'untrusted_proxy','Game gateway unavailable.');safety.checkBan(ip);safety.limit('guest',ip);}
   assertAllowedProfileName(req.body.name);
+  admission?.checkMode();
+  const generation = await admission?.verify(req.body.turnstileToken,ip ?? '127.0.0.1');
+  admission?.checkMode();
   const created = await repository.create(parseProfile(req.body));
+  // A raid control may invalidate the check while the profile insert completes.
+  // Keep the newly saved credential recoverable; joining will request a fresh pass.
+  try { admission?.issue(created.profile.id,`${COOKIE_NAME}=${created.secret}`,generation!); }
+  catch (error) { if (!(error instanceof SafetyError) || !['verification_required','entry_busy'].includes(error.codeName)) throw error; }
   safety?.record('guest_created',ip??undefined,created.profile.id);
   res.setHeader('Set-Cookie', guestCookie(created.secret, req.headers.origin?.startsWith('https:'))); res.status(201).json(created.profile);
  });
@@ -75,6 +87,15 @@ export function mountGuestRoutes(app: Application, repository: GuestRepository, 
    res.status(401).json({ error: 'Guest authentication required' }); return;
   }
   res.locals.profile = profile; next();
+ });
+ router.post('/admission', async (req,res) => {
+  if (!admission) { res.sendStatus(204); return; }
+  const ip = clientAddress(req.headers);
+  if (!ip) throw new SafetyError(503,'untrusted_proxy','Game gateway unavailable.');
+  const generation = await admission.verify(req.body?.turnstileToken,ip);
+  admission.issue(res.locals.profile.id,req.headers.cookie,generation);
+  safety?.record('entry_verified',ip,res.locals.profile.id);
+  res.sendStatus(204);
  });
  router.get('/profile', (_req,res) => { res.json(res.locals.profile); });
  router.patch('/profile', async (req,res) => {

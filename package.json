@@ -10,6 +10,7 @@
     "build": "tsc --noEmit && vite build",
     "start": "node --env-file-if-exists=.env --import tsx server/index.ts",
     "test": "node --import tsx --test tests/*.test.ts",
+    "test:admission": "node --env-file=.env --import tsx scripts/admission-check.ts",
     "test:safety": "node --env-file=.env --import tsx scripts/safety-check.ts",
     "test:network": "node --import tsx scripts/network-check.ts",
     "test:browser": "node --import tsx scripts/browser-check.ts",

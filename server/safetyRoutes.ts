@@ -1,3 +1,4 @@
+import type { AdmissionService } from './admission.ts';
 import express, { type Application, type NextFunction, type Request, type Response, type Router } from 'express';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { authenticateGuest } from './guest.ts';
@@ -50,7 +51,11 @@ export function mountSafetyGuards(app: Application, safety: SafetyService, guest
 }
 
 // Called only behind the community admin session and origin middleware.
-export function mountSafetyAdmin(router: Router, safety: SafetyService) {
+export function mountSafetyAdmin(router: Router, safety: SafetyService, admission?: AdmissionService) {
+ if (admission) {
+  router.get('/admin/admission',async(_req,res)=>res.json(await admission.snapshot()));
+  router.post('/admin/admission',express.json({limit:'2kb'}),async(req,res)=>{await admission.edit(req.body?.action,req.body?.target);safety.record('admin_entry_control');res.json(await admission.snapshot());});
+ }
  router.get('/admin/safety',(_req,res)=>res.json(safety.snapshot()));
  router.get('/admin/safety/guests',async(req,res)=>{
   const q=req.query.q;
@@ -59,8 +64,10 @@ export function mountSafetyAdmin(router: Router, safety: SafetyService) {
  });
  router.post('/admin/safety/bans',express.json({limit:'2kb'}),async(req,res)=>res.status(201).json(await safety.addBan(req.body)));
  router.delete('/admin/safety/bans/:id',async(req,res)=>{await safety.revokeBan(req.params.id as string);res.sendStatus(204);});
- router.use('/admin/safety',(error:unknown,_req:Request,res:Response,_next:NextFunction)=>{
+ router.use(['/admin/safety','/admin/admission'],(error:unknown,_req:Request,res:Response,_next:NextFunction)=>{
   if(error instanceof Error && ['Guest not found','Lift an existing ban before adding more'].includes(error.message))error=new SafetyError(400,'invalid_ban',error.message);
+  if ((error as {code?:string})?.code === '23503') error = new SafetyError(400,'guest_not_found','Guest not found. Copy a saved guest ID from the search results.');
+  if (error instanceof Error && error.message === 'Approval list is full') error = new SafetyError(400,'approval_limit',error.message);
   safetyResponse(error,res);
  });
 }
