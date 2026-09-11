@@ -285,6 +285,10 @@ button:focus-visible{outline-offset:3px}
 /* ---------- contextual prompts stay the only filled objects ---------- */
 .seat-action,.shop-entry{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:0 19px;border-radius:999px;background:#e3ebbb;color:var(--ink);font-size:11.5px;font-weight:600;letter-spacing:.1px;box-shadow:0 6px 20px rgba(14,30,24,.3),0 0 0 1px rgba(227,235,187,.55)}
 .seat-action:hover,.shop-entry:hover{background:#eef3ce}
+.game .cinema-entry-action{bottom:150px}
+.game:has(.cinema-entry-action) .seat-action{bottom:96px}
+@media(pointer:coarse),(max-width:699px){.game .cinema-entry-action{bottom:210px}.game:has(.cinema-entry-action) .seat-action{bottom:150px}}
+@media(pointer:coarse) and (orientation:landscape) and (max-height:620px){.game .cinema-entry-action{bottom:132px}.game:has(.cinema-entry-action) .seat-action{bottom:76px}}
 /* Both prompts share the prototype's single contextual slot above the controls hint. */
 @media(min-width:700px) and (pointer:fine){.seat-action{bottom:96px}.shop-entry{bottom:96px}.casino-entry{bottom:92px}}
 @media(pointer:coarse),(max-width:699px){.seat-action,.shop-entry{min-height:46px;padding:0 22px;font-size:12px}}

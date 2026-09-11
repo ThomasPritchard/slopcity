@@ -2,7 +2,9 @@ import { Room, ServerError, type AuthContext, type Client } from '@colyseus/core
 import { Citizen, TownState } from '../shared/state.ts';
 import { CAPACITY, TICK_MS, move, parseInput, isWalkable, canHopAt, type Input } from '../shared/world.ts';
 
-import { guests, sessions, towns, voice, salary, casinoRepository } from './context.ts';
+import { guests, sessions, towns, voice, salary, casinoRepository, safety } from './context.ts';
+import { clientAddress, socketIdentities } from './clientAddress.ts';
+import { SAFETY_LIMITS, SafetyError, TokenBucket } from './safety.ts';
 import { CasinoService } from './casino/service.ts';
 import { CASINO_ANCHORS, BLACKJACK_SEAT_OFFSETS, type CasinoState, type CasinoTableId } from '../shared/casino.ts';
 import { POKER_SEAT_OFFSETS } from '../shared/pokerLayout.ts';
@@ -19,6 +21,10 @@ import { HOP_COOLDOWN_MS, isHopping } from '../shared/mobility.ts';
 
 export class TownRoom extends Room<{ state: TownState }> {
   maxClients = CAPACITY;
+  maxMessagesPerSecond = SAFETY_LIMITS.messagesPerSecond;
+  private controlMessages = new TokenBucket(20,1000,128);
+  private stoppedSessions = new Set<string>();
+  private frameObservers = new Map<string, () => void>();
   state = new TownState();
   private movementInputs = new Map<string, { input: Input; at: number }>();
   private interactionBusy = new Set<string>();
@@ -31,7 +37,7 @@ export class TownRoom extends Room<{ state: TownState }> {
     stopInput: id => this.movementInputs.delete(id),
   });
   socialPresence(profileId: string) {
-    for (const [sessionId, player] of this.state.players) if (player.profileId === profileId) return { sessionId, x: player.x, z: player.z };
+    for (const [sessionId, player] of this.state.players) if (player.profileId === profileId&&!this.stoppedSessions.has(sessionId)) return { sessionId, x: player.x, z: player.z };
     return undefined;
   }
   socialChanged(profileIds: string[]) {
@@ -73,7 +79,7 @@ export class TownRoom extends Room<{ state: TownState }> {
       }
     }
   }
-  canPurchase(profileId:string) { const active=sessions.get(profileId); const player=active && this.state.players.get(active.sessionId); return !!player && player.profileId===profileId && isInShop(player.x,player.z); }
+  canPurchase(profileId:string) { const active=sessions.get(profileId); const player=active && this.state.players.get(active.sessionId); return !!player && player.profileId===profileId && !this.stoppedSessions.has(active!.sessionId) && isInShop(player.x,player.z); }
   publishEconomy(profileId:string,sessionId:string,state:WalletState,accruing?:boolean) {
     const player=this.state.players.get(sessionId),client=this.clients.find(client=>client.sessionId===sessionId);
     if (!player || !client || player.profileId!==profileId || sessions.get(profileId)?.sessionId!==sessionId) return;
@@ -85,7 +91,7 @@ export class TownRoom extends Room<{ state: TownState }> {
     client.send('economy',{...current,accruing:this.accruing.get(sessionId)??false});
   }
   economyError(sessionId:string) { this.clients.find(client=>client.sessionId===sessionId)?.send('economy-error','Salary saving is delayed. Your last saved balance is safe.'); }
-  hasSession(id: string) { return this.state.players.has(id); }
+  hasSession(id: string) { return this.state.players.has(id)&&!this.stoppedSessions.has(id); }
   refreshBlocks(id: string): Promise<void> {
     const refresh = (this.blockRefreshes.get(id) ?? Promise.resolve()).catch(() => {}).then(async () => {
       if (![...this.state.players.values()].some(player => player.profileId === id)) return;
@@ -114,9 +120,17 @@ export class TownRoom extends Room<{ state: TownState }> {
     }
   }
   onCreate() {
+    // Wrap application handlers to stop banned/flooding sessions immediately, including
+    // while the WebSocket close handshake is still in progress.
+    const register = this.onMessage.bind(this);
+    this.onMessage = ((type: string | number, handler: (client: Client, value: unknown) => void) => register(type, (client, value: unknown) => {
+      if(this.stoppedSessions.has(client.sessionId))return;
+      if(type!=='input' && type!=='chat' && type!=='casino-command' && !this.controlMessages.take(client.sessionId)) { safety.eventFor(client.sessionId,'control_rate_limited'); return; }
+      handler(client,value);
+    })) as typeof this.onMessage;
     towns.set(this.roomId, this);
     this.casino=new CasinoService(this.roomId,casinoRepository,{
-      actor: profileId=>{const active=sessions.get(profileId);const citizen=active?.roomId===this.roomId?this.state.players.get(active.sessionId):undefined;return citizen?{sessionId:active!.sessionId,name:citizen.name,x:citizen.x,z:citizen.z}:undefined;},
+      actor: profileId=>{const active=sessions.get(profileId);const citizen=active?.roomId===this.roomId&&!this.stoppedSessions.has(active.sessionId)?this.state.players.get(active.sessionId):undefined;return citizen?{sessionId:active!.sessionId,name:citizen.name,x:citizen.x,z:citizen.z}:undefined;},
       publish: state=>{this.casinoSeats(state);this.broadcast('casino-state',state);},
       private: (profileId,message,payload)=>{const active=sessions.get(profileId);if(active?.roomId===this.roomId)this.clients.find(client=>client.sessionId===active.sessionId)?.send(message,payload);},
       wallet: (profileId,state)=>{const active=sessions.get(profileId);if(active?.roomId===this.roomId)this.publishEconomy(profileId,active.sessionId,state);},
@@ -125,7 +139,7 @@ export class TownRoom extends Room<{ state: TownState }> {
     this.onMessage('casino-command',(client,command:unknown)=>{
       const citizen=this.state.players.get(client.sessionId);if(!citizen)return;
       const now=Date.now(),recent=(this.casinoCommandAt.get(client.sessionId)??[]).filter(at=>now-at<1000);
-      if(recent.length>=8){client.send('casino-receipt',{requestId:typeof (command as {requestId?:unknown})?.requestId==='string'?(command as {requestId:string}).requestId:'',ok:false,code:'rate_limit',message:'Please wait a moment before another table action.'});return;}
+      if(recent.length>=8){safety.eventFor(client.sessionId,'casino_rate_limited');client.send('casino-receipt',{requestId:typeof (command as {requestId?:unknown})?.requestId==='string'?(command as {requestId:string}).requestId:'',ok:false,code:'rate_limit',message:'Please wait a moment before another table action.'});return;}
       recent.push(now);this.casinoCommandAt.set(client.sessionId,recent);
       void this.casino.handle(citizen.profileId,command).catch(()=>client.send('notice','The casino could not save that action. Please retry shortly.'));
     });
@@ -168,7 +182,7 @@ export class TownRoom extends Room<{ state: TownState }> {
     this.onMessage('chat', (client, value: unknown) => {
       if (typeof value !== 'string') return;
       const now = performance.now();
-      if (now - (this.chatAt.get(client.sessionId) ?? -10000) < 800) return;
+      if (now - (this.chatAt.get(client.sessionId) ?? -10000) < 800) { safety.eventFor(client.sessionId,'chat_rate_limited'); return; }
       const citizen = this.state.players.get(client.sessionId);
       if (!citizen) return;
       const silenced = this.discipline.silenceRemaining(citizen.profileId);
@@ -203,20 +217,34 @@ export class TownRoom extends Room<{ state: TownState }> {
     });
     this.setSimulationInterval(() => this.tick(), TICK_MS);
   }
-  async onAuth(_client: Client, _options: unknown, context: AuthContext) {
+  static async onAuth(_token: string, _options: unknown, context: AuthContext) {
     if (!isAllowedOrigin(context.headers.get('origin') ?? undefined)) throw new ServerError(403, 'Open the game from its configured address.');
+    const ip=clientAddress(context.headers);
+    if(!ip)throw new SafetyError(503,'untrusted_proxy','Game gateway unavailable.');
+    safety.checkBan(ip);
     const profile = await authenticateGuest(context.headers.get('cookie') ?? undefined, guests);
     if (!profile) throw new ServerError(401, 'Your guest profile could not be restored.');
-    return { profile, cookie: context.headers.get('cookie') };
+    safety.checkBan(ip,profile.id);
+    safety.limitGuestJoin(ip,profile.id);
+    return { profile };
   }
   async onJoin(client: Client) {
-    const auth = client.auth as { profile: PrivateGuestProfile; cookie: string };
+    const auth = client.auth as { profile: PrivateGuestProfile };
     if (!sessions.claim(auth.profile.id, client.sessionId, this.roomId)) throw new ServerError(409, 'This guest is already in town in another tab.');
+    let salaryStarted=false;
     try {
-      const profile = await authenticateGuest(auth.cookie, guests);
-      if (!profile) throw new ServerError(401, 'Your guest profile has expired.');
+      const identity=socketIdentities.get(client.ref);
+      if(!identity)throw new SafetyError(503,'untrusted_proxy','Game gateway unavailable.');
+      safety.connect({sessionId:client.sessionId,profileId:auth.profile.id,name:auth.profile.name,ip:identity.ip},()=>this.stopClient(client,4003,'Access to Slop City is currently restricted.'));
+      const profile = await authenticateGuest(identity.cookie, guests);
+      if (!profile || profile.id!==auth.profile.id) throw new ServerError(401, 'Your guest profile has expired.');
+      safety.checkBan(identity.ip,profile.id);
       client.auth = { profile }; // Do not retain the credential after admission.
+      delete identity.cookie;
       const wallet = await salary.start(profile.id,client.sessionId,this.roomId);
+      salaryStarted=true;
+      safety.checkBan(identity.ip,profile.id);
+      if(this.stoppedSessions.has(client.sessionId)||!identity.isOpen())throw new SafetyError(403,'disconnected','Connection ended.');
       const citizen = new Citizen();
       Object.assign(citizen, { profileId: profile.id, name: profile.name, shirt: profile.shirt, skin: profile.skin });
       citizen.x = (this.state.players.size % 8 - 3.5) * .9;
@@ -224,9 +252,27 @@ export class TownRoom extends Room<{ state: TownState }> {
       this.blocked.set(profile.id, new Set(profile.blocks));
       this.state.players.set(client.sessionId, citizen);
       this.wallets.set(client.sessionId,wallet); Object.assign(citizen,wallet.outfit);
-    } catch (error) { sessions.release(auth.profile.id, client.sessionId, this.roomId); throw error; }
+      // Observe raw frames without decoding payloads. The framework remains the
+      // hard frame limiter; this records floods and stops app work immediately.
+      let at=Date.now(),count=0;
+      const observe=()=>{const now=Date.now();if(now-at>=1000){at=now;count=0;}safety.count('game_messages');if(++count>SAFETY_LIMITS.messagesPerSecond&&!this.stoppedSessions.has(client.sessionId)){safety.eventFor(client.sessionId,'message_flood_disconnected');this.stopClient(client,4008,'Too many game messages. Please wait before rejoining.');}};
+      client.ref.prependListener('message',observe);this.frameObservers.set(client.sessionId,observe);
+      safety.joined(client.sessionId);
+    } catch (error) { if(salaryStarted)await salary.stop(client.sessionId).catch(()=>{});safety.disconnect(client.sessionId);this.stoppedSessions.delete(client.sessionId);sessions.release(auth.profile.id, client.sessionId, this.roomId);throw error; }
+  }
+  private stopClient(client:Client,code:number,message:string) {
+    this.stoppedSessions.add(client.sessionId);this.movementInputs.delete(client.sessionId);
+    salary.heartbeat(client.sessionId,false);
+    void voice.remove(this.roomId,client.sessionId);
+    client.leave(code,message);
+    // A modified client may never acknowledge close. Bound retention of its seat.
+    const identity=socketIdentities.get(client.ref);
+    const timer=setTimeout(()=>identity?.terminate(),1000);timer.unref();
   }
   async onLeave(client: Client) {
+    socketIdentities.delete(client.ref);
+    const observer=this.frameObservers.get(client.sessionId);if(observer)client.ref.removeListener('message',observer);this.frameObservers.delete(client.sessionId);
+    safety.disconnect(client.sessionId);this.stoppedSessions.delete(client.sessionId);
     const profile = client.auth?.profile as PrivateGuestProfile | undefined;
     const ownsSession = profile && sessions.get(profile.id)?.sessionId===client.sessionId;
     this.emotes.leave(client.sessionId); this.interactionBusy.delete(client.sessionId);

@@ -56,12 +56,12 @@ test('Blackjack natural pays 3:2, dealer peek pushes natural and defeats split-s
  const push = setup(['A', 'A', 'K', 'Q']); await push.begin(10); assert.equal(push.table().phase, 'result'); assert.equal(push.repo.wallet('alice').balance, 1000); await push.service.dispose();
  const lose = setup(['5', 'A', '6', 'Q']); await lose.begin(10); assert.equal(lose.table().phase, 'result'); assert.equal(lose.repo.wallet('alice').balance, 990); await lose.service.dispose();
 });
-test('Split aces draw once and stand, split 21 pays ordinary win; identical-rank rule rejects ten/jack', async () => {
+test('Split aces draw once and stand, split 21 pays ordinary win; nonpairs cannot split', async () => {
  const t = setup(['A', '9', 'A', '7', 'K', '9', '2']); await t.begin();
  await t.command({ action: 'blackjack-action', tableId: 'blackjack-1', roundId: t.table().roundId, hand: 0, move: 'split' }); await t.tick();
  assert.equal(t.table().phase, 'result'); assert.deepEqual(t.table().seats[0].hands.map(h => h.cards.length), [2, 2]); assert.equal(t.repo.wallet('alice').balance, 1020);
  assert.ok(t.table().seats[0].hands.every(h => h.outcome === 'win')); await t.service.dispose();
- const invalid = setup(['10', '9', 'J', '7', '2']); await invalid.begin();
+ const invalid = setup(['10', '9', '8', '7', '2']); await invalid.begin();
  assert.equal((await invalid.command({ action: 'blackjack-action', tableId: 'blackjack-1', roundId: invalid.table().roundId, hand: 0, move: 'split' })).code, 'action_unavailable');
  assert.equal(invalid.repo.rows.size, 1); await invalid.service.dispose();
 });
@@ -295,4 +295,185 @@ test('Leaving a settled casino seat allows the next station during the result di
  Object.assign(t.actors.get('alice')!, { x: -8, z: 28.1 });
  assert.equal((await t.command({ action: 'blackjack-join', tableId: 'blackjack-1', seat: 0 })).ok, true);
  await t.service.dispose();
+});
+
+test('Ready starts funded solo blackjack promptly, ignores nearby spectators and fences stale rounds', async () => {
+ const t = setup(); await t.command({ action: 'sync' });
+ const roundId = t.table().roundId, ready = { action: 'round-ready', tableId: 'blackjack-1', roundId };
+ assert.equal((await t.command(ready)).code, 'not_participating');
+ await t.command({ action: 'blackjack-join', tableId: 'blackjack-1', seat: 0 });
+ await t.command({ action: 'blackjack-bet', tableId: 'blackjack-1', roundId, stake: 10 });
+ const request = randomUUID(); assert.equal((await t.command(ready, 'alice', request)).ok, true);
+ assert.deepEqual(t.table().readiness, { players: 1, readyProfileIds: ['alice'], deadline: t.state().serverTime + 1500 });
+ const deadline = t.table().readiness!.deadline;
+ await t.tick(1000); await t.command(ready, 'alice', request); assert.equal(t.table().readiness!.deadline, deadline);
+ await t.tick(499); assert.equal(t.table().phase, 'betting'); await t.tick(1); assert.equal(t.table().phase, 'playing');
+ assert.equal((await t.command(ready)).code, 'betting_closed');
+ await t.command({ action: 'blackjack-action', tableId: 'blackjack-1', roundId, hand: 0, move: 'stand' }); await t.tick();
+ await t.tick(3000); assert.equal(t.table().phase, 'betting'); assert.notEqual(t.table().roundId, roundId);
+ assert.equal(t.table().readiness!.readyProfileIds.length, 0); assert.equal((await t.command(ready)).code, 'betting_closed');
+ await t.service.dispose();
+});
+
+test('Shared roulette waits for funded players, resets Ready on extra bets and removes departed blockers', async () => {
+ const t = setup(); for (const actor of t.actors.values()) { actor.x = 0; actor.z = 30; }
+ await t.command({ action: 'sync' }); const roulette = () => t.state().tables.find(x => x.id === 'roulette-1') as RouletteView;
+ const roundId = roulette().roundId, bet = { action: 'roulette-bet', tableId: 'roulette-1', roundId, bet: { kind: 'straight', numbers: [0], stake: 10 } }, ready = { action: 'round-ready', tableId: 'roulette-1', roundId };
+ await t.command(bet); await t.command(bet, 'bob'); await t.command(ready);
+ assert.deepEqual(roulette().readiness, { players: 2, readyProfileIds: ['alice'], deadline: 0 });
+ await t.tick(2000); assert.equal(roulette().phase, 'betting');
+ await t.command(ready, 'bob'); assert.equal(roulette().readiness!.deadline, t.state().serverTime + 1500);
+ await t.command(bet); assert.deepEqual(roulette().readiness!.readyProfileIds, ['bob']); assert.equal(roulette().readiness!.deadline, 0);
+ await t.command(ready); await t.command({ action: 'leave', tableId: 'roulette-1' }, 'bob');
+ assert.equal(roulette().readiness!.players, 1); await t.tick(1500); assert.equal(roulette().phase, 'spinning');
+ assert.equal(roulette().betCount, 3, 'Departure preserves accepted wagers');
+ await t.service.dispose();
+});
+
+test('Table-open joining grace is short, bounded, table scoped and not extended by spectator toggles', async () => {
+ const t = setup(); for (const actor of t.actors.values()) { actor.x = 0; actor.z = 30; }
+ await t.command({ action: 'sync' }); const roulette = () => t.state().tables.find(x => x.id === 'roulette-1') as RouletteView;
+ const roundId = roulette().roundId;
+ await t.command({ action: 'roulette-bet', tableId: 'roulette-1', roundId, bet: { kind: 'straight', numbers: [0], stake: 10 } });
+ await t.command({ action: 'table-presence', tableId: 'roulette-1', viewing: true }, 'bob');
+ await t.command({ action: 'round-ready', tableId: 'roulette-1', roundId }); const deadline = roulette().readiness!.deadline;
+ assert.equal(deadline, t.state().serverTime + 5000);
+ await t.tick(1000); await t.command({ action: 'table-presence', tableId: 'roulette-1', viewing: true }, 'bob');
+ assert.equal(roulette().readiness!.deadline, deadline);
+ await t.tick(3000); t.actors.set('carol', { ...t.actors.get('bob')!, sessionId: 'session-c' });
+ await t.command({ action: 'table-presence', tableId: 'roulette-1', viewing: true }, 'carol');
+ assert.equal(roulette().readiness!.deadline, deadline, 'A later arrival cannot extend beyond the first Ready grace cap');
+ await t.tick(999); assert.equal(roulette().phase, 'betting'); await t.tick(1); assert.equal(roulette().phase, 'spinning');
+ assert.equal((await t.command({ action: 'table-presence', tableId: 'roulette-2', viewing: true }, 'bob')).code, 'too_far');
+ await t.service.dispose();
+});
+
+test('Closing a spectator panel removes joining grace; reconnect cannot inherit Ready', async () => {
+ const t = setup(); await t.command({ action: 'sync' }); const roundId = t.table().roundId;
+ await t.command({ action: 'blackjack-join', tableId: 'blackjack-1', seat: 0 });
+ await t.command({ action: 'blackjack-bet', tableId: 'blackjack-1', roundId, stake: 10 });
+ await t.command({ action: 'table-presence', tableId: 'blackjack-1', viewing: true }, 'bob');
+ await t.command({ action: 'round-ready', tableId: 'blackjack-1', roundId });
+ await t.command({ action: 'table-presence', tableId: 'blackjack-1', viewing: false }, 'bob');
+ await t.command({ action: 'table-presence', tableId: 'blackjack-1', viewing: true }, 'bob');
+ assert.equal(t.table().readiness!.deadline, t.state().serverTime + 1500);
+ t.actors.get('alice')!.sessionId = 'replacement'; await t.tick(1000);
+ assert.equal(t.table().readiness!.players, 0); assert.deepEqual(t.table().readiness!.readyProfileIds, []);
+ await t.command({ action: 'blackjack-join', tableId: 'blackjack-1', seat: 0 });
+ assert.equal(t.table().readiness!.players, 1); assert.equal(t.table().readiness!.deadline, 0);
+ await t.service.dispose();
+});
+
+test('Pending ambiguous roulette acceptance pauses readiness and replays exactly once', async () => {
+ const t = setup(); t.actors.get('alice')!.x = 0; t.actors.get('alice')!.z = 30;
+ await t.command({ action: 'sync' }); const roulette = () => t.state().tables.find(x => x.id === 'roulette-1') as RouletteView;
+ const roundId = roulette().roundId, bet = { action: 'roulette-bet', tableId: 'roulette-1', roundId, bet: { kind: 'straight', numbers: [0], stake: 10 } }, request = randomUUID();
+ t.repo.ambiguous = true; await t.command(bet, 'alice', request);
+ assert.equal((await t.command({ action: 'round-ready', tableId: 'roulette-1', roundId })).code, 'table_saving');
+ await t.tick(1000); await t.command(bet, 'alice', request); assert.equal(roulette().betCount, 1);
+ await t.command({ action: 'round-ready', tableId: 'roulette-1', roundId }); await t.tick(1500);
+ assert.equal(roulette().phase, 'spinning'); assert.equal(t.repo.rows.size, 1); assert.equal(t.repo.wallet('alice').balance, 990);
+ await t.service.dispose();
+});
+
+test('Craps Ready opens shooter control promptly and empty roulette never spins', async () => {
+ const t = setup(); const anchor = CASINO_ANCHORS.find(a => a.id === 'craps-1')!;
+ Object.assign(t.actors.get('alice')!, { x: anchor.x, z: anchor.z });
+ await t.command({ action: 'sync' }); const craps = () => t.state().tables.find(x => x.game === 'craps')!;
+ const roundId = craps().roundId;
+ await t.command({ action: 'craps-bet', tableId: 'craps-1', roundId, bet: { kind: 'pass', stake: 10 } });
+ await t.command({ action: 'round-ready', tableId: 'craps-1', roundId }); await t.tick(1500);
+ assert.equal(craps().phase, 'awaiting-roll');
+ await t.tick(20_000); assert.ok(t.state().tables.filter(x => x.game === 'roulette').every(x => x.phase === 'betting' && x.motion === null));
+ await t.service.dispose();
+});
+
+test('Slot owner can spin immediately after reveal, with retries and other occupants still fenced', async () => {
+ const t = setup(); for (const actor of t.actors.values()) { actor.x = -14.6; actor.z = 27.55; }
+ const spin = { action: 'slots-spin', tableId: 'slots-1', stake: 10 }; const slot = () => t.state().tables.find(x => x.id === 'slots-1') as SlotsView;
+ await t.command(spin); assert.equal((await t.command(spin)).code, 'machine_busy'); await t.tick(SLOTS_SPIN_MS);
+ const oldRound = slot().roundId; assert.equal(slot().phase, 'result'); assert.equal((await t.command(spin, 'bob')).code, 'machine_busy');
+ const request = randomUUID(); assert.equal((await t.command(spin, 'alice', request)).ok, true);
+ assert.equal(slot().phase, 'spinning'); assert.notEqual(slot().roundId, oldRound); assert.deepEqual(slot().reels, []);
+ await t.command(spin, 'alice', request); assert.equal(t.repo.rows.size, 2);
+ await t.tick(SLOTS_SPIN_MS); await t.command({ action: 'leave', tableId: 'slots-1' });
+ assert.equal((await t.command(spin)).code, 'machine_busy'); await t.tick(CASINO_RESULT_MS);
+ assert.equal((await t.command(spin, 'bob')).ok, true); await t.service.dispose();
+});
+
+test('Ready and presence cannot replace an unresolved financial request ID', async () => {
+ const t = setup(); t.actors.get('alice')!.x = 0; t.actors.get('alice')!.z = 30;
+ await t.command({ action: 'sync' }); const roulette = () => t.state().tables.find(x => x.id === 'roulette-1') as RouletteView;
+ const roundId = roulette().roundId, request = randomUUID(); t.repo.ambiguous = true;
+ await t.command({ action: 'roulette-bet', tableId: 'roulette-1', roundId, bet: { kind: 'straight', numbers: [0], stake: 10 } }, 'alice', request);
+ assert.equal((await t.command({ action: 'table-presence', tableId: 'roulette-1', viewing: true }, 'alice', request)).code, 'request_conflict');
+ assert.equal((await t.command({ action: 'round-ready', tableId: 'roulette-1', roundId }, 'alice', request)).code, 'request_conflict');
+ await t.tick(1000); assert.equal(roulette().betCount, 1); assert.equal(t.repo.rows.size, 1); await t.service.dispose();
+});
+
+test('Validated panel reopen reclaims roulette and craps readiness without inheriting Ready or changing wagers', async () => {
+ for (const tableId of ['roulette-1', 'craps-1'] as const) {
+  const t = setup(); const anchor = CASINO_ANCHORS.find(a => a.id === tableId)!;
+  Object.assign(t.actors.get('alice')!, { x: anchor.x, z: anchor.z }); await t.command({ action: 'sync' });
+  const view = () => t.state().tables.find(x => x.id === tableId) as RouletteView | import('../shared/craps.ts').CrapsView;
+  const roundId = view().roundId, ready = { action: 'round-ready', tableId, roundId };
+  await t.command(tableId === 'craps-1' ? { action: 'craps-bet', tableId, roundId, bet: { kind: 'pass', stake: 10 } } : { action: 'roulette-bet', tableId, roundId, bet: { kind: 'straight', numbers: [0], stake: 10 } });
+  await t.command(ready); await t.command({ action: 'leave', tableId }); t.actors.get('alice')!.sessionId = 'replacement';
+  assert.equal((await t.command(ready)).code, 'not_participating');
+  await t.command({ action: 'table-presence', tableId, viewing: true });
+  assert.equal(view().readiness!.players, 1); assert.deepEqual(view().readiness!.readyProfileIds, []);
+  assert.equal((await t.command(ready)).ok, true); await t.tick(1500);
+  assert.equal(view().phase, tableId === 'craps-1' ? 'awaiting-roll' : 'spinning'); assert.equal(t.repo.rows.size, 1);
+  await t.service.dispose();
+ }
+});
+
+test('Presence and Ready reject a durable wager request ID after restarting the service', async () => {
+ const t = setup(); const requestId = randomUUID(); t.actors.get('alice')!.x = 0; t.actors.get('alice')!.z = 30;
+ await t.command({ action: 'sync' }); const roundId = (t.state().tables.find(x => x.id === 'roulette-1') as RouletteView).roundId;
+ await t.command({ action: 'roulette-bet', tableId: 'roulette-1', roundId, bet: { kind: 'straight', numbers: [0], stake: 10 } }, 'alice', requestId);
+ await t.service.dispose(); const receipts: CasinoReceipt[] = [];
+ const restarted = new CasinoService('room', t.repo, { actor: id => t.actors.get(id), publish: () => {}, private: (_id, type, payload) => { if (type === 'casino-receipt') receipts.push(payload as CasinoReceipt); }, wallet: () => {} });
+ await restarted.handle('alice', { action: 'table-presence', tableId: 'roulette-1', viewing: true, requestId }); assert.equal(receipts.at(-1)!.code, 'request_conflict');
+ await restarted.handle('alice', { action: 'round-ready', tableId: 'roulette-1', roundId, requestId }); assert.equal(receipts.at(-1)!.code, 'request_conflict');
+ assert.equal(t.repo.rows.size, 1); await restarted.dispose();
+});
+
+test('Ten-value split offers the action, debits once, rejects resplitting and replays safely', async () => {
+ for (const pair of [['10', '10'], ['10', 'J'], ['Q', 'K']] as const) {
+  const t = setup([pair[0], '9', pair[1], '8', '2', '3']); await t.begin();
+  assert.ok(t.table().seats[0].hands[0].actions.includes('split'));
+  const action = { action: 'blackjack-action', tableId: 'blackjack-1', roundId: t.table().roundId, hand: 0, move: 'split' }, request = randomUUID();
+  t.repo.wallet('alice').balance = 0;
+  assert.equal((await t.command(action, 'alice', request)).code, 'insufficient_funds');
+  assert.equal(t.table().seats[0].hands.length, 1); assert.equal(t.repo.rows.size, 1);
+  t.repo.wallet('alice').balance = 100;
+  assert.equal((await t.command(action, 'alice', request)).ok, true);
+  assert.deepEqual(t.table().seats[0].hands.map(h => h.cards.map(c => c.rank)), [[pair[0], '2'], [pair[1], '3']]);
+  assert.equal(t.repo.wallet('alice').balance, 90); assert.equal(t.repo.rows.size, 2);
+  assert.equal((await t.command(action, 'alice', request)).ok, true);
+  assert.equal(t.repo.wallet('alice').balance, 90); assert.equal(t.repo.rows.size, 2);
+  assert.equal(t.table().seats[0].hands[0].actions.includes('split'), false);
+  assert.equal((await t.command(action)).code, 'action_unavailable');
+  await t.service.dispose();
+ }
+});
+
+test('Roulette accepts large bets while preserving wallet, round and bet-count limits', async () => {
+ const t = setup(); t.actors.get('alice')!.x = 0; t.actors.get('alice')!.z = 30; await t.command({action: 'sync'});
+ const roulette = () => t.state().tables.find(x => x.id === 'roulette-1') as RouletteView;
+ const bet = (stake: number) => ({action: 'roulette-bet', tableId: 'roulette-1', roundId: roulette().roundId, bet: {kind: 'straight', numbers: [0], stake}});
+ const request = randomUUID();
+ assert.equal((await t.command(bet(1000), 'alice', request)).ok, true);
+ assert.equal((await t.command(bet(1000), 'alice', request)).ok, true);
+ assert.equal(t.repo.wallet('alice').balance, 0); assert.equal(t.repo.rows.size, 1);
+ t.repo.wallet('alice').balance = 1000;
+ assert.equal((await t.command(bet(10))).code, 'round_limit');
+ await t.service.dispose();
+ const count = setup(); count.actors.get('alice')!.x = 0; count.actors.get('alice')!.z = 30; await count.command({action: 'sync'});
+ const round = (count.state().tables.find(x => x.id === 'roulette-1') as RouletteView).roundId;
+ const small = {action: 'roulette-bet', tableId: 'roulette-1', roundId: round, bet: {kind: 'straight', numbers: [0], stake: 10}};
+ for (let i = 0; i < 20; i++) assert.equal((await count.command(small)).ok, true);
+ assert.equal((await count.command(small)).code, 'round_limit');
+ await count.service.dispose();
 });

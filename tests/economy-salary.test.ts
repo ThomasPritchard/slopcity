@@ -26,7 +26,7 @@ test('leave freezes before in-flight persistence and coalesces later checkpoints
 });
 test('salary threshold checkpoints early and failed writes retry cumulative time',async()=>{
  let now=0,fail=true;const checkpoints:number[]=[];let errors=0;
- const tracker=new SalaryTracker({async openSession(){return {...state,salaryProgressMs:599000};},async checkpoint(_id,_epoch,ms){checkpoints.push(ms);if(fail){fail=false;throw new Error('offline');}return {...state,balance:1100,salaryProgressMs:ms-1000};}},{now:()=>now,autoTick:false,onSnapshot(){},onError(){errors++;}});
+ const tracker=new SalaryTracker({async openSession(){return {...state,salaryProgressMs:299000};},async checkpoint(_id,_epoch,ms){checkpoints.push(ms);if(fail){fail=false;throw new Error('offline');}return {...state,balance:1100,salaryProgressMs:ms-1000};}},{now:()=>now,autoTick:false,onSnapshot(){},onError(){errors++;}});
  await tracker.start('profile','session','room');tracker.heartbeat('session',true);now=1000;tracker.tick();await settle();assert.equal(errors,1);assert.deepEqual(checkpoints,[1000]);
  now=2000;tracker.tick();await settle();assert.deepEqual(checkpoints,[1000,2000]);await tracker.stop('session');await tracker.dispose();
 });

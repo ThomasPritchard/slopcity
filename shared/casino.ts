@@ -24,6 +24,10 @@ export const CASINO_STAKE_STEP = 10;
 export const ROULETTE_BETTING_MS = 20_000;
 export const ROULETTE_SPIN_MS = 5_000;
 export const CASINO_RESULT_MS = 6_000;
+export const CASINO_SHARED_RESULT_MS = 3_000;
+export const CASINO_READY_LEAD_MS = 1_500;
+export const CASINO_JOIN_GRACE_MS = 5_000;
+export type CasinoReadiness = { players: number; readyProfileIds: string[]; deadline: number };
 export const BLACKJACK_BETTING_MS = 20_000;
 export const BLACKJACK_ACTION_MS = 30_000;
 export const SLOTS_SPIN_MS = 2_500;
@@ -59,13 +63,15 @@ export const BLACKJACK_SEAT_OFFSETS: readonly { x: number; z: number; heading: n
   { x: 1.15, z: -1.5, heading: -.654 },
   { x: 1.8, z: -.6, heading: -1.249 },
 ];
-export type RouletteView = { id: RouletteTableId; game: 'roulette'; roundId: string; phase: 'betting' | 'spinning' | 'landing' | 'result' | 'paused'; deadline: number; result: number | null; betCount: number; history: number[]; motion: RouletteMotion | null };
-export type BlackjackView = { id: BlackjackTableId; game: 'blackjack'; roundId: string; phase: 'betting' | 'playing' | 'dealer' | 'result' | 'paused'; deadline: number; dealer: (Card | null)[]; dealerTotal: number | null; seats: BlackjackSeatView[]; activeSeat: number | null; activeHand: number | null };
+export type RouletteView = { readiness?: CasinoReadiness; id: RouletteTableId; game: 'roulette'; roundId: string; phase: 'betting' | 'spinning' | 'landing' | 'result' | 'paused'; deadline: number; result: number | null; betCount: number; history: number[]; motion: RouletteMotion | null };
+export type BlackjackView = { readiness?: CasinoReadiness; id: BlackjackTableId; game: 'blackjack'; roundId: string; phase: 'betting' | 'playing' | 'dealer' | 'result' | 'paused'; deadline: number; dealer: (Card | null)[]; dealerTotal: number | null; seats: BlackjackSeatView[]; activeSeat: number | null; activeHand: number | null };
 export type SlotsView = { id: CasinoTableId; game: 'slots'; roundId: string; phase: 'idle' | 'spinning' | 'result' | 'paused'; deadline: number; player: CasinoOccupant | null; reels: SlotSymbol[]; stake: number; returned: number | null };
 export type CasinoTableView = RouletteView | BlackjackView | SlotsView | CrapsView | PokerView;
 export type CasinoState = { serverTime: number; tables: CasinoTableView[] };
 export type CasinoCommand = { requestId: string } & (
   | { action: 'sync' }
+  | { action: 'table-presence'; tableId: CasinoTableId; viewing: boolean }
+  | { action: 'round-ready'; tableId: CasinoTableId; roundId: string }
   | { action: 'craps-bet'; tableId: 'craps-1'; roundId: string; bet: CrapsBet }
   | { action: 'craps-roll'; tableId: 'craps-1'; roundId: string; rollId: string }
   | { action: 'roulette-bet'; tableId: RouletteTableId; roundId: string; bet: RouletteBet }
@@ -77,3 +83,6 @@ export type CasinoCommand = { requestId: string } & (
 )|PokerCommand;
 export type CasinoReceipt = { requestId: string; ok: boolean; code?: string; message: string; wallet?: WalletState; wagerId?: string; roundId?: string };
 export type CasinoPrivateState = { poker?: PokerPrivateState | null; crapsBets?: { tableId: 'craps-1'; roundId: string; wagerId: string; bet: CrapsBet }[]; rouletteBets: { tableId: RouletteTableId; wagerId: string; roundId: string; bet: RouletteBet }[] };
+
+export const ROULETTE_MAX_ROUND_STAKE = 1000;
+export const ROULETTE_MAX_BETS_PER_ROUND = 20;

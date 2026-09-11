@@ -1,6 +1,9 @@
 import { CreditBoard } from './creditBoard';
 import { createMemoriesBoard } from './memoriesBoard';
-import { nearMemoriesBoard } from '../../shared/memories';
+import { nearMemoriesBoard, MEMORIES_BOARD } from '../../shared/memories';
+import { CinemaDisplay } from './cinema';
+import { CINEMA_LAYOUT, inCinema } from '../../shared/cinemaLayout';
+import type { Programme } from '../../shared/community';
 import { nearCreditBoard, type CreditLeaderboard } from '../../shared/creditLeaderboard';
 import { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
@@ -83,6 +86,7 @@ export class TownScene {
   onSelectPlayer?: (profileId: string) => void;
   onCreditLeaderboard?: () => void;
   onMemory?: () => void;
+  onCinema?: () => void;
   onSprintChange?: (enabled: boolean) => void;
   private sprintToggle = false;
   private pointerStarts = new Map<number, { x: number; y: number; cancelled: boolean }>();
@@ -129,7 +133,9 @@ export class TownScene {
     return ((hash ^ hash >>> 16) >>> 0) % 1000;
   }
   private creditBoard!: CreditBoard;
-  private memoriesBoard!: TransformNode;
+  private memoriesBoard!: ReturnType<typeof createMemoriesBoard>;
+  private cinema!: CinemaDisplay;
+  private communityFocus: 'board' | 'cinema' | null = null;
   private tableCards!: CasinoTableArt;
 
   constructor(readonly canvas: HTMLCanvasElement, low = false) {
@@ -232,7 +238,7 @@ export class TownScene {
     }
     return root;
   }
-  private bench(x: number, z: number, rotation: number) { this.placeAsset('bench', x, 0, z, rotation); }
+  private bench(x: number, z: number, rotation: number) { this.placeAsset('bench', x, floorHeight(x,z), z, rotation); }
   private buildWorld(): Mesh {
     this.box('base', 0, -.22, 0, 220, .4, 220, '#b2b6a3', false);
     // Ground is an authored, batched surface: patterned stone, dressed borders and gravel.
@@ -325,9 +331,14 @@ export class TownScene {
       for (let floor = 3; floor < h; floor += 3) this.box('skyline band', -50 + i * 13, floor, 73.95 + (i % 3) * 7, 8, .65, .04, '#90a5a3', false);
     }
     this.lampPosts = LAMP_POSTS.map(({ x, z }) => this.placeAsset('lamp', x, 0, z));
+    const cinemaAsset = this.placeAsset('cinema',0,0,0);
+    // glTF's left-handed conversion mirrors X; this world-space asset uses town X coordinates.
+    cinemaAsset.scaling.x = -1;
+    for (const point of CINEMA_LAYOUT.trees) this.placeAsset('tree',point.x,0,point.z,0,.8);
+    this.cinema = new CinemaDisplay(this.scene);
     for (const bench of BENCHES) this.bench(bench.x, bench.z, bench.heading);
     this.memoriesBoard = createMemoriesBoard(this.scene);
-    for (const mesh of this.memoriesBoard.getChildMeshes()) this.shadows.addShadowCaster(mesh);
+    for (const mesh of this.memoriesBoard.root.getChildMeshes()) this.shadows.addShadowCaster(mesh);
     this.placeAsset('fountain', 0, 0, 1);
     this.fountain = new FountainWater(this.scene);
     this.water = this.fountain.water;
@@ -364,6 +375,7 @@ export class TownScene {
     this.vegetation.setQuality(this.low);
     this.vegetation.setReducedMotion(this.reducedMotion);
     this.lampLighting = new LampPostLighting(this.scene, this.lampPosts);
+    this.cinema.bindLighting(this.scene.getTransformNodeByName('cinema-instance')!,this.scene.transformNodes.filter(node=>node.name==='bench-instance'&&node.position.x<-12),this.lampLighting.glow);
     this.casinoLighting = new CasinoLighting(this.scene, this.lampLighting.glow);
     this.casinoLighting.setReducedMotion(this.reducedMotion);
     this.shopLighting = new ShopLighting(this.scene, this.lampLighting.glow);
@@ -457,6 +469,17 @@ export class TownScene {
     for (const [id, avatar] of this.avatars) if (!players.has(id)) { avatar.label.material?.dispose(false, true); avatar.model.dispose(); this.avatars.delete(id); }
   }
   syncCreditLeaderboard(snapshot: CreditLeaderboard | null, unavailable: boolean) { this.creditBoard?.sync(snapshot, unavailable); }
+  syncCommunity(programme: Programme | null) {
+    this.cinema?.sync(programme);
+    this.memoriesBoard?.sync(programme?.images ?? []);
+  }
+  focusCommunity(view: 'board' | 'cinema' | null) {
+    if(view && !this.communityFocus)this.saveView();
+    const previous=this.communityFocus;this.communityFocus=view;this.blur();
+    if(view==='board')this.frameCamera(new Vector3(MEMORIES_BOARD.x,1.93,MEMORIES_BOARD.z),-Math.PI/2,1.43,4.2);
+    else if(view==='cinema')this.frameCamera(new Vector3(CINEMA_LAYOUT.screen.x,3.7,CINEMA_LAYOUT.screen.z),0,1.43,12);
+    else if(previous)this.restoreView(true);
+  }
   syncCasino(state: CasinoState) { this.casinoState=state; this.casinoTimeOffset=state.serverTime-Date.now(); this.tableCards.sync(state); this.pokerArt?.sync(state.tables.find(t=>t.game==='poker') ?? null,this.casinoPrivate); this.dayCycle?.synchronise(state.serverTime); }
   syncCasinoPrivate(value:CasinoPrivateState){this.casinoPrivate=value;this.tableCards.syncPrivate(value);this.pokerArt?.sync(this.casinoState?.tables.find(t=>t.game==='poker') ?? null,value);}
   focusCasino(anchor: CasinoAnchor | null) {
@@ -542,8 +565,11 @@ export class TownScene {
     const citizenMeshes = new Set([...this.avatars.values()].flatMap(avatar => avatar.model.meshes));
     const hit = this.scene.pick(event.clientX - rect.left, event.clientY - rect.top, mesh => proxies.has(mesh as Mesh) || this.walls.includes(mesh as Mesh) || mesh.isPickable && mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && !citizenMeshes.has(mesh) && !mesh.name.startsWith('player-hit:'));
     const local = this.remote.get(this.localId ?? '');
-    if (local && nearMemoriesBoard(local.x, local.z) && hit?.pickedMesh && this.memoriesBoard?.getChildMeshes().includes(hit.pickedMesh)) {
+    if (local && nearMemoriesBoard(local.x, local.z) && hit?.pickedMesh && this.memoriesBoard?.root.getChildMeshes().includes(hit.pickedMesh)) {
       this.blur(); this.onMemory?.(); return;
+    }
+    if(local && inCinema(local.x,local.z) && hit?.pickedMesh && (hit.pickedMesh.name.startsWith('cinema/') || this.cinema?.root.getChildMeshes().includes(hit.pickedMesh))) {
+      this.blur();this.onCinema?.();return;
     }
     if (local && nearCreditBoard(local.x, local.z) && hit?.pickedMesh && this.creditBoard?.root.getChildMeshes().includes(hit.pickedMesh)) {
       this.blur(); this.onCreditLeaderboard?.(); return;
@@ -620,12 +646,13 @@ export class TownScene {
   private visibility = () => { if (document.hidden) this.blur(); };
   private resize = () => {
     this.engine.resize();
-    if(this.casinoFocus) {this.camera.viewport=innerWidth<700 && innerHeight>innerWidth?new Viewport(0,.55,1,.45):new Viewport(0,0,innerWidth<1100?.55:1-Math.max(.33,476/innerWidth),1);return;}
+    if(this.casinoFocus) {this.camera.viewport=innerWidth<700 && innerHeight>innerWidth?new Viewport(0,.72,1,.28):new Viewport(0,0,innerHeight<=620?1-Math.min(460,innerWidth*.55)/innerWidth-.02:innerWidth<1100?.55:1-Math.max(.33,476/innerWidth),1);return;}
     if(this.mode==='playing')this.camera.viewport=new Viewport(0,0,1,1);
     if (this.mode === 'wardrobe') this.camera.viewport = innerWidth < 700 && innerHeight > innerWidth ? new Viewport(0,.52,1,.48) : new Viewport(0,0,innerWidth < 1000 ? .58 : .72,1);
     if (this.mode === 'customise') this.camera.viewport = innerWidth < 700 ? new Viewport(0,.42,1,.58) : new Viewport(0,0,.72,1);
   };
   private update() {
+    this.cinema?.update(this.dayCycle?.state.lamps ?? 0);
     this.tableCards.update(Math.min(.1,this.engine.getDeltaTime()/1000));
     this.animateCasino();
     const dt = Math.min(.05, this.engine.getDeltaTime() / 1000); this.clock += dt;
@@ -707,7 +734,7 @@ export class TownScene {
         avatar.root.rotation.y += turn * (1-Math.exp(-dt*14));
         avatar.root.position.y = floorHeight(avatar.root.position.x, avatar.root.position.z);
         const target = avatar.root.position.add(new Vector3(0, 1.35, 0));
-        if(!this.casinoFocus && !this.framing)this.camera.setTarget(Vector3.Lerp(this.camera.target, target, 1 - Math.exp(-dt * 15)), false, true, true);
+        if(!this.casinoFocus && !this.communityFocus && !this.framing)this.camera.setTarget(Vector3.Lerp(this.camera.target, target, 1 - Math.exp(-dt * 15)), false, true, true);
       } else {
         avatar.root.position.x += (state.x - avatar.root.position.x) * (1 - Math.exp(-dt * 14));
         avatar.root.position.z += (state.z - avatar.root.position.z) * (1 - Math.exp(-dt * 14));
@@ -732,7 +759,7 @@ export class TownScene {
         if (this.casinoFocus) this.focusRadius = Math.max(2.5, Math.min(8, this.focusRadius + userDelta));
         else this.requestedRadius = Math.max(3, Math.min(13, this.requestedRadius + userDelta));
       }
-      const desired = this.framing ? this.camera.radius : this.casinoFocus ? this.focusRadius : this.requestedRadius;
+      const desired = this.framing || this.communityFocus ? this.camera.radius : this.casinoFocus ? this.focusRadius : this.requestedRadius;
       const direction = new Vector3(Math.cos(this.camera.alpha)*Math.sin(this.camera.beta), Math.cos(this.camera.beta), Math.sin(this.camera.alpha)*Math.sin(this.camera.beta));
       const hit = this.scene.pickWithRay(new Ray(this.camera.target, direction, desired), mesh => this.walls.includes(mesh as Mesh));
       const allowed = hit?.hit ? Math.max(.65, hit.distance-.3) : desired;

@@ -1,3 +1,4 @@
+import { RoundPacing } from './pacing.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Card, CasinoReceipt } from '../../shared/casino.ts';
 import type { WalletState } from '../../shared/catalog.ts';
@@ -17,6 +18,7 @@ type Pending = { run: () => Promise<void>; requestKey?: string; fingerprint?: st
 const fail = (code: string, message: string): never => { throw new EconomyError(code, message); };
 /** Owned by CasinoService's serialized queue. No timers, independent wallet or local persistence. */
 export class PokerService {
+ private pacing: RoundPacing;
  private seats = new Map<number, Seat>();
  private view: PokerView = { id: 'poker-1', game: 'poker', roundId: randomUUID(), handId: null, phase: 'waiting', deadline: 0, button: null, smallBlindSeat: null, bigBlindSeat: null, activeSeat: null, board: [], pot: 0, currentBet: 0, seats: [], pots: [], winners: [], message: 'Two funded players start a hand' };
  private cards: Card[] = [];
@@ -27,7 +29,11 @@ export class PokerService {
  private receipts = new Map<string, { fingerprint: string; receipt: CasinoReceipt }>();
  private now: () => number;
  private deck: () => Card[];
- constructor(readonly roomId: string, readonly repository: PokerRepositoryLike, private hooks: PokerHooks, options: { now?: () => number; random?: Random; deck?: () => Card[] } = {}) { this.now = options.now ?? Date.now; this.deck = options.deck ?? (() => pokerDeck(options.random)); }
+ constructor(readonly roomId: string, readonly repository: PokerRepositoryLike, private hooks: PokerHooks, options: { now?: () => number; random?: Random; deck?: () => Card[] } = {}) { this.now = options.now ?? Date.now; this.pacing = new RoundPacing(this.now); this.deck = options.deck ?? (() => pokerDeck(options.random)); }
+ checkControlRequest(profileId: string, requestId: string) {
+  const key = `${profileId}:${requestId}`;
+  if (this.pending?.requestKey === key || this.receipts.has(key)) fail('request_conflict', 'This request was used for another poker action');
+ }
  profiles() { return [...this.seats.values()].map(s => s.escrow.profileId); }
  hasSeat(profileId: string) { return !!this.own(profileId); }
  private own(profileId: string) { return [...this.seats.values()].find(s => s.escrow.profileId === profileId); }
@@ -35,8 +41,28 @@ export class PokerService {
   if (s.disconnected || this.hooks.actor(s.escrow.profileId)?.sessionId !== s.sessionId) return false;
   try { this.hooks.eligible(s.escrow.profileId, s.sessionId); return true; } catch { return false; }
  }
+ private readiness() {
+  this.pacing.reset(this.view.roundId);
+  if (!['waiting', 'result'].includes(this.view.phase)) return undefined;
+  const players = new Map([...this.seats.values()].filter(s => s.stack > 0 && !s.leaving && this.connected(s)).map(s => [s.escrow.profileId, s.sessionId]));
+  return this.pacing.state(players, this.view.deadline, 2, (id, sessionId) => { try { this.hooks.eligible(id, sessionId); return true; } catch { return false; } });
+ }
+ presence(profileId: string, sessionId: string, viewing: boolean) {
+  this.pacing.reset(this.view.roundId);
+  if (!viewing || !['waiting', 'result'].includes(this.view.phase) || !this.view.deadline || this.now() < this.startDeadline()) this.pacing.presence(profileId, sessionId, viewing);
+ }
+ ready(profileId: string, sessionId: string, roundId: string) {
+  if (this.pending) fail('table_saving', 'Poker is saving; please wait');
+  this.hooks.eligible(profileId, sessionId);
+  const readiness = this.readiness();
+  if (!readiness || roundId !== this.view.roundId || (this.view.deadline && this.now() >= (readiness.deadline || this.view.deadline))) fail('hand_in_progress', 'This poker hand is no longer waiting');
+  const seat = this.own(profileId);
+  if (!seat || !seat.stack || seat.leaving || seat.sessionId !== sessionId || !this.connected(seat)) fail('not_participating', 'Take a funded poker seat before getting ready');
+  this.pacing.mark(profileId, sessionId); this.readiness();
+ }
+ private startDeadline() { return this.readiness()?.deadline || this.view.deadline; }
  state(): PokerView {
-  return structuredClone({ ...this.view, phase: this.pending ? 'paused' : this.view.phase, seats: [...this.seats.entries()].sort(([a], [b]) => a - b).map(([seat, s]) => ({ seat, player: { profileId: s.escrow.profileId, name: s.name, connected: this.connected(s) }, stack: s.stack, bet: s.bet, committed: s.committed, state: s.state, leaving: s.leaving, cards: this.showdown && s.state !== 'folded' ? s.cards : s.cards.map(() => null) })) });
+  return structuredClone({ ...this.view, readiness: this.readiness(), phase: this.pending ? 'paused' : this.view.phase, seats: [...this.seats.entries()].sort(([a], [b]) => a - b).map(([seat, s]) => ({ seat, player: { profileId: s.escrow.profileId, name: s.name, connected: this.connected(s) }, stack: s.stack, bet: s.bet, committed: s.committed, state: s.state, leaving: s.leaving, cards: this.showdown && s.state !== 'folded' ? s.cards : s.cards.map(() => null) })) });
  }
  private legal(s: Seat): PokerLegalActions | null {
   if (this.pending || this.view.activeSeat !== s.escrow.seat || s.state !== 'playing' || !this.connected(s)) return null;
@@ -76,7 +102,7 @@ export class PokerService {
   const accepted = (extra: Partial<CasinoReceipt> = {}) => this.remember(key, fingerprint, { requestId: command.requestId, ok: true, message: 'Accepted', ...extra });
   if (command.action === 'poker-join') {
    if (!Number.isInteger(command.seat) || command.seat < 0 || command.seat > 5 || !Number.isSafeInteger(command.buyIn) || command.buyIn < POKER_MIN_BUY_IN || command.buyIn > POKER_MAX_BUY_IN || command.buyIn % POKER_BUY_IN_STEP) fail('invalid_buy_in', 'Choose a seat and 100–1,000 credits in steps of 100');
-   const validate = () => { this.hooks.canJoin(profileId, originSession!); if (!['waiting', 'result'].includes(this.view.phase)) fail('hand_in_progress', 'Join between poker hands'); if (this.own(profileId)) fail('already_seated', 'Rejoin your existing poker seat'); if (this.seats.has(command.seat)) fail('seat_taken', 'That poker seat is occupied'); };
+   const validate = () => { this.hooks.canJoin(profileId, originSession!); if (!['waiting', 'result'].includes(this.view.phase) || (this.view.deadline && this.now() >= this.startDeadline())) fail('hand_in_progress', 'Join between poker hands'); if (this.own(profileId)) fail('already_seated', 'Rejoin your existing poker seat'); if (this.seats.has(command.seat)) fail('seat_taken', 'That poker seat is occupied'); };
    validate(); const name = this.hooks.actor(profileId)!.name;
    const input = { profileId, requestId: command.requestId, fingerprint, roomId: this.roomId, tableId: 'poker-1' as const, seat: command.seat, amount: command.buyIn };
    this.pending = { requestKey: key, fingerprint, run: async () => {
@@ -202,22 +228,22 @@ export class PokerService {
   await this.retry();
  }
  private async cashOut(s: Seat) { const result = await this.repository.cashOut(s.escrow.id); this.hooks.wallet(s.escrow.profileId, result.wallet); if (this.seats.get(s.escrow.seat)?.escrow.id === s.escrow.id) this.seats.delete(s.escrow.seat); }
- leave(profileId: string) { const s = this.own(profileId); if (s) s.disconnected = true; }
+ leave(profileId: string) { this.pacing.depart(profileId); const s = this.own(profileId); if (s) s.disconnected = true; }
  async tick() {
   if (this.pending) { if (!await this.retry()) return; }
-  if (this.view.phase === 'result' && this.now() >= this.view.deadline) {
+  if (this.view.phase === 'result' && this.now() >= this.startDeadline()) {
    for (const s of [...this.seats.values()]) if (s.leaving || !s.stack || !this.connected(s)) {
     this.pending = { run: () => this.cashOut(s) }; if (!await this.retry()) return;
    }
    for (const s of this.seats.values()) { s.cards = []; s.bet = 0; s.committed = 0; s.state = 'waiting'; }
-   this.view.phase = 'waiting'; this.view.handId = null; this.view.board = []; this.view.pot = 0; this.view.currentBet = 0; this.view.pots = []; this.view.winners = []; this.showdown = false;
+   this.view.deadline = this.now(); this.view.phase = 'waiting'; this.view.handId = null; this.view.board = []; this.view.pot = 0; this.view.currentBet = 0; this.view.pots = []; this.view.winners = []; this.showdown = false;
   }
   if (this.view.phase === 'waiting') {
    for (const s of [...this.seats.values()]) if (s.leaving || !s.stack || !this.connected(s)) { this.pending = { run: () => this.cashOut(s) }; if (!await this.retry()) return; }
    const funded = [...this.seats.values()].filter(s => s.stack > 0 && !s.leaving && this.connected(s));
    if (funded.length < 2) { this.view.deadline = 0; return; }
    if (!this.view.deadline) this.view.deadline = this.now() + POKER_BREAK_MS;
-   if (this.now() >= this.view.deadline) await this.begin();
+   if (this.now() >= this.startDeadline()) await this.begin();
    return;
   }
   if (this.view.phase === 'runout' && this.now() >= this.view.deadline) { this.nextStreet(); await this.progress(this.view.button!); return; }

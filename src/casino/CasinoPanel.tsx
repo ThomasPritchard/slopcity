@@ -1,9 +1,8 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  CASINO_ANCHORS, CASINO_MAX_STAKE, CASINO_MIN_STAKE, CASINO_STAKE_STEP,
-  BLACKJACK_BETTING_MS, BLACKJACK_ACTION_MS, ROULETTE_BETTING_MS,
-  ROULETTE_PROFIT_MULTIPLIER, SLOT_PAYTABLE, SLOT_SYMBOLS, SLOTS_SPIN_MS,
+  CASINO_ANCHORS, CASINO_MAX_STAKE, CASINO_MIN_STAKE, CASINO_STAKE_STEP, ROULETTE_MAX_ROUND_STAKE, ROULETTE_MAX_BETS_PER_ROUND,
+  ROULETTE_PROFIT_MULTIPLIER, SLOT_SYMBOLS, SLOTS_SPIN_MS,
   type BlackjackHandView, type BlackjackView, type Card, type CasinoCommand,
   type CasinoPrivateState, type CasinoTableView, type RouletteBetKind, type RouletteView,
   type SlotsView, type SlotSymbol,
@@ -11,6 +10,9 @@ import {
 import { isRed, rouletteChoices, rouletteCoverageLabel, rouletteKinds } from './rouletteChoices';
 import { PokerGame } from './PokerGame';
 import { CrapsGame } from './CrapsGame';
+import { CasinoRules, PageNav, PagedItems, StageTabs, useCompactPages, type CasinoView } from './CasinoViews';
+import { effectiveDeadline, RoundReady } from './RoundReady';
+import { summariseCasinoResult, type CasinoResult } from './casinoResults';
 import './casino.css';
 
 export interface CasinoPanelProps {
@@ -24,6 +26,8 @@ export interface CasinoPanelProps {
   busy: boolean;
   error: string;
   notice: string;
+  latestResult?: CasinoResult;
+  chat?: ReactNode;
   onCommand(command: CasinoCommand): void;
   onClose(): void;
 }
@@ -32,22 +36,10 @@ type WithoutRequestId<T> = T extends { requestId: string } ? Omit<T, 'requestId'
 type Send = (command: WithoutRequestId<CasinoCommand>) => void;
 const credits = (value: number) => value.toLocaleString('en-GB');
 const suitGlyph: Record<Card['suit'], string> = { clubs: '♣', diamonds: '♦', hearts: '♥', spades: '♠' };
-const compactControlsQuery = '(max-width: 699px) and (orientation: portrait), (max-height: 620px) and (orientation: landscape)';
-
-function useCompactControls() {
-  const [compact, setCompact] = useState(() => window.matchMedia(compactControlsQuery).matches);
-  useEffect(() => {
-    const media = window.matchMedia(compactControlsQuery);
-    const update = () => setCompact(media.matches);
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
-  return compact;
-}
-
-/** One set of controls: in the page flow on desktop, below the scroll area on phones. */
+/** Actions remain available while the player reads another page. */
 function ActionDock({ host, summary, children }: { host: HTMLElement | null; summary: ReactNode; children: ReactNode }) {
-  return host ? createPortal(<div className="casino-action-dock"><div className="casino-dock-summary">{summary}</div><div className="casino-dock-controls">{children}</div></div>, host) : <>{children}</>;
+  const dock = <div className="casino-action-dock"><div className="casino-dock-summary">{summary}</div><div className="casino-dock-controls">{children}</div></div>;
+  return host ? createPortal(dock, host) : dock;
 }
 
 function useServerNow(open: boolean, serverTime: number) {
@@ -87,62 +79,50 @@ function RoundStatus({ label, deadline, now, waiting }: { label: string; deadlin
   return <div className="casino-round-status"><span><i aria-hidden="true" />{label}</span>{deadline > 0 && !waiting && <span className="casino-countdown" aria-label={remaining ? `${remaining} seconds remaining` : 'Waiting for the table'}>{remaining ? `${remaining}s` : 'Settling…'}</span>}</div>;
 }
 
-function Roulette({ table, now, balance, privateState, busy, send, actionHost }: { table: RouletteView; now: number; balance: number; privateState: CasinoPrivateState; busy: boolean; send: Send; actionHost: HTMLElement | null }) {
-  const [stake, setStake] = useState(CASINO_MIN_STAKE);
-  const [kind, setKind] = useState<RouletteBetKind>('straight');
+function RouletteStake({ value, max, disabled, onChange }: { value: string; max: number; disabled: boolean; onChange(value: string): void }) {
+  const amount = Number(value);
+  return <div className="casino-stake roulette-stake"><div role="group" aria-label="Your stake">
+    <button type="button" aria-label="Decrease stake" disabled={disabled || amount <= CASINO_MIN_STAKE} onClick={()=>onChange(String(Math.max(CASINO_MIN_STAKE, Math.floor(amount / CASINO_STAKE_STEP) * CASINO_STAKE_STEP - CASINO_STAKE_STEP)))}>−</button>
+    <label><span className="sr-only">Roulette stake</span><input aria-label="Roulette stake" type="number" inputMode="numeric" min={CASINO_MIN_STAKE} max={Math.max(CASINO_MIN_STAKE,max)} step={CASINO_STAKE_STEP} value={value} disabled={disabled || max<CASINO_MIN_STAKE} onChange={event=>onChange(event.target.value)} aria-invalid={!Number.isSafeInteger(amount) || amount<CASINO_MIN_STAKE || amount>max || amount%CASINO_STAKE_STEP!==0}/><small>credits</small></label>
+    <button type="button" aria-label="Increase stake" disabled={disabled || amount >= max} onClick={()=>onChange(String(Math.min(max, Math.max(CASINO_MIN_STAKE, Math.floor(amount / CASINO_STAKE_STEP) * CASINO_STAKE_STEP + CASINO_STAKE_STEP))))}>+</button>
+  </div></div>;
+}
+
+function Roulette({ table, now, profileId, balance, privateState, busy, send, actionHost }: { table: RouletteView; now: number; profileId: string; balance: number; privateState: CasinoPrivateState; busy: boolean; send: Send; actionHost: HTMLElement | null }) {
+  const [stakeValue, setStakeValue] = useState(String(CASINO_MIN_STAKE));
+  const stake = Number(stakeValue);
+  const validStake = Number.isSafeInteger(stake) && stake >= CASINO_MIN_STAKE && stake % CASINO_STAKE_STEP === 0;
+  const [kind, setKind] = useState<RouletteBetKind>('red');
   const [choiceIndex, setChoiceIndex] = useState(0);
+  const [stage, setStage] = useState<'quick' | 'numbers' | 'more' | 'bets'>('quick');
+  const [numberPage, setNumberPage] = useState(0);
+  const short = useCompactPages();
   const kindId = useId(), coverageId = useId();
   const choices = rouletteChoices(kind);
   const selectedNumbers = choices[choiceIndex] ?? choices[0];
   const acceptedBets = privateState.rouletteBets.filter(bet => bet.tableId === table.id && bet.roundId === table.roundId);
   const acceptedTotal = acceptedBets.reduce((sum, item) => sum + item.bet.stake, 0);
-  const returned = table.phase === 'result' && table.result !== null ? acceptedBets.reduce((sum, item) => sum + (item.bet.numbers.includes(table.result!) ? item.bet.stake * (ROULETTE_PROFIT_MULTIPLIER[item.bet.kind] + 1) : 0), 0) : null;
-  const betting = table.phase === 'betting' && now < table.deadline;
-  const moving = table.phase === 'spinning' || table.phase === 'landing';
+  const deadline = effectiveDeadline(table);
+  const betting = table.phase === 'betting' && now < deadline;
   const grossReturn = stake * (ROULETTE_PROFIT_MULTIPLIER[kind] + 1);
-
+  const limited = acceptedBets.length >= ROULETTE_MAX_BETS_PER_ROUND || acceptedTotal + stake > ROULETTE_MAX_ROUND_STAKE;
+  const perPage = short ? 6 : 12;
+  const page = Math.min(numberPage, Math.ceil(37 / perPage) - 1);
   function chooseKind(next: RouletteBetKind) { setKind(next); setChoiceIndex(0); }
-  function chooseNumber(number: number) { setKind('straight'); setChoiceIndex(number); }
-
-  return <>
-    <RoundStatus label={table.phase === 'betting' ? 'Place your bets' : table.phase === 'spinning' ? 'No more bets' : table.phase === 'landing' ? 'Ball settling' : table.phase === 'result' ? 'The result is in' : 'Table paused'} deadline={table.deadline} now={now} waiting={table.phase === 'paused'} />
-    <div className={`roulette-outcome ${moving ? 'is-spinning' : ''}`}>
-      <div className="roulette-wheel-mark" aria-hidden="true"><span />✦</div>
-      <div><span className="casino-label">{table.phase === 'result' ? 'WINNING NUMBER' : table.phase === 'landing' ? 'THE BALL IS SETTLING' : table.phase === 'spinning' ? 'THE WHEEL IS TURNING' : 'EUROPEAN · SINGLE ZERO'}</span>
-        <strong>{table.phase === 'result' && table.result !== null ? <><span className={`roulette-winning-number ${table.result === 0 ? 'is-zero' : isRed(table.result) ? 'is-red' : 'is-black'}`}>{table.result}</span> {table.result === 0 ? 'Zero' : isRed(table.result) ? 'Red' : 'Black'}</> : table.phase === 'landing' ? 'Watch the ball.' : table.phase === 'spinning' ? 'A little suspense.' : 'Make your choice.'}</strong>
-        <p>{returned !== null && acceptedBets.length ? `${credits(returned)} credits returned · ${credits(acceptedTotal)} staked` : `${table.betCount} ${table.betCount === 1 ? 'bet' : 'bets'} on the table`}</p>
-      </div>
+  return <div className="roulette-game casino-game">
+    <RoundStatus label={table.phase === 'betting' ? 'Place your bets' : table.phase === 'spinning' ? 'No more bets · watch the wheel' : table.phase === 'landing' ? 'Ball settling' : table.phase === 'result' ? `Winning number: ${table.result} · ${table.result === 0 ? 'Zero' : isRed(table.result ?? 0) ? 'Red' : 'Black'}` : 'Table paused'} deadline={effectiveDeadline(table)} now={now} waiting={table.phase === 'paused'} />
+    <StageTabs<typeof stage> value={stage} onChange={setStage} label="Roulette choices" options={[{value:'quick',label:'Quick bets'},{value:'numbers',label:'Numbers'},{value:'more',label:'More bets'},{value:'bets',label:`Your bets (${acceptedBets.length})`}]} />
+    <div className="casino-stage">
+      {stage === 'quick' ? <><p className="casino-instruction">Pick a colour or group, set your stake, then place your bet.</p><div className="roulette-outside-bets" role="group" aria-label="Outside bets">{(['red','black','odd','even','low','high'] as const).map(option => <button key={option} type="button" className={option === 'red' ? 'is-red' : option === 'black' ? 'is-black' : ''} aria-pressed={kind === option} disabled={busy || !betting} onClick={() => chooseKind(option)}>{option === 'low' ? '1–18' : option === 'high' ? '19–36' : option[0].toUpperCase()+option.slice(1)}</button>)}</div></>
+      : stage === 'numbers' ? <><p className="casino-instruction">Choose one number. A win returns 36× your stake.</p><div className="roulette-number-board" role="group" aria-label="Roulette numbers">{Array.from({ length: Math.min(perPage, 37 - page * perPage) }, (_, index) => page * perPage + index).map(number => <button type="button" key={number} className={number === 0 ? 'is-zero' : isRed(number) ? 'is-red' : 'is-black'} aria-label={`${number}, ${number === 0 ? 'zero' : isRed(number) ? 'red' : 'black'}`} aria-pressed={kind === 'straight' && selectedNumbers[0] === number} disabled={busy || !betting} onClick={() => { setKind('straight'); setChoiceIndex(number); }}>{number}</button>)}</div><PageNav page={page} count={Math.ceil(37/perPage)} onChange={setNumberPage} label="Numbers" /></>
+      : stage === 'more' ? <><p className="casino-instruction">Choose a bet type and its covered numbers. Return includes stake.</p><div className="casino-fields"><label htmlFor={kindId}>Bet type<select id={kindId} value={kind} disabled={busy || !betting} onChange={event => chooseKind(event.target.value as RouletteBetKind)}>{rouletteKinds.map(option => <option key={option.kind} value={option.kind}>{option.label}</option>)}</select></label><label htmlFor={coverageId}>Covered numbers<select id={coverageId} value={choiceIndex} disabled={busy || !betting || choices.length === 1} onChange={event => setChoiceIndex(Number(event.target.value))}>{choices.map((numbers,index) => <option key={numbers.join('-')} value={index}>{rouletteCoverageLabel(kind,numbers)}</option>)}</select></label></div></>
+      : <section className="casino-your-bets" aria-label="Your bets this round"><div className="casino-section-heading"><h3>Your bets</h3><span>{credits(acceptedTotal)} / {credits(ROULETTE_MAX_ROUND_STAKE)} staked</span></div>{acceptedBets.length ? <PagedItems items={acceptedBets} label="Bet" render={({wagerId,bet},index) => <div className="casino-bet-row" key={wagerId}><span>{index + 1}. {rouletteKinds.find(option => option.kind === bet.kind)?.label}<small>{rouletteCoverageLabel(bet.kind,bet.numbers)}</small></span><strong>{bet.stake} credits</strong></div>} /> : <p className="casino-instruction">Each accepted bet appears here. You can place up to 20 per round.</p>}</section>}
     </div>
-
-    <details className="roulette-number-picker" open={!actionHost}>
-    <summary>Choose on the number board <span aria-hidden="true">+</span></summary>
-    <div className="roulette-number-heading"><span className="casino-label">PICK A SINGLE NUMBER</span><span>35:1 profit</span></div>
-    <div className="roulette-number-board" role="group" aria-label="Roulette numbers">
-      {Array.from({ length: 37 }, (_, number) => <button type="button" key={number} className={number === 0 ? 'is-zero' : isRed(number) ? 'is-red' : 'is-black'} aria-label={`${number}${number === 0 ? ', zero' : isRed(number) ? ', red' : ', black'}`} aria-pressed={selectedNumbers.includes(number)} disabled={busy || !betting} onClick={() => chooseNumber(number)}>{number}</button>)}
-    </div>
-    <div className="roulette-outside-bets" role="group" aria-label="Outside bets">
-      {(['low', 'even', 'red', 'black', 'odd', 'high'] as const).map(option => <button type="button" key={option} className={option === 'red' ? 'is-red' : option === 'black' ? 'is-black' : ''} aria-pressed={kind === option} disabled={busy || !betting} onClick={() => chooseKind(option)}>{option === 'low' ? '1–18' : option === 'high' ? '19–36' : option[0].toUpperCase() + option.slice(1)}</button>)}
-    </div>
-    </details>
-
-    <div className="roulette-bet-composer">
-      <div className="casino-fields"><label htmlFor={kindId}>Bet type<select id={kindId} value={kind} disabled={busy || !betting} onChange={event => chooseKind(event.target.value as RouletteBetKind)}>{rouletteKinds.map(option => <option key={option.kind} value={option.kind}>{option.label}</option>)}</select></label>
-        <label htmlFor={coverageId}>Covered numbers<select id={coverageId} value={choiceIndex} disabled={busy || !betting || choices.length === 1} onChange={event => setChoiceIndex(Number(event.target.value))}>{choices.map((numbers, index) => <option key={numbers.join('-')} value={index}>{rouletteCoverageLabel(kind, numbers)}</option>)}</select></label>
-      </div>
-      <ActionDock host={actionHost} summary={<><span className="casino-dock-selection">{rouletteCoverageLabel(kind, selectedNumbers)}<small>{rouletteKinds.find(option => option.kind === kind)?.label}</small></span><span className="casino-dock-return">{credits(grossReturn)} return if it wins<small>Includes your stake</small></span></>}>
-        <StakeControl value={stake} onChange={setStake} disabled={busy || !betting} />
-        {!actionHost && <div className="casino-return-line"><span>Return if it wins <small>including stake</small></span><strong>{credits(grossReturn)} credits</strong></div>}
-        <button type="button" className="casino-primary" disabled={busy || !betting || balance < stake} onClick={() => send({ action: 'roulette-bet', tableId: table.id, roundId: table.roundId, bet: { kind, numbers: selectedNumbers, stake } })}>{busy ? 'Placing bet…' : !betting ? 'Betting is closed' : balance < stake ? 'Not enough credits' : `Place ${stake}-credit bet`}</button>
-      </ActionDock>
-      <p className="casino-fine">Each press places a separate bet. Accepted bets cannot be removed.</p>
-    </div>
-
-    <section className="casino-your-bets" aria-labelledby="roulette-your-bets"><div className="casino-section-heading"><h3 id="roulette-your-bets">Your bets this round</h3><span>{credits(acceptedTotal)} staked</span></div>
-      {acceptedBets.length ? <ul>{acceptedBets.map(({ wagerId, bet }) => <li key={wagerId}><span>{rouletteKinds.find(option => option.kind === bet.kind)?.label}<small>{rouletteCoverageLabel(bet.kind, bet.numbers)}</small></span><strong>{bet.stake}</strong></li>)}</ul> : <p className="casino-muted">Your accepted bets will appear here.</p>}
-    </section>
-    {table.history.length > 0 && <section className="roulette-history" aria-label="Previous winning numbers"><span className="casino-label">RECENT RESULTS</span><ol>{table.history.map((number, index) => <li key={`${index}-${number}`} className={number === 0 ? 'is-zero' : isRed(number) ? 'is-red' : 'is-black'}>{number}</li>)}</ol></section>}
-    <CasinoRules game="roulette" />
-  </>;
+    <ActionDock host={actionHost} summary={<><span className="casino-dock-selection">{rouletteCoverageLabel(kind,selectedNumbers)}<small>{credits(grossReturn)} returned if won · includes stake</small></span><RoundReady table={table} profileId={profileId} eligible={acceptedBets.length > 0} busy={busy} now={now} send={send} /></>}>
+      <RouletteStake value={stakeValue} onChange={setStakeValue} max={Math.min(Math.floor(balance/CASINO_STAKE_STEP)*CASINO_STAKE_STEP,ROULETTE_MAX_ROUND_STAKE-acceptedTotal)} disabled={busy || !betting} />
+      <button type="button" className="casino-primary" disabled={busy || !betting || !validStake || balance < stake || limited} onClick={() => send({action:'roulette-bet',tableId:table.id,roundId:table.roundId,bet:{kind,numbers:selectedNumbers,stake}})}>{busy ? 'Placing bet…' : !betting ? 'Betting is closed' : !validStake ? 'Use 10-credit steps' : limited ? 'Round limit reached' : balance < stake ? 'Not enough credits' : `Place ${stake}-credit bet`}</button>
+    </ActionDock>
+  </div>;
 }
 
 function PlayingCard({ card }: { card: Card | null }) {
@@ -150,63 +130,38 @@ function PlayingCard({ card }: { card: Card | null }) {
   return <span className={`casino-card${card.suit === 'hearts' || card.suit === 'diamonds' ? ' is-red-card' : ''}`} aria-label={`${card.rank} of ${card.suit}`}><span aria-hidden="true">{card.rank}<small>{suitGlyph[card.suit]}</small></span><i aria-hidden="true">{suitGlyph[card.suit]}</i></span>;
 }
 
-function BlackjackHand({ hand, active, index, multiple }: { hand: BlackjackHandView; active: boolean; index: number; multiple: boolean }) {
-  return <div className={`blackjack-hand${active ? ' is-active' : ''}`}>
-    <div className="blackjack-hand-heading"><span>{multiple ? `Hand ${index + 1}` : 'Hand'}{active ? ' · playing' : ''}</span>{hand.cards.length > 0 && <strong>{hand.soft ? 'Soft ' : ''}{hand.total}</strong>}</div>
-    <div className="casino-cards">{hand.cards.length ? hand.cards.map((card, cardIndex) => <PlayingCard key={cardIndex} card={card} />) : <p className="casino-muted">Cards are dealt when betting closes.</p>}</div>
-    <p className="blackjack-hand-outcome">{hand.outcome === 'blackjack' ? 'Blackjack' : hand.outcome === 'win' ? 'Win' : hand.outcome === 'lose' ? 'Lost' : hand.outcome === 'push' ? 'Push' : hand.state === 'bust' ? 'Bust' : hand.state === 'stood' ? 'Standing' : hand.state === 'blackjack' ? 'Blackjack' : `${hand.stake} staked`}{(hand.returned ?? 0) > 0 && <strong>{credits(hand.returned ?? 0)} returned</strong>}</p>
-  </div>;
+function BlackjackCards({ cards }: { cards: (Card | null)[] }) {
+  const [choice,setChoice] = useState(0);
+  const page = Math.min(choice,Math.max(0,Math.ceil(cards.length/3)-1));
+  if (cards.length>3) return <div className="blackjack-card-pages" role="group" aria-label="Cards in this hand"><button type="button" aria-label="Previous cards" disabled={page===0} onClick={()=>setChoice(page-1)}>←</button><div><div className="blackjack-card-tokens">{cards.slice(page*3,page*3+3).map((card,index)=><span key={index} className={card?.suit==='hearts'||card?.suit==='diamonds'?'is-red-card':''} aria-label={card?`${card.rank} of ${card.suit}`:'Face-down card'}>{card?.rank??'?'}<small>{card?suitGlyph[card.suit]:'M'}</small></span>)}</div><small>{page*3+1}–{Math.min(cards.length,page*3+3)} of {cards.length}</small></div><button type="button" aria-label="Next cards" disabled={(page+1)*3>=cards.length} onClick={()=>setChoice(page+1)}>→</button></div>;
+  return <div className="casino-cards blackjack-card-fan" style={{ '--card-count': Math.max(2,cards.length) } as React.CSSProperties}>{cards.length ? cards.map((card,index)=><PlayingCard key={index} card={card}/>) : <><PlayingCard card={null}/><PlayingCard card={null}/></>}</div>;
 }
-
+function BlackjackHand({ hand, active, index, multiple, label }: { hand: BlackjackHandView; active: boolean; index: number; multiple: boolean; label?: string }) {
+  return <div className={`blackjack-hand${active ? ' is-active' : ''}`}><div className="blackjack-hand-heading"><span>{label ?? (multiple ? `Hand ${index+1}` : 'Your hand')}{active ? ' · playing' : ''}</span><strong>{hand.soft ? 'Soft ' : ''}{hand.total}</strong></div><BlackjackCards cards={hand.cards}/><p className="blackjack-hand-outcome">{hand.outcome ?? (hand.state === 'playing' ? `${hand.stake} staked` : hand.state)}{hand.returned !== undefined && <strong>{credits(hand.returned)} returned</strong>}</p></div>;
+}
 function Blackjack({ table, now, profileId, balance, busy, send, actionHost }: { table: BlackjackView; now: number; profileId: string; balance: number; busy: boolean; send: Send; actionHost: HTMLElement | null }) {
-  const [stake, setStake] = useState(CASINO_MIN_STAKE);
-  const ownHands = useRef<HTMLDivElement>(null);
+  const [stake,setStake] = useState(CASINO_MIN_STAKE);
+  const [stage,setStage] = useState<'hand'|'hand2'|'table'>('hand');
   const ownSeat = table.seats.find(seat => seat.player.profileId === profileId);
-  const leavePending = !!ownSeat && !ownSeat.player.connected && ownSeat.hands.length > 0;
   const activeSeat = table.seats.find(seat => seat.seat === table.activeSeat);
-  const betting = table.phase === 'betting' && now < table.deadline;
+  const deadline = effectiveDeadline(table);
+  const betting = table.phase === 'betting' && now < deadline;
   const yourTurn = table.phase === 'playing' && table.activeSeat === ownSeat?.seat && now < table.deadline;
   const activeHand = yourTurn && table.activeHand !== null ? ownSeat?.hands[table.activeHand] : undefined;
+  const handIndex = stage==='hand2' && (ownSeat?.hands.length ?? 0)>1 ? 1 : 0;
+  const shownHand = ownSeat?.hands[handIndex];
+  useEffect(() => { if (yourTurn) { setStage(table.activeHand===1?'hand2':'hand'); } }, [yourTurn,table.activeHand]);
   const label = table.phase === 'betting' ? 'Bets open' : table.phase === 'playing' ? yourTurn ? 'Your turn' : `${activeSeat?.player.name ?? 'Player'}’s turn` : table.phase === 'dealer' ? 'Dealer’s hand' : table.phase === 'result' ? 'Round complete' : 'Table paused';
-  useEffect(() => {
-    if (actionHost && yourTurn) ownHands.current?.scrollIntoView({ block: 'nearest' });
-  }, [actionHost, yourTurn, table.activeHand]);
-  const actionSummary = <><span>{yourTurn && activeHand ? `Your turn · ${activeHand.soft ? 'soft ' : ''}${activeHand.total}` : label}<small>{yourTurn && ownSeat && ownSeat.hands.length > 1 ? `Hand ${(table.activeHand ?? 0) + 1} · ` : ''}{table.deadline > now ? `${Math.ceil((table.deadline - now) / 1000)}s remaining` : 'Waiting for the table'}</small></span></>;
-  const wagerControls = <><StakeControl value={stake} onChange={setStake} disabled={busy} /><button type="button" className="casino-primary" disabled={busy || balance < stake} onClick={() => send({ action: 'blackjack-bet', tableId: table.id, roundId: table.roundId, stake })}>{busy ? 'Placing bet…' : balance < stake ? 'Not enough credits' : `Bet ${stake} credits`}</button></>;
-  const handControls = activeHand && <div className="blackjack-actions" role="group" aria-label="Your available actions">{(['hit', 'stand', 'double', 'split'] as const).map(move => <button key={move} type="button" className={move === 'hit' ? 'casino-primary' : 'casino-secondary'} disabled={busy || !activeHand.actions.includes(move) || ((move === 'double' || move === 'split') && balance < activeHand.stake)} onClick={() => send({ action: 'blackjack-action', tableId: table.id, roundId: table.roundId, hand: table.activeHand!, move })}>{move === 'double' ? `Double · +${activeHand.stake}` : move === 'split' ? `Split · +${activeHand.stake}` : move[0].toUpperCase() + move.slice(1)}</button>)}</div>;
-
-  return <>
-    <RoundStatus label={label} deadline={table.deadline} now={now} waiting={table.phase === 'paused'} />
-    <section className="blackjack-dealer" aria-label="Dealer hand"><div className="casino-section-heading"><h3>Dealer</h3><span>{table.dealerTotal !== null ? `Total ${table.dealerTotal}` : table.dealer.length ? 'One card concealed' : 'Waiting for bets'}</span></div>
-      <div className="casino-cards">{table.dealer.length ? table.dealer.map((card, index) => <PlayingCard key={index} card={card} />) : <><PlayingCard card={null} /><PlayingCard card={null} /></>}</div>
-      <p className="casino-fine">Blackjack pays 3:2 · dealer stands on all 17s</p>
-    </section>
-
-    <div className={`casino-section-heading blackjack-seat-heading${ownSeat ? ' has-own-seat' : ''}`}><h3>At the table</h3><span>{table.seats.length} / 5 seated</span></div>
-    <ActionDock host={ownSeat ? null : actionHost} summary={<><span>Take a seat to play</span><span>{table.seats.length} / 5 seated</span></>}>
-    <div className={`blackjack-seats${ownSeat ? ' has-own-seat' : ''}`} role="group" aria-label="Blackjack seats">
-      {Array.from({ length: 5 }, (_, seatNumber) => {
-        const seat = table.seats.find(entry => entry.seat === seatNumber);
-        return seat ? <div key={seatNumber} className={`blackjack-seat${seat.player.profileId === profileId ? ' is-yours' : ''}${table.activeSeat === seatNumber ? ' is-active' : ''}`}><span className="blackjack-seat-number">{String(seatNumber + 1).padStart(2, '0')}</span><strong>{seat.player.profileId === profileId ? 'You' : seat.player.name}</strong><small>{!seat.player.connected ? 'Away' : table.phase === 'result' && seat.hands.length ? 'Round complete' : table.activeSeat === seatNumber ? 'Playing' : seat.hands.length ? 'Bet placed' : 'Seated'}</small></div>
-          : <button key={seatNumber} type="button" className="blackjack-seat is-empty" disabled={busy || !!ownSeat || table.phase === 'paused'} onClick={() => send({ action: 'blackjack-join', tableId: table.id, seat: seatNumber })} aria-label={`Take seat ${seatNumber + 1}`}><span className="blackjack-seat-number">{String(seatNumber + 1).padStart(2, '0')}</span><strong>Join</strong><small>Open seat</small></button>;
-      })}
-    </div>
-    </ActionDock>
-
-    {ownSeat ? <section className="blackjack-player-controls" aria-label="Your blackjack controls">
-      <div className="casino-section-heading"><h3>Your place</h3></div>
-      {leavePending && <p className="casino-muted" role="status">Leaving after this hand settles…</p>}
-      {ownSeat.hands.length === 0 && betting && !actionHost ? wagerControls : null}
-      {ownSeat.hands.length === 0 && !betting && <p className="casino-muted">You have a seat. Betting opens with the next round.</p>}
-      {ownSeat.hands.length > 0 && <div ref={ownHands} className={`blackjack-hands${ownSeat.hands.length > 1 ? ' is-split' : ''}`}>{ownSeat.hands.map((hand, index) => <BlackjackHand key={index} hand={hand} index={index} multiple={ownSeat.hands.length > 1} active={yourTurn && table.activeHand === index} />)}</div>}
-      {!actionHost && handControls}
-      {actionHost && <ActionDock host={actionHost} summary={actionSummary}>{ownSeat.hands.length === 0 && betting ? wagerControls : handControls || <p className="casino-dock-waiting">{ownSeat.hands.length && betting ? `${ownSeat.hands[0].stake} credits placed. Waiting for the deal.` : table.phase === 'result' ? 'Round complete. The next hand starts shortly.' : 'Your accepted bets remain in play.'}</p>}</ActionDock>}
-      <p className="casino-fine">{yourTurn ? 'Choose before the timer ends. An expired turn stands automatically.' : ownSeat.hands.length && betting ? 'Your bet is placed. Cards are dealt when betting closes.' : 'Leaving keeps accepted bets in play and stands any remaining hands.'}</p>
-    </section> : <p className="casino-spectator-note">Watching the table. Take an open seat to play.</p>}
-
-    {table.seats.some(seat => seat.player.profileId !== profileId && seat.hands.length > 0) && <section className="blackjack-other-hands" aria-label="Other players’ hands">{table.seats.filter(seat => seat.player.profileId !== profileId && seat.hands.length > 0).map(seat => <div key={seat.seat}><div className="casino-section-heading"><h3>{seat.player.name}</h3><span>Seat {seat.seat + 1}</span></div><div className={`blackjack-hands${seat.hands.length > 1 ? ' is-split' : ''}`}>{seat.hands.map((hand, index) => <BlackjackHand key={index} hand={hand} index={index} multiple={seat.hands.length > 1} active={table.activeSeat === seat.seat && table.activeHand === index} />)}</div></div>)}</section>}
-    <CasinoRules game="blackjack" />
-  </>;
+  return <div className="blackjack-game casino-game"><RoundStatus label={label} deadline={effectiveDeadline(table)} now={now} waiting={table.phase === 'paused'} />
+    <StageTabs<typeof stage> value={stage} onChange={setStage} label="Blackjack views" options={[{value:'hand',label:ownSeat ? ownSeat.hands.length>1?'Hand 1':'Your hand' : 'Dealer'},...(ownSeat && ownSeat.hands.length>1 ? [{value:'hand2' as const,label:'Hand 2'}]:[]),{value:'table',label:`At the table (${table.seats.length}/5)`}]} />
+    <div className="casino-stage">{stage !== 'table' ? <><p className="casino-instruction">{yourTurn ? `Hand ${(table.activeHand ?? 0)+1}: hit for a card, or stand to keep your total.` : ownSeat?.hands.length ? 'Beat the dealer without going over 21.' : ownSeat ? 'Choose your stake and bet. Then Ready when you are set.' : 'Take an open seat below to join the next hand.'}</p><div className="blackjack-hand-stage"><section className="blackjack-dealer" aria-label="Dealer hand"><div className="casino-section-heading"><h3>Dealer</h3><span>{table.dealerTotal !== null ? `Total ${table.dealerTotal}` : 'Card concealed'}</span></div><BlackjackCards cards={table.dealer}/></section>{shownHand ? <section className="blackjack-player-controls" aria-label="Your blackjack controls"><BlackjackHand hand={shownHand} index={handIndex} multiple={(ownSeat?.hands.length ?? 0)>1} active={yourTurn && table.activeHand === handIndex}/></section> : <p className="casino-muted">{ownSeat ? betting ? 'Your cards appear after betting closes.' : 'You will join the next round.' : 'Blackjack pays 3:2. Dealer stands on all 17s.'}</p>}</div></>
+    : <PagedItems items={Array.from({length:5},(_,seatNumber)=>{const seat=table.seats.find(entry=>entry.seat===seatNumber); return seat?.hands.length ? seat.hands.map((hand,handIndex)=>({seatNumber,seat,hand,handIndex})) : [{seatNumber,seat,hand:null,handIndex:0}];}).flat()} label="Table hand" render={({seatNumber,seat,hand,handIndex})=><section className="blackjack-table-place" key={`${seatNumber}-${handIndex}`}>{hand ? <BlackjackHand hand={hand} index={handIndex} label={`Seat ${seatNumber+1} · ${seat!.player.name}${seat!.hands.length>1?` · hand ${handIndex+1}`:''}`} multiple={seat!.hands.length>1} active={table.activeSeat===seatNumber&&table.activeHand===handIndex}/> : <><div className="casino-section-heading"><h3>Seat {seatNumber+1}</h3><span>{seat?.player.name ?? 'Open seat'}</span></div><p className="casino-instruction">{seat?'Seated · waiting for a bet.':'Use the matching seat button below to join.'}</p></>}</section>} />}</div>
+    <ActionDock host={actionHost} summary={<><span>{yourTurn && activeHand ? `Playing hand ${(table.activeHand ?? 0)+1} · total ${activeHand.total}` : label}<small>{yourTurn ? 'An expired turn stands automatically.' : ownSeat?.hands.length ? `${ownSeat.hands.reduce((sum,hand)=>sum+hand.stake,0)} credits in play` : 'Take a seat, then place a bet.'}</small></span><RoundReady table={table} profileId={profileId} eligible={!!ownSeat?.hands.length} busy={busy} now={now} send={send}/></>}>
+    {!ownSeat ? <div className="blackjack-seats" role="group" aria-label="Blackjack seats">{Array.from({length:5},(_,seatNumber)=>{const seat=table.seats.find(entry=>entry.seat===seatNumber); return <button key={seatNumber} type="button" className="blackjack-seat is-empty" disabled={busy || !!seat || table.phase==='paused'} onClick={()=>send({action:'blackjack-join',tableId:table.id,seat:seatNumber})} aria-label={`Take seat ${seatNumber+1}`}><strong>{seat ? 'Taken' : 'Join'}</strong><span>{seatNumber+1}</span></button>;})}</div>
+    : ownSeat.hands.length===0 && betting ? <><StakeControl value={stake} onChange={setStake} disabled={busy}/><button type="button" className="casino-primary" disabled={busy || balance<stake} onClick={()=>send({action:'blackjack-bet',tableId:table.id,roundId:table.roundId,stake})}>{balance<stake?'Not enough credits':`Bet ${stake} credits`}</button></>
+    : activeHand ? <div className="blackjack-actions" role="group" aria-label="Your available actions">{(['hit','stand','double','split'] as const).map(move=><button key={move} type="button" className={move==='hit'?'casino-primary':'casino-secondary'} disabled={busy || !activeHand.actions.includes(move) || ((move==='double'||move==='split') && balance<activeHand.stake)} onClick={()=>send({action:'blackjack-action',tableId:table.id,roundId:table.roundId,hand:table.activeHand!,move})}>{move[0].toUpperCase()+move.slice(1)}{(move==='double'||move==='split') && <small>+{activeHand.stake}</small>}</button>)}</div>
+    : <p className="casino-dock-waiting">{ownSeat.hands.length && betting ? 'Bet accepted. Ready to deal, or wait for the timer.' : table.phase==='result'?'Round complete. See Results for your return.':'Watch the table. Your controls appear on your turn.'}</p>}
+    </ActionDock></div>;
 }
 
 function SlotMark({ symbol }: { symbol: SlotSymbol }) {
@@ -227,39 +182,55 @@ function Slots({ table, now, profileId, balance, busy, send, actionHost }: { tab
   const spinning = table.phase === 'spinning';
   const remaining = Math.max(0, table.deadline - now);
   const isOwner = table.player?.profileId === profileId;
-  const available = table.phase === 'idle';
+  const available = table.phase === 'idle' || table.phase === 'result' && isOwner && !!table.player?.connected;
   const displayReels = spinning ? Array.from({ length: 3 }, (_, index) => SLOT_SYMBOLS[(Math.floor(Math.max(0, SLOTS_SPIN_MS - remaining) / 95) + index) % SLOT_SYMBOLS.length]) : table.reels;
   return <>
-    <RoundStatus label={spinning ? isOwner ? 'Your reels are spinning' : `${table.player?.name ?? 'Someone'} is playing` : table.phase === 'paused' ? 'Machine paused' : table.phase === 'result' ? 'Next spin shortly' : 'Ready when you are'} deadline={table.deadline} now={now} waiting={table.phase === 'idle' || table.phase === 'paused'} />
+    <RoundStatus label={spinning ? isOwner ? 'Your reels are spinning' : `${table.player?.name ?? 'Someone'} is playing` : table.phase === 'paused' ? 'Machine paused' : table.phase === 'result' ? available ? 'Your result · spin again when ready' : 'Machine reserved briefly' : 'Ready when you are'} deadline={effectiveDeadline(table)} now={now} waiting={table.phase === 'idle' || table.phase === 'paused'} />
     <div className={`slots-machine${spinning && remaining > 0 ? ' is-spinning' : ''}`}>
       <span className="slots-machine-brand">MERIDIAN</span><h3>A turn of fortune.</h3><div className="slots-reels" role="group" aria-label={spinning ? 'Reels spinning' : 'Reel result'} aria-live="off">{Array.from({ length: 3 }, (_, index) => <div className="slot-reel" key={index} aria-hidden={spinning}>{spinning && (reducedMotion || remaining === 0) ? <span className="slot-waiting-mark">M</span> : <SlotMark symbol={displayReels[index] ?? SLOT_SYMBOLS[index]} />}</div>)}</div>
       <div className="slots-result" role="status">{spinning ? <><strong>{remaining > 0 ? 'Spinning…' : 'Waiting for the result…'}</strong><span>{table.stake} credits staked</span></> : table.phase === 'result' && table.returned !== null ? <><strong>{table.returned > table.stake ? `${credits(table.returned)} credits returned` : table.returned === table.stake ? 'Stake returned' : 'No winning line'}</strong><span>{isOwner ? 'Your spin' : `${table.player?.name ?? 'Previous player'}’s spin`} · {table.stake} credits staked</span></> : <><strong>Three reels. One line.</strong><span>Choose your stake, then take a spin.</span></>}</div>
     </div>
-    <ActionDock host={actionHost} summary={<><span>{spinning ? 'Reels are spinning' : table.phase === 'result' && table.returned !== null ? `${credits(table.returned)} credits returned` : 'One spin at a time'}</span><span>{spinning ? `${Math.ceil(remaining / 1000)}s` : table.phase === 'result' ? 'Next spin shortly' : `${CASINO_MIN_STAKE}–${CASINO_MAX_STAKE} credits`}</span></>}>
+    <ActionDock host={actionHost} summary={<><span>{spinning ? 'Reels are spinning' : table.phase === 'result' && table.returned !== null ? `${credits(table.returned)} credits returned` : 'One spin at a time'}</span><span>{spinning ? `${Math.ceil(remaining / 1000)}s` : table.phase === 'result' ? available ? 'Ready for another spin' : 'Machine reserved briefly' : `${CASINO_MIN_STAKE}–${CASINO_MAX_STAKE} credits`}</span></>}>
       <StakeControl value={stake} onChange={setStake} disabled={busy || !available} />
-      <button type="button" className="casino-primary" disabled={busy || !available || balance < stake} onClick={() => send({ action: 'slots-spin', tableId: table.id, stake })}>{busy ? 'Starting spin…' : spinning ? 'Spin in progress' : table.phase === 'paused' ? 'Machine paused' : table.phase === 'result' ? 'Next spin shortly' : balance < stake ? 'Not enough credits' : `Spin for ${stake} credits`}</button>
+      <button type="button" className="casino-primary" disabled={busy || !available || balance < stake} onClick={() => send({ action: 'slots-spin', tableId: table.id, stake })}>{busy ? 'Starting spin…' : spinning ? 'Spin in progress' : table.phase === 'paused' ? 'Machine paused' : table.phase === 'result' && !available ? 'Machine reserved briefly' : balance < stake ? 'Not enough credits' : `Spin for ${stake} credits`}</button>
     </ActionDock>
     <p className="casino-fine">One spin per press. The machine is shared; wait for its current spin to finish.</p>
-    <section className="slots-paytable" aria-labelledby="slots-paytable"><div className="casino-section-heading"><h3 id="slots-paytable">The paytable</h3><span>Return includes stake</span></div><table><caption className="sr-only">Slot combinations and credit returns at your selected stake</caption><thead><tr><th scope="col">Winning line</th><th scope="col">Return</th></tr></thead><tbody>{SLOT_PAYTABLE.map(row => <tr key={row.label}><th scope="row"><span className="slots-paytable-symbols" aria-hidden="true">{Array.from({ length: row.count }, (_, index) => <SlotMark key={index} symbol={row.symbol}/>)}</span><span>{row.label}</span></th><td><strong>{credits(row.multiplier * stake)}</strong><small>{row.multiplier}× stake</small></td></tr>)}</tbody></table></section>
-    <CasinoRules game="slots" />
   </>;
 }
 
-function CasinoRules({ game }: { game: CasinoTableView['game'] }) {
-  return <details className="casino-rules"><summary>Rules & returns <span aria-hidden="true">+</span></summary>
-    {game === 'roulette' ? <><p>A European wheel has 37 equally likely numbers: 0–36. Betting stays open for {ROULETTE_BETTING_MS / 1000} seconds. Every accepted bet is final and remains in play if you close the table. Each player can place up to 20 bets and stake up to 1,000 credits per round.</p><p>Profit odds: single number 35:1; split 17:1; street or zero trio 11:1; corner or first four 8:1; six line 5:1; dozen or column 2:1; red, black, odd, even, low or high 1:1. A winning return also includes the original stake.</p><p>Zero wins only bets that explicitly cover it. Red, black, odd, even, low, high, dozens and columns all lose on zero. Previous results do not change the next spin’s chances.</p></> : game === 'blackjack' ? <><p>Each round uses a freshly shuffled six-deck shoe. Get closer to 21 than the dealer without going over. Face cards count as 10; an ace counts as 1 or 11. The dealer stands on every 17, including soft 17, and checks for blackjack when showing an ace or ten-value card.</p><p>A natural blackjack pays 3:2 profit. Other wins pay 1:1; a push returns your stake. Returns shown include the stake. Betting lasts {BLACKJACK_BETTING_MS / 1000} seconds, with {BLACKJACK_ACTION_MS / 1000} seconds for each turn.</p><p>Double on the first two cards: add a matching stake and receive exactly one more card. Split once when both cards have the same rank, adding a matching stake. Split aces receive one card each; 21 after a split pays as an ordinary win. No insurance or surrender.</p><p>The table shows the actions available for your hand. Expired turns stand automatically. Leaving keeps accepted bets in play and stands your remaining hands.</p></> : <><p>Each spin stops three independent reels on one line. Three matching symbols pay the listed return. Exactly two cherries anywhere return the stake; only the highest matching paytable entry pays.</p><p>On each reel, cherries have a 7-in-16 chance, lemons 4-in-16, bars 3-in-16 and sevens 2-in-16. All other combinations pay zero. The paytable shows the total returned at your selected stake, including the original stake.</p><p>Spins take about {SLOTS_SPIN_MS / 1000} seconds. An accepted spin finishes if you close the machine. There is no autoplay.</p></>}
-    <p>All stakes use fictional city credits. There is no real-money play, purchase or cash-out.</p>
-  </details>;
+
+function TableResults({ table }: { table: CasinoTableView }) {
+  const entries: { title:string; detail:string }[] = table.game==='roulette' ? table.history.map((number,index)=>({title:`${index===0?'Latest spin':`Earlier spin ${index}`} · ${number}`,detail:number===0?'Zero':isRed(number)?'Red':'Black'}))
+    : table.game==='craps' ? table.history.map((roll,index)=>({title:`Roll ${index+1} · ${roll.total}`,detail:`${roll.dice[0]} + ${roll.dice[1]}${roll.pointAfter!==null ? ` · point ${roll.pointAfter} stays in play` : ` · ${roll.resolution==='pass-wins'?'Pass wins':roll.resolution==='bar-twelve'?'Don’t Pass pushes':'Don’t Pass wins'}`}`}))
+    : table.game==='poker' && table.phase==='result' ? [...table.winners.map(winner=>({title:`${table.seats.find(seat=>seat.seat===winner.seat)?.player.name ?? `Seat ${winner.seat+1}`} · ${credits(winner.amount)} chips`,detail:winner.hand ?? 'Hand winner'})),...table.pots.flatMap((pot,index)=>pot.winnerSeats.map((number,winnerIndex)=>({title:`${index===0?'Main pot':`Side pot ${index}`} · ${credits(pot.amount)} chips`,detail:`${pot.winnerSeats.length>1?`Shared winner ${winnerIndex+1}/${pot.winnerSeats.length}`:'Won by'} · ${table.seats.find(seat=>seat.seat===number)?.player.name ?? `Seat ${number+1}`}`})))]
+    : table.game==='blackjack' && table.phase==='result' ? table.seats.flatMap(seat=>seat.hands.map((hand,index)=>({title:`${seat.player.name} · hand ${index+1}`,detail:`${hand.outcome ?? hand.state} · total ${hand.total} · ${hand.stake} staked / ${hand.returned ?? 0} returned`})))
+    : table.game==='slots' && table.phase==='result' ? [{title:table.reels.join(' · '),detail:`${table.player?.name ?? 'Player'} · ${table.returned ?? 0} credits returned`}]:[];
+  return entries.length ? <PagedItems items={entries} label="Table result" render={(entry,index)=><article className="casino-table-result" key={index}><h3>{entry.title}</h3><p>{entry.detail}</p></article>}/> : <p className="casino-instruction">Table details appear after the current round is revealed.</p>;
 }
 
-export function CasinoPanel({ open, table, serverTime, profileId, balance, privateState, busy, error, notice, onCommand, onClose }: CasinoPanelProps) {
-  const panel = useRef<HTMLElement>(null), closeButton = useRef<HTMLButtonElement>(null);
+export function CasinoPanel({ open, table, serverTime, profileId, balance, privateState, busy, error, notice, latestResult, onCommand, onClose, chat }: CasinoPanelProps) {
+  const panel = useRef<HTMLDivElement>(null), closeButton = useRef<HTMLButtonElement>(null);
   const closeAction = useRef(onClose);
   const titleId = useId();
   const now = useServerNow(open, serverTime);
-  const compactControls = useCompactControls();
   const [actionContainer, setActionContainer] = useState<HTMLDivElement | null>(null);
-  const actionHost = compactControls ? actionContainer : null;
+  const actionHost = actionContainer;
+  const [view,setView] = useState<CasinoView>('play');
+  const feedbackNotice = notice==='Accepted' || notice==='Wager accepted' || notice==='Spin accepted' || notice==='Synchronized' ? '' : notice;
+  const actionMessage = error || feedbackNotice;
+  const [messageOpen,setMessageOpen] = useState(!!actionMessage);
+  useEffect(() => { setMessageOpen(!!actionMessage); }, [actionMessage]);
+  const [lastResults,setLastResults] = useState<Record<string,CasinoResult>>({});
+  const [lastTableResults,setLastTableResults] = useState<Record<string,CasinoTableView>>({});
+  const resultTable = table?.phase==='result' ? table : table ? lastTableResults[table.id] ?? table : null;
+  useEffect(() => { if (table?.phase==='result') setLastTableResults(previous=>({...previous,[table.id]:table})); }, [table]);
+  const currentResult = table ? summariseCasinoResult(table,privateState,profileId) : null;
+  useEffect(() => { if (currentResult) setLastResults(previous => previous[currentResult.tableId]?.id === currentResult.id ? previous : {...previous,[currentResult.tableId]:currentResult}); }, [currentResult?.id]);
+  useEffect(() => { setView('play'); }, [table?.id]);
+  const turnSeat = table && (table.game==='blackjack'||table.game==='poker') ? table.seats.find(seat=>seat.player.profileId===profileId) : null;
+  const ownTurnKey = table?.game==='blackjack' && table.phase==='playing' && turnSeat?.seat===table.activeSeat ? `${table.id}:${table.roundId}:${table.activeHand}` : table?.game==='poker' && turnSeat?.seat===table.activeSeat && ['preflop','flop','turn','river'].includes(table.phase) ? privateState.poker?.actions?.turnId : null;
+  useEffect(() => { if (ownTurnKey) { setView('play'); setMessageOpen(false); } }, [ownTurnKey]);
+  const lastResult = currentResult ?? latestResult ?? (table ? lastResults[table.id] : null);
   useEffect(() => { closeAction.current = onClose; }, [onClose]);
   useEffect(() => {
     if (!open) return;
@@ -267,6 +238,7 @@ export function CasinoPanel({ open, table, serverTime, profileId, balance, priva
     closeButton.current?.focus({ preventScroll: true });
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (event.target instanceof Element && event.target.closest('.chat-panel')) return;
         event.preventDefault(); event.stopPropagation(); closeAction.current();
       } else if (event.key === 'Tab' && panel.current) {
         const controls = [...panel.current.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled), summary, [tabindex="0"]')].filter(control => control.getClientRects().length > 0);
@@ -295,11 +267,15 @@ export function CasinoPanel({ open, table, serverTime, profileId, balance, priva
     else if (hasSeat) send({ action: 'leave', tableId: table.id });
     else onClose();
   }
-  const name = table ? CASINO_ANCHORS.find(anchor => anchor.id === table.id)?.name ?? 'Meridian Casino' : 'Meridian Casino';
-  return <div className="casino-overlay"><section ref={panel} className="casino-panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+  const name = table ? (CASINO_ANCHORS.find(anchor => anchor.id === table.id)?.name ?? 'Meridian Casino').replace('European roulette · Table','Roulette ·').replace('Blackjack · Table','Blackjack ·') : 'Meridian Casino';
+  return <div ref={panel} className="casino-overlay" role="dialog" aria-modal="true" aria-labelledby={titleId}><section className="casino-panel" onClickCapture={event=>{ if (actionContainer?.contains(event.target as Node)) { setView('play'); setMessageOpen(false); } }}>
     <header className="casino-header"><div><span className="eyebrow">THE MERIDIAN CASINO</span><h2 id={titleId}>{name}</h2></div><button type="button" className="casino-leave" disabled={busy || !!leaving || !table} onClick={leaveTable}>{leaving ? 'Leaving…' : hasSeat ? 'Leave seat' : 'Leave table'}</button><button ref={closeButton} type="button" className="casino-close" aria-label="Close casino table" onClick={onClose}><CloseIcon /></button><div className="casino-wallet"><span>Your credits</span><strong aria-label="Casino credit balance">{credits(balance)}</strong><span className="casino-fictional">FICTIONAL CURRENCY</span></div></header>
-    <div className="casino-body" key={table?.id ?? 'loading'}>{!table ? <p className="casino-muted" role="status">Connecting to the table…</p> : table.game === 'roulette' ? <Roulette table={table} now={now} balance={balance} privateState={privateState} busy={busy} send={send} actionHost={actionHost} /> : table.game === 'blackjack' ? <Blackjack table={table} now={now} profileId={profileId} balance={balance} busy={busy} send={send} actionHost={actionHost} /> : table.game === 'craps' ? <CrapsGame table={table} now={now} profileId={profileId} balance={balance} privateState={privateState} busy={busy} send={send} actionHost={actionHost} /> : table.game === 'poker' ? <PokerGame table={table} now={now} profileId={profileId} balance={balance} privateState={privateState} busy={busy} send={send} actionHost={actionHost} /> : <Slots table={table} now={now} profileId={profileId} balance={balance} busy={busy} send={send} actionHost={actionHost} />}</div>
+    <nav className="casino-view-tabs" aria-label="Casino views">{([{value:'play',label:'Play'},{value:'rules',label:'How to play'},{value:'results',label:'Results'}] as const).map(tab=><button type="button" key={tab.value} aria-pressed={!messageOpen&&view===tab.value} onClick={()=>{setView(tab.value);setMessageOpen(false);}}>{tab.label}</button>)}{actionMessage&&<button type="button" className={`casino-message-tab${error?' is-error':''}`} aria-pressed={messageOpen} onClick={()=>setMessageOpen(true)}>Message</button>}</nav>
+    <div className="casino-body" key={table?.id ?? 'loading'}><div className="casino-play-view" hidden={view!=='play'||messageOpen}>{!table ? <p className="casino-muted" role="status">Connecting to the table…</p> : table.game === 'roulette' ? <Roulette table={table} now={now} profileId={profileId} balance={balance} privateState={privateState} busy={busy} send={send} actionHost={actionHost} /> : table.game === 'blackjack' ? <Blackjack table={table} now={now} profileId={profileId} balance={balance} busy={busy} send={send} actionHost={actionHost} /> : table.game === 'craps' ? <CrapsGame table={table} now={now} profileId={profileId} balance={balance} privateState={privateState} busy={busy} send={send} actionHost={actionHost} /> : table.game === 'poker' ? <PokerGame table={table} now={now} profileId={profileId} balance={balance} privateState={privateState} busy={busy} send={send} actionHost={actionHost} /> : <Slots table={table} now={now} profileId={profileId} balance={balance} busy={busy} send={send} actionHost={actionHost} />}</div>
+    {table && !messageOpen && view==='rules' && <CasinoRules game={table.game}/>}
+    {table && !messageOpen && view==='results' && <section className="casino-result-pages" aria-label="Casino results"><div className="casino-personal-result">{lastResult ? <><span className="casino-label">YOUR LAST RESULT</span><strong className={lastResult.net>0?'is-win':lastResult.net<0?'is-loss':''}>{lastResult.net>0?'+':''}{credits(lastResult.net)} {lastResult.unit}</strong><p>{credits(lastResult.stake)} staked · {credits(lastResult.returned)} returned</p></> : <><h3>Your results</h3><p>Play a round to see your result here.</p></>}</div><TableResults table={resultTable ?? table}/></section>}
+    {messageOpen && actionMessage && <section className="casino-message-stage" aria-label="Action message"><span className="casino-label">{error?'ACTION NOT COMPLETED':'TABLE UPDATE'}</span><p role={error?'alert':'status'}>{actionMessage}</p><button type="button" className="casino-secondary" onClick={()=>{setMessageOpen(false);setView('play');}}>Back to play</button></section>}
+    </div>
     <div ref={setActionContainer} className="casino-mobile-actions" />
-    {(error || notice || busy) && <footer className="casino-feedback">{error ? <p className="casino-error" role="alert">{error}</p> : <p role="status">{busy ? 'Waiting for the table…' : notice}</p>}</footer>}
-  </section><p className="casino-world-note" aria-hidden="true">THE MERIDIAN<span>Stay a while.</span></p></div>;
+  </section>{chat}<p className="casino-world-note" aria-hidden="true">THE MERIDIAN<span>Stay a while.</span></p></div>;
 }

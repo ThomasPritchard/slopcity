@@ -5,9 +5,10 @@ import {
   type CasinoCommand, type CasinoPrivateState,
 } from '../../shared/casino';
 import {
-  CRAPS_AWAITING_ROLL_MS, CRAPS_BETTING_MS, CRAPS_POINTS, crapsReturn,
+  crapsReturn,
   type CrapsBetKind, type CrapsResult, type CrapsView,
 } from '../../shared/craps';
+import { effectiveDeadline, RoundReady } from './RoundReady';
 import './craps.css';
 
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
@@ -74,14 +75,15 @@ export function CrapsGame({ table, now, profileId, balance, privateState, busy, 
   const selectedStake = ownBet?.stake ?? stake;
   const isShooter = table.shooter?.profileId === profileId;
   const shooterName = isShooter ? 'You' : table.shooter?.name ?? 'Waiting for a player';
-  const betting = table.phase === 'betting' && table.point === null && now < table.deadline;
+  const deadline = effectiveDeadline(table);
+  const betting = table.phase === 'betting' && table.point === null && now < deadline;
   const awaitingRoll = table.phase === 'awaiting-roll';
   const canBet = betting && !ownBet && !busy && balance >= stake;
-  const canRoll = awaitingRoll && isShooter && !busy && now < table.deadline;
+  const canRoll = awaitingRoll && isShooter && !busy && now < deadline;
   // Motion includes the final dice before they land. Only the published result may reveal them.
   const result = table.phase === 'result' ? table.result : null;
   const returned = result && result.pointAfter === null && ownBet ? crapsReturn(ownBet, result) : null;
-  const remaining = Math.max(0, Math.ceil((table.deadline - now) / 1000));
+  const remaining = Math.max(0, Math.ceil((deadline - now) / 1000));
   const phaseLabel = table.phase === 'betting' ? 'Place your line bet'
     : awaitingRoll ? isShooter ? 'Your turn to roll' : 'Waiting for the shooter'
       : table.phase === 'rolling' ? 'Dice in motion'
@@ -113,7 +115,7 @@ export function CrapsGame({ table, now, profileId, balance, privateState, busy, 
     <p className="sr-only" role="status" aria-atomic="true">{phaseLabel}. {table.shooter ? `${shooterName}${isShooter ? ' are' : ' is'} the shooter.` : 'A bettor will become the shooter.'} {result ? `${result.dice[0]} plus ${result.dice[1]} equals ${result.total}. ${resultHeading(result)}. ${resultExplanation(result)}` : table.point === null ? 'No point set.' : `Point ${table.point} is active.`} {returned !== null ? `${credits(returned)} credits returned from your stake.` : ownBet ? `${lineName(ownBet.kind)}, ${credits(ownBet.stake)} credits in play.` : ''}</p>
     <div className="casino-round-status">
       <span><i aria-hidden="true" />{phaseLabel}</span>
-      {table.deadline > 0 && table.phase !== 'paused' && <span className="casino-countdown" aria-label={remaining ? `${awaitingRoll ? 'Automatic roll' : table.phase === 'betting' ? 'Betting closes' : 'Next phase'} in ${remaining} seconds` : 'Waiting for the table'}>{remaining ? `${remaining}s` : 'Waiting…'}</span>}
+      {deadline > 0 && table.phase !== 'paused' && <span className="casino-countdown" aria-label={remaining ? `${awaitingRoll ? 'Automatic roll' : table.phase === 'betting' ? 'Betting closes' : 'Next phase'} in ${remaining} seconds` : 'Waiting for the table'}>{remaining ? `${remaining}s` : 'Waiting…'}</span>}
     </div>
 
     <div className="craps-outcome">
@@ -125,38 +127,21 @@ export function CrapsGame({ table, now, profileId, balance, privateState, busy, 
       </div>
     </div>
 
-    <div className="craps-point">
-      <div className="craps-point-heading"><span className="casino-label">TARGET NUMBER</span><span>{table.point === null ? 'No point set' : `Point ${table.point} is on`}</span></div>
-      <ol aria-label="Possible point numbers">{CRAPS_POINTS.map(point => <li key={point} aria-current={table.point === point ? 'true' : undefined}><span>{point}</span>{table.point === point && <small>ON</small>}</li>)}</ol>
-    </div>
-
-    <div className="craps-table-status"><span>Shooter <strong>{shooterName}{table.shooter && !table.shooter.connected ? ' · away' : ''}</strong></span><span>{table.betCount} {table.betCount === 1 ? 'bet' : 'bets'} on the table</span></div>
-
+    <p className="craps-table-status"><span>Shooter <strong>{shooterName}</strong></span><span>{table.point===null?'Opening roll':`Point ${table.point}`} · {table.betCount} bets</span></p>
     <fieldset className="craps-line-choice" disabled={busy || !betting || !!ownBet}>
       <legend>{ownBet ? 'Your accepted line' : 'Choose your line'}</legend>
       <div>{(['pass', 'dont-pass'] as const).map(line => <button key={line} type="button" aria-pressed={selectedKind === line} onClick={() => setKind(line)}><strong>{lineName(line)}</strong><small>{line === 'pass' ? 'Point before 7' : '7 before the point'}</small></button>)}</div>
     </fieldset>
 
-    {ownBet && <p className="craps-own-bet">{lineName(ownBet.kind)} · <strong>{credits(ownBet.stake)} credits {returned === null ? 'in play' : 'staked'}</strong>{returned !== null && <span>{credits(returned)} credits returned{result?.resolution === 'bar-twelve' && ownBet.kind === 'dont-pass' ? ' · stake pushed' : ''}</span>}</p>}
-    <p id={actionReasonId} className="casino-fine craps-action-reason">{actionReason}</p>
+    <p id={actionReasonId} className="casino-instruction craps-action-reason">{actionReason}</p>
 
     {actionHost ? createPortal(<div className="casino-action-dock craps-action-dock">
-      <div className="casino-dock-summary"><span className="casino-dock-selection">{lineName(selectedKind)}<small>{ownBet ? `${credits(selectedStake)} credits ${returned === null ? 'in play' : 'staked'}` : table.point === null ? 'Opening roll' : `Point ${table.point}`}</small></span><span className="casino-dock-return">{returnSummary}<small>{returned !== null ? 'Result includes stake' : 'Includes your stake'}</small></span></div>
+      <div className="casino-dock-summary"><span className="casino-dock-selection">{lineName(selectedKind)}<small>{ownBet ? `${credits(selectedStake)} credits ${returned === null ? 'in play' : 'staked'}` : table.point === null ? 'Opening roll' : `Point ${table.point}`}</small></span><span className="casino-dock-return">{returnSummary}<small>{returned !== null ? 'Result includes stake' : 'Includes your stake'}</small></span><RoundReady table={table} profileId={profileId} eligible={!!ownBet} busy={busy} now={now} send={send}/></div>
       <div className="casino-dock-controls">{controls}</div>
     </div>, actionHost) : <div className="craps-controls">
       <div className="casino-return-line"><span>{returned === null ? 'Return if it wins' : 'Your return'}<small>including stake</small></span><strong>{credits(returned ?? selectedStake * 2)} credits</strong></div>
       {controls}
     </div>}
 
-    {table.history.length > 0 && <div className="craps-history"><span className="casino-label">RECENT ROLLS · NEWEST FIRST</span><ol>{table.history.slice(0, 6).map((roll, index) => <li key={index} title={`${roll.dice[0]} + ${roll.dice[1]} = ${roll.total} · ${resultHeading(roll)}`}><span aria-hidden="true">{roll.total}</span><span className="sr-only">{roll.dice[0]} plus {roll.dice[1]} equals {roll.total}. {resultHeading(roll)}.</span></li>)}</ol></div>}
-
-    <details className="casino-rules craps-rules"><summary>Rules & returns <span aria-hidden="true">+</span></summary>
-      <p>Choose Pass or Don’t Pass before the opening (come-out) roll. Betting lasts {CRAPS_BETTING_MS / 1000} seconds. One line bet per player per cycle: {CASINO_MIN_STAKE}–{CASINO_MAX_STAKE} credits in steps of {CASINO_STAKE_STEP}. Accepted bets stay in play if you close or leave the table.</p>
-      <p>On the opening roll, 7 or 11 wins Pass; 2 or 3 wins Don’t Pass. The other line loses. A 12 loses Pass and pushes Don’t Pass, returning its stake. Any other total sets the target number, called the point.</p>
-      <p>Once a point is set, rolling it again wins Pass; rolling 7 first wins Don’t Pass and ends the shooter’s turn (seven out). Other totals keep both bets in play. You cannot add or change bets while a point is active.</p>
-      <p>A winning line returns 2× its stake, including the original stake. A push returns the stake; a loss returns zero. For {credits(selectedStake)} credits, that is {credits(selectedStake * 2)} on a win or {credits(selectedStake)} on a push.</p>
-      <p>The first eligible bettor becomes the shooter. They keep the dice until seven out or leaving. The shooter has {CRAPS_AWAITING_ROLL_MS / 1000} seconds to roll; the table rolls automatically when time runs out. Everyone sees the same dice.</p>
-      <p>All stakes use fictional city credits. There is no real-money play, purchase or cash-out.</p>
-    </details>
   </div>;
 }

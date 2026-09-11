@@ -6,7 +6,7 @@ export type Appearance = Profile & Partial<Outfit>;
 export type ClothingItem = { id: string; name: string; slot: ClothingSlot; model: string; price: number; colour: string; description: string };
 export const STARTING_CREDITS = 1000;
 export const SALARY_CREDITS = 100;
-export const SALARY_INTERVAL_MS = 600_000;
+export const SALARY_INTERVAL_MS = 300_000;
 export const STARTER_OUTFIT: Outfit = { top: 'starter-utility', bottoms: 'starter-chinos', shoes: 'starter-sneakers' };
 export const CATALOGUE: readonly ClothingItem[] = [
  {id:'starter-utility',name:'Everyday utility jacket',slot:'top',model:'utility',price:0,colour:'#687a65',description:'Your original pocketed jacket. Your chosen starter colour.'},

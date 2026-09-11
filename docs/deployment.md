@@ -124,3 +124,38 @@ GitHub Actions runs unit tests, TypeScript/frontend/server builds and the dispos
 Guest profiles are tied to browser cookies; accounts and cross-device recovery are future work. Keep the initial audience to known testers. Existing voice filtering relies on cooperating clients and does not guarantee server-enforced private conversations against modified clients. Moderation and public access controls are not completed by containerising the app. Ten-player hosting is a sizing assumption pending a live session; client rendering performance remains a separate measurement.
 
 References: [LiveKit single-VM deployment](https://docs.livekit.io/transport/self-hosting/vm/), [LiveKit network ports](https://docs.livekit.io/transport/self-hosting/ports-firewall/), [Docker PostgreSQL storage](https://docs.docker.com/guides/postgresql/).
+
+
+## Cinema and community uploads
+
+The cinema’s approved images and private submission queue live in PostgreSQL, so existing database dumps include them. Migration 008 is applied during the normal single-owner startup. The live/intermission programme and schedule are controlled from Tom’s review desk; a schedule time alone does not switch on a stream. Twitch is restricted to BridgeMind’s channel. YouTube video selection is trusted manual administrator curation; ownership of an entered video ID is not automatically verified.
+
+Before a separately authorised deployment, configure the administrator password on the production checkout with a local Node runtime:
+
+```sh
+node scripts/community-admin-password.mjs --file .deploy/game.env
+```
+
+The command uses hidden input, preserves other environment settings and writes a salted hash with permissions 600. It does not print the password or hash. Use the configured deployment directory if it differs from `.deploy`. The new value takes effect when the game container is recreated by the authorised release. An unset hash disables administrator login; ordinary approved-gallery viewing still works. Administrator sessions expire after eight hours and are invalidated by a game restart.
+
+For the existing tunnel host, apply the `/game/api/community/submissions` location from `deploy/nginx-tunnel.conf` to the `slopcity.fun` site during the authorised release, validate nginx, and reload it. That location permits the bounded 6 MiB JSON upload; other paths retain their 16 KiB limit. Merely rebuilding containers does not update the host nginx file. Preserve unrelated sites.
+
+Provider players require a visible supported embed. The client supplies Twitch’s embedding hostname and preserves YouTube’s required cross-origin referrer. Narrow phones offer a rotate/provider-link fallback when the minimum player size cannot fit. A local UI test with a stubbed provider frame establishes layout and player lifecycle only; public HTTPS and actual live audio/video still require a real broadcast check.
+
+### Trusted visitor addresses and abuse controls
+
+New configuration includes a private `ABUSE_PROXY_SECRET` shared by `game.env` and the game reverse proxy in `caddy.json`. Before deploying this version over an existing configuration, run `node scripts/configure-abuse-proxy.mjs --directory .deploy --tunnel` on the selected deployment checkout (omit `--tunnel` for direct TLS). This only updates those two private files, preserves other credentials and routes, and reuses an existing key. Unexpected/custom gateway layouts are rejected for manual review. Do not rerun initial deployment generation or print expanded configuration. Run this helper while preparing an authorised release, before replacing the game and edge containers together; it does not restart services. If interrupted between file replacements, rerun the helper before releasing.
+
+If the deployment host has no Node installation, run the same helper in the existing Node image:
+
+```sh
+docker run --rm --user "$(id -u):$(id -g)" \
+  --mount "type=bind,src=$(pwd),dst=/workspace" --workdir /workspace \
+  node:24-bookworm-slim node scripts/configure-abuse-proxy.mjs --directory .deploy --tunnel
+```
+
+The gateway overwrites `X-Slop-Proxy-Key` and `X-Slop-Client-IP` on every `/game` HTTP/WebSocket request. Direct TLS uses PROXY protocol v2 from the layer4 proxy into a loopback-only HTTP listener requiring PROXY protocol; visitor identity comes from that connection, never a caller's forwarding header. This uses the pinned [caddy-l4 proxy support](https://github.com/mholt/caddy-l4/blob/v0.1.2/modules/l4proxy/proxy.go) and [Caddy listener wrapper](https://github.com/caddyserver/caddy/blob/v2.11.4/modules/caddyhttp/proxyprotocol/listenerwrapper.go).
+
+Tunnel mode trusts `CF-Connecting-IP` only because the Docker HTTP origin is published on loopback and is reachable exclusively through trusted local cloudflared/nginx processes. Cloudflare must supply its normal visitor header; do not configure a transform that removes it. If nginx sits between cloudflared and Caddy, apply the `set_real_ip_from`, `real_ip_header`, and both `proxy_set_header CF-Connecting-IP $remote_addr` entries from `deploy/nginx-tunnel.conf`. The [nginx real-IP module](https://nginx.org/en/docs/http/ngx_http_realip_module.html) accepts replacement identity only from loopback cloudflared; other clients receive their actual socket address. Both the upload and general/WebSocket locations sanitize the header. Validate with `sudo nginx -t` before an authorised reload, preserving unrelated sites. Rebuilding containers does not update host nginx, and the installer refuses to overwrite an existing site. Local host processes and containers with access to private configuration remain trusted; never expose the origin or game port publicly.
+
+The standalone moderation page is available at `/admin` and `/admin/`; only these entry paths rewrite to the built application index. Game API authorization remains enforced by the server.

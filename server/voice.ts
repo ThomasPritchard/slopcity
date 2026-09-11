@@ -2,6 +2,9 @@ import express, { type Application } from 'express';
 import { AccessToken, RoomServiceClient, TrackSource } from 'livekit-server-sdk';
 import { authenticateGuest, isAllowedOrigin, type SessionRegistry } from './guest.ts';
 import type { GuestRepository } from './persistence/guests.ts';
+import { clientAddress } from './clientAddress.ts';
+import { SafetyError, type SafetyService } from './safety.ts';
+import { safetyResponse } from './safetyRoutes.ts';
 export class VoiceService {
   private url = process.env.LIVEKIT_URL;
   private key = process.env.LIVEKIT_API_KEY;
@@ -16,18 +19,19 @@ export class VoiceService {
   }
   async remove(roomId: string, sessionId: string) { try { await this.client?.removeParticipant(roomId, sessionId); } catch { /* Already absent or voice unavailable; town leave must still complete. */ } }
 }
-export function mountVoiceRoutes(app: Application, guests: GuestRepository, sessions: SessionRegistry, voice: VoiceService, hasParticipant: (roomId: string, sessionId: string) => boolean) {
+export function mountVoiceRoutes(app: Application, guests: GuestRepository, sessions: SessionRegistry, voice: VoiceService, hasParticipant: (roomId: string, sessionId: string) => boolean, safety?: SafetyService) {
   app.post('/api/voice/token', express.json({ limit: '1kb' }), async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     if (!isAllowedOrigin(req.headers.origin)) { res.status(403).json({ error: 'Origin not allowed' }); return; }
     try {
       const profile = await authenticateGuest(req.headers.cookie, guests);
       if (!profile) { res.status(401).json({ error: 'Guest authentication required' }); return; }
+      if(safety){const ip=clientAddress(req.headers);if(!ip)throw new SafetyError(503,'untrusted_proxy','Game gateway unavailable.');safety.checkBan(ip,profile.id);safety.limit('voice',ip,profile.id);}
       const active = sessions.get(profile.id);
       if (!active || !hasParticipant(active.roomId, active.sessionId)) { res.status(409).json({ error: 'Join the town before joining voice' }); return; }
       const grant = await voice.token(active.roomId, active.sessionId);
-      if (sessions.get(profile.id)?.sessionId !== active.sessionId) { res.status(409).json({ error: 'Your town session has ended' }); return; }
+      if (sessions.get(profile.id)?.sessionId !== active.sessionId || !hasParticipant(active.roomId,active.sessionId)) { res.status(409).json({ error: 'Your town session has ended' }); return; }
       res.json({ ...grant, url: process.env.LIVEKIT_PUBLIC_URL || `${req.headers.origin!.replace(/^http/, 'ws')}/voice` });
-    } catch { res.status(503).json({ error: 'Voice is unavailable right now. You can still use town chat.' }); }
+    } catch(error) { if(error instanceof SafetyError){safetyResponse(error,res);return;}res.status(503).json({ error: 'Voice is unavailable right now. You can still use town chat.' }); }
   });
 }

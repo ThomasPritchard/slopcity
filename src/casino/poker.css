@@ -118,3 +118,41 @@
   .poker-action-dock .poker-basic-actions { gap: 5px; }
   .poker-action-dock .poker-raise-controls { margin-top: 5px; }
 }
+
+.casino-panel .poker-action-reason { margin: 7px 0; font-size: 12px; }
+.casino-panel .poker-board { padding: 8px 0; border: 0; }
+.casino-panel .poker-board .poker-board-cards { margin-top: 10px; min-height: 60px; }
+.casino-panel .poker-board .poker-card { width: 42px; height: 59px; }
+.casino-panel .poker-seating { margin: 0; padding: 0; border: 0; }
+.casino-panel .poker-seat { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; }
+.casino-panel .poker-seat-info { flex: 1; min-width: 0; }
+.casino-panel .poker-seat-heading { font-size: 10px; }
+.casino-panel .poker-player-name { margin-top: 3px; font-size: 12px; }
+.casino-panel .poker-seat-stack, .casino-panel .poker-seat-bet { margin-top: 3px; font-size: 11px; }
+.casino-panel .poker-seat-cards { align-items: center; margin: 0; }
+.casino-panel .poker-seat.is-empty { min-height: 67px; justify-content: center; gap: 4px; }
+.casino-panel .poker-seat.is-empty strong { font-size: 13px; }
+.casino-panel .poker-seat.is-empty small { font-size: 11px; }
+.casino-panel .poker-basic-actions { gap: 5px; }
+.casino-panel .poker-basic-actions button { font-size: 11px; padding: 6px 3px; }
+.casino-panel .poker-raise-controls { grid-template-columns: minmax(0,1fr) minmax(0,1.1fr) 56px; margin: 0; gap: 5px; }
+.casino-panel .poker-raise-field input { min-height: 44px; height: 44px; }
+.casino-panel .poker-action-dock .poker-dock-cards .poker-card { width: 30px; height: 40px; }
+.casino-panel .poker-action-dock .poker-dock-cards .poker-card small { font-size: 9px; color: inherit; }
+@media (max-height:620px) and (orientation:landscape) {
+  .casino-panel .poker-action-reason { font-size: 11px; margin: 5px 0; }
+  .casino-panel .poker-board { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
+  .casino-panel .poker-board .casino-section-heading h3 { font-size: 19px; }
+  .casino-panel .poker-board .poker-board-cards { margin: 0; min-height: 44px; gap: 4px; }
+  .casino-panel .poker-board .poker-card { width: 31px; height: 44px; padding: 3px; font-size: 12px; }
+  .casino-panel .poker-board .poker-card > i { font-size: 15px; right: 3px; bottom: 3px; }
+  .casino-panel .poker-seat { padding: 5px 8px; }
+  .casino-panel .poker-seat-heading, .casino-panel .poker-seat-stack, .casino-panel .poker-seat-bet { font-size: 10px; }
+  .casino-panel .poker-player-name { font-size: 11px; margin-top: 2px; }
+  .casino-panel .poker-seat.is-empty { min-height: 49px; }
+}
+@media (max-height:620px) and (orientation:landscape) {
+  .casino-panel .poker-seat { padding-top: 3px; padding-bottom: 3px; }
+  .casino-panel .poker-seat-heading, .casino-panel .poker-seat-stack, .casino-panel .poker-seat-bet, .casino-panel .poker-player-name { line-height: 1.25; }
+  .casino-panel .poker-seat-stack, .casino-panel .poker-seat-bet { margin-top: 2px; }
+}

@@ -1,4 +1,4 @@
-import type { Card, CasinoOccupant } from './casino.ts';
+import type { Card, CasinoOccupant, CasinoReadiness } from './casino.ts';
 
 export const POKER_SMALL_BLIND = 5;
 export const POKER_BIG_BLIND = 10;
@@ -20,6 +20,7 @@ export type PokerSeatView = {
 export type PokerPot = { amount: number; eligibleSeats: number[]; winnerSeats: number[] };
 export type PokerWinner = { seat: number; amount: number; hand: string };
 export type PokerView = {
+  readiness?: CasinoReadiness;
   id: 'poker-1'; game: 'poker'; roundId: string; handId: string | null;
   phase: PokerPhase; deadline: number; button: number | null; smallBlindSeat: number | null; bigBlindSeat: number | null;
   activeSeat: number | null; board: Card[]; pot: number; currentBet: number; seats: PokerSeatView[];

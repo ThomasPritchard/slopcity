@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rouletteBet, rouletteReturn, total, natural, blackjackReturn, shoe, slotReels, slotsReturn } from '../server/casino/rules.ts';
+import { rouletteBet, rouletteReturn, canSplit, total, natural, blackjackReturn, shoe, slotReels, slotsReturn } from '../server/casino/rules.ts';
 import { ROULETTE_RED_NUMBERS, type Card, type RouletteBetKind } from '../shared/casino.ts';
 const cards = (...ranks: Card['rank'][]): Card[] => ranks.map(rank => ({ rank, suit: 'hearts' }));
 test('European roulette canonical geometry, every number, all outside bets and gross payouts', () => {
@@ -19,7 +19,7 @@ test('European roulette canonical geometry, every number, all outside bets and g
   if (!numbers.includes(0)) assert.equal(rouletteReturn(bet, 0), 0, `${kind} loses on zero`);
  }
  for (const [kind, numbers] of [['split', [3, 4]], ['split', [0, 4]], ['street', [2, 3, 4]], ['trio', [0, 1, 3]], ['corner', [3, 4, 6, 7]], ['six-line', [2, 3, 4, 5, 6, 7]], ['straight', [1, 1]], ['red', [1]]] as const) assert.throws(() => rouletteBet({ kind, numbers, stake: 10 }));
- for (const stake of [0, -10, 11, 101, NaN, Infinity, '10']) assert.throws(() => rouletteBet({ kind: 'straight', numbers: [0], stake }));
+ for (const stake of [0, -10, 11, 101, 1001, 1010, 110.5, NaN, Infinity, '10']) assert.throws(() => rouletteBet({ kind: 'straight', numbers: [0], stake }));
 });
 test('Blackjack aces, naturals, split 21, busts, pushes and six-deck shuffle domain', () => {
  assert.deepEqual(total(cards('A', 'A', '5')), { total: 17, soft: true });
@@ -44,4 +44,14 @@ test('Slot stops exactly match weights and every visible paytable entry', () => 
  let returns = 0;
  for (let a = 0; a < 16; a++) for (let b = 0; b < 16; b++) for (let c = 0; c < 16; c++) { const stops = [a, b, c]; returns += slotsReturn(slotReels(() => stops.shift()!), 10); }
  assert.equal(returns / (4096 * 10), 3804 / 4096);
+});
+
+test('Blackjack splits matching ranks and every pair of ten-value cards only', () => {
+ for (const left of ['10', 'J', 'Q', 'K'] as const) for (const right of ['10', 'J', 'Q', 'K'] as const) assert.equal(canSplit(cards(left, right)), true);
+ for (const rank of ['A', '2', '3', '4', '5', '6', '7', '8', '9'] as const) assert.equal(canSplit(cards(rank, rank)), true);
+ for (const hand of [cards('9', '10'), cards('A', 'K'), cards('2', '3'), cards('10'), cards('10', 'J', 'Q')]) assert.equal(canSplit(hand), false);
+});
+
+test('Roulette permits stakes above 100 through the round budget', () => {
+ for (const stake of [110, 1000]) assert.equal(rouletteReturn(rouletteBet({kind: 'straight', numbers: [0], stake}), 0), stake * 36);
 });

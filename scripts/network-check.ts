@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { loadEnvFile } from 'node:process';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
 import WebSocket from 'ws';
 import type { Room } from '@colyseus/sdk';
@@ -20,16 +20,22 @@ const schema = `network_test_${randomUUID().replaceAll('-','')}`;
 const admin = new Pool({connectionString:process.env.DATABASE_URL});
 const isolated = new URL(process.env.DATABASE_URL!); isolated.searchParams.set('options',`-c search_path=${schema}`);
 await admin.query(`CREATE SCHEMA ${schema}`);
-const server = spawn(process.execPath, ['--import','tsx','server/index.ts'], { env:{...process.env,PORT:String(port),DATABASE_URL:isolated.toString()}, stdio:['ignore','pipe','pipe'] });
+// Each capacity-test client represents a distinct network at the trusted gateway.
+// Dedicated safety-check.ts exercises quotas without bypassing them.
+const proxyKey=randomBytes(32).toString('hex'), fixtureIPs=new Map<string,string>();let nextIP=1;
+const trustedHeaders=(cookie='')=>({'X-Slop-Proxy-Key':proxyKey,'X-Slop-Client-IP':fixtureIPs.get(cookie)??'192.0.2.250'});
+const server = spawn(process.execPath, ['--import','tsx','server/index.ts'], { env:{...process.env,PORT:String(port),ABUSE_PROXY_SECRET:proxyKey,DATABASE_URL:isolated.toString()}, stdio:['ignore','pipe','pipe'] });
 // Do not output child logs: they could contain credentials from third-party errors.
 server.stdout.resume(); server.stderr.resume();
 async function until(check: () => boolean | Promise<boolean>, label: string, timeout = 8000) {
  const start = performance.now(); while (!(await check())) { if (performance.now()-start>timeout) throw new Error(`Timed out: ${label}`); await delay(30); }
 }
 async function guest(name: string) {
- const response = await fetch(`${endpoint}/api/guest`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({name,shirt:1,skin:2})});
+ const ip=`198.51.100.${nextIP++}`;
+ const response = await fetch(`${endpoint}/api/guest`,{method:'POST',headers:{...trustedHeaders(),'X-Slop-Client-IP':ip,Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({name,shirt:1,skin:2})});
  assert.equal(response.status,201);
- return {cookie:response.headers.get('set-cookie')!.split(';')[0],profile:await response.json() as PrivateGuestProfile};
+ const cookie=response.headers.get('set-cookie')!.split(';')[0];fixtureIPs.set(cookie,ip);
+ return {cookie,profile:await response.json() as PrivateGuestProfile};
 }
 const messages = new Map<string,string[]>();
 function watch(room: Room<unknown,TownState>) {
@@ -40,7 +46,7 @@ function watch(room: Room<unknown,TownState>) {
  room.onMessage('casino-state',()=>{}); room.onMessage('casino-private',()=>{}); room.onMessage('casino-receipt',()=>{});
  return room;
 }
-const client = (cookie: string, requestOrigin = origin) => new Client(endpoint,{headers:{Cookie:cookie,Origin:requestOrigin}});
+const client = (cookie: string, requestOrigin = origin) => new Client(endpoint,{headers:{...trustedHeaders(cookie),Cookie:cookie,Origin:requestOrigin}});
 const sequences = new Map<string,number>();
 async function walk(room: Room<unknown,TownState>, x: number,z: number) {
  await until(async () => {
@@ -78,12 +84,12 @@ try {
  second.send('input',{x:0,z:-1,seq:1});await delay(150);assert.equal(first.state.players.get(second.sessionId)!.z,stopped);
  second.send('wave');await until(()=>first.state.players.get(second.sessionId)!.wave>0,'wave');
  second.send('chat','visible');await until(()=>messages.get(first.sessionId)!.includes('visible'),'chat');
- const block=await fetch(`${endpoint}/api/blocks/${secondGuest.profile.id}`,{method:'PUT',headers:{Origin:origin,Cookie:firstGuest.cookie}});assert.equal(block.status,200);
+ const block=await fetch(`${endpoint}/api/blocks/${secondGuest.profile.id}`,{method:'PUT',headers:{...trustedHeaders(firstGuest.cookie),Origin:origin,Cookie:firstGuest.cookie}});assert.equal(block.status,200);
  await assert.rejects(()=>client(firstGuest.cookie).joinById(first.roomId));
  await delay(900);second.send('chat','blocked second');first.send('chat','blocked first');await delay(350);
  assert.ok(!messages.get(first.sessionId)!.includes('blocked second'));assert.ok(!messages.get(second.sessionId)!.includes('blocked first'));
  assert.ok(messages.get(rooms[2].sessionId)!.includes('blocked second'));
- await fetch(`${endpoint}/api/blocks/${secondGuest.profile.id}`,{method:'DELETE',headers:{Origin:origin,Cookie:firstGuest.cookie}});
+ await fetch(`${endpoint}/api/blocks/${secondGuest.profile.id}`,{method:'DELETE',headers:{...trustedHeaders(firstGuest.cookie),Origin:origin,Cookie:firstGuest.cookie}});
  await delay(900);second.send('chat','unblocked');await until(()=>messages.get(first.sessionId)!.includes('unblocked'),'unblocked chat');
  console.log('PASS: bounded movement, stale/replayed input rejection, wave, chat and symmetric block/unblock.');
  const seat=SEATS.find(s=>s.benchId==='south-west')!;

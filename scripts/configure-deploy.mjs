@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { configureAbuseProxy } from './configure-abuse-proxy.mjs';
 import { mkdir, writeFile, access, rm } from 'node:fs/promises';
 import { isIP } from 'node:net';
 import { resolve } from 'node:path';
@@ -27,6 +28,7 @@ catch (error) { if (error.code !== 'ENOENT') throw error; }
 await mkdir(directory, { mode: 0o700 });
 const secret = () => randomBytes(32).toString('hex');
 const adminPassword = secret(), appPassword = secret(), voiceKey = `SC${randomBytes(12).toString('hex')}`, voiceSecret = secret();
+const abuseProxySecret = secret();
 const portSuffix = local ? ':8443' : '';
 const appOrigin = `https://${gameDomain}${portSuffix}`;
 const response = (status, body = '') => ({ handler: 'static_response', status_code: status, body });
@@ -87,11 +89,12 @@ if (tunnel) {
   });
   caddy.apps.http.servers = { web };
 }
+configureAbuseProxy(caddy, abuseProxySecret, tunnel);
 try {
   for (const [name, contents] of Object.entries({
     'postgres-password': adminPassword,
     'app-password': appPassword,
-    'game.env': `NODE_ENV=production\nHOST=0.0.0.0\nPORT=2567\nDATABASE_URL=postgresql://slop_city:${appPassword}@postgres:5432/slop_city\nAPP_ORIGIN=${appOrigin}\nAPP_ORIGINS=\nLIVEKIT_URL=http://livekit:7880\nLIVEKIT_PUBLIC_URL=${tunnel ? `wss://${gameDomain}${portSuffix}/voice` : `wss://${voiceDomain}${portSuffix}`}\nLIVEKIT_API_KEY=${voiceKey}\nLIVEKIT_API_SECRET=${voiceSecret}\n`,
+    'game.env': `NODE_ENV=production\nABUSE_PROXY_SECRET=${abuseProxySecret}\nHOST=0.0.0.0\nPORT=2567\nDATABASE_URL=postgresql://slop_city:${appPassword}@postgres:5432/slop_city\nAPP_ORIGIN=${appOrigin}\nAPP_ORIGINS=\nLIVEKIT_URL=http://livekit:7880\nLIVEKIT_PUBLIC_URL=${tunnel ? `wss://${gameDomain}${portSuffix}/voice` : `wss://${voiceDomain}${portSuffix}`}\nLIVEKIT_API_KEY=${voiceKey}\nLIVEKIT_API_SECRET=${voiceSecret}\n`,
     'livekit.yaml': JSON.stringify(livekit, null, 2) + '\n',
     'caddy.json': JSON.stringify(caddy, null, 2) + '\n',
     'compose.env': `DEPLOY_DIR=./${directoryName}\nRELEASE_TAG=local\nLIVEKIT_UID=${process.getuid?.() ?? 1000}\nLIVEKIT_GID=${process.getgid?.() ?? 1000}\n${tunnel ? 'COMPOSE_FILE=compose.yaml:compose.tunnel.yaml\n' : ''}${local ? 'COMPOSE_PROJECT_NAME=slop-city-smoke\nBIND_IP=127.0.0.1\nHTTP_PORT=8088\nHTTPS_PORT=8443\nRTC_TCP_PORT=17891\nRTC_UDP_PORT=17892\nTURN_UDP_PORT=13478\n' : 'BIND_IP=0.0.0.0\n'}`,

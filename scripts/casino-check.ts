@@ -1,3 +1,4 @@
+import { SALARY_INTERVAL_MS } from '../shared/catalog.ts';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { loadEnvFile } from 'node:process';
@@ -22,6 +23,27 @@ try {
  await casino.initialise();
  await guests.initialise(); await economy.initialise(); await casino.initialise();
  const profile = async () => (await guests.create({ name: 'Casino test', shirt: 0, skin: 0 })).profile.id;
+ // Larger roulette stakes upgrade without changing the other games or durable replay.
+ assert.ok((await guests.pool.query('SELECT version FROM guest_schema_migrations WHERE version=7')).rowCount);
+ const largeId = await profile();
+ const largeInput = input(largeId, {stake: 1000});
+ const large = await casino.accept(largeInput, valid);
+ assert.equal(large.wallet.balance, 0);
+ assert.equal((await casino.accept(largeInput, valid)).replayed, true);
+ await assert.rejects(casino.settle([{id: large.wager.id, returned: 36001}]), /Invalid casino settlement/);
+ await casino.settle([{id: large.wager.id, returned: 36000}]);
+ await casino.settle([{id: large.wager.id, returned: 36000}]);
+ assert.equal((await economy.ensure(largeId)).balance, 36000);
+ const larger = await casino.accept(input(largeId, {stake: 110, roomId: 'large-refund'}), valid);
+ await casino.recoverPending('large-refund'); await casino.recoverPending('large-refund');
+ assert.equal((await economy.ensure(largeId)).balance, 36000);
+ assert.equal((await casino.replay(largeId, larger.wager.requestId, larger.wager.fingerprint))?.wager.returned, 110);
+ for (const stake of [1001, 1010, 110.5, 111]) await assert.rejects(casino.accept(input(largeId, {stake}), valid), (e: EconomyError) => e.code === 'invalid_stake');
+ for (const game of ['blackjack', 'slots', 'craps']) await assert.rejects(casino.accept(input(largeId, {stake: 110, details: {game}}), valid), (e: EconomyError) => e.code === 'invalid_stake');
+ // The database uses the actual game column, not a roulette-looking table ID.
+ await assert.rejects(guests.pool.query("UPDATE casino_wagers SET game='blackjack' WHERE id=$1", [large.wager.id]), /casino_wagers_stake_check/);
+ const lowId = await profile(); await economy.purchase(lowId, 'oat-knit', 'roulette-low-wallet');
+ await assert.rejects(casino.accept(input(lowId, {stake: 1000}), valid), (e: EconomyError) => e.code === 'insufficient_funds');
  // Migration 004 remains compatible with all initializers; craps uses the same atomic ledger/recovery.
  assert.ok((await guests.pool.query('SELECT version FROM guest_schema_migrations WHERE version=4')).rowCount);
  const crapsId = await profile();
@@ -46,7 +68,7 @@ try {
  // Concurrent purchases, salary and wagers all serialize on the existing wallet row.
  const mixed = await profile(), epoch = randomUUID(); await economy.openSession(mixed, epoch);
  const attempts = await Promise.allSettled([
-  economy.purchase(mixed, 'oxblood-boots', 'mixed-clothing'), economy.checkpoint(mixed, epoch, 600000),
+  economy.purchase(mixed, 'oxblood-boots', 'mixed-clothing'), economy.checkpoint(mixed, epoch, SALARY_INTERVAL_MS),
   ...Array.from({ length: 8 }, () => casino.accept(input(mixed), valid)),
  ]);
  assert.equal(attempts[0].status, 'fulfilled'); assert.equal(attempts[1].status, 'fulfilled');
@@ -58,7 +80,7 @@ try {
  await casino.accept(input(poor), valid); const increment = input(poor, { tableId: 'blackjack-1', details: { game: 'blackjack', action: 'double' } });
  await assert.rejects(casino.accept(increment, valid), (e: EconomyError) => e.code === 'insufficient_funds');
  assert.equal(await casino.replay(poor, increment.requestId, increment.fingerprint), null);
- const poorEpoch = randomUUID(); await economy.openSession(poor, poorEpoch); await economy.checkpoint(poor, poorEpoch, 600000);
+ const poorEpoch = randomUUID(); await economy.openSession(poor, poorEpoch); await economy.checkpoint(poor, poorEpoch, SALARY_INTERVAL_MS);
  assert.equal((await casino.accept(increment, valid)).wallet.balance, 0);
  // Admission waits behind a wallet lock and observes the new cutoff after it acquires it.
  const delayed = await profile(); await economy.ensure(delayed); const blocker = await guests.pool.connect(); let open = true;

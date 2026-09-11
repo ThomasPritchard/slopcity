@@ -223,3 +223,48 @@ test('Unequal heads-up all-ins display only the contested pot after durable sett
   await t.command('p0', { action: 'poker-leave', escrowId: own.escrowId });
   assert.equal(t.repo.wallet('p0').balance, 2000);
  });
+
+test('Poker Ready requires funded connected seats and two players, starts early and preserves decision time', async () => {
+ const t = setup(); const roundId = t.service.state().roundId;
+ assert.throws(() => t.service.ready('p0', 's0', roundId), (e: EconomyError) => e.code === 'not_participating');
+ await t.join(0); t.service.ready('p0', 's0', roundId); await t.tick(2000);
+ assert.equal(t.service.state().phase, 'waiting'); assert.equal(t.service.state().readiness!.deadline, 0); assert.equal(t.repo.starts.length, 0);
+ await t.join(1); assert.equal(t.service.state().readiness!.deadline, 0);
+ t.service.ready('p1', 's1', roundId); const deadline = t.service.state().readiness!.deadline;
+ assert.equal(deadline, 4500); await t.tick(1000); t.service.ready('p1', 's1', roundId); assert.equal(t.service.state().readiness!.deadline, deadline);
+ await t.tick(500); assert.equal(t.service.state().phase, 'preflop'); assert.equal(t.service.state().deadline, deadline + 20_000);
+ assert.throws(() => t.service.ready('p0', 's0', roundId), (e: EconomyError) => e.code === 'hand_in_progress');
+ await t.act('fold'); const resultRound = t.service.state().roundId;
+ t.service.ready('p0', 's0', resultRound); t.service.ready('p1', 's1', resultRound); await t.tick(1500);
+ assert.equal(t.service.state().phase, 'preflop'); assert.notEqual(t.service.state().roundId, resultRound); assert.equal(t.repo.hands.size, 2);
+});
+
+test('Poker joining grace protects panel arrivals without requiring spectator readiness', async () => {
+ const t = setup(); await t.join(0); await t.join(1); const roundId = t.service.state().roundId;
+ t.service.presence('p2', 's2', true); t.service.ready('p0', 's0', roundId); t.service.ready('p1', 's1', roundId);
+ assert.equal(t.service.state().readiness!.deadline, 6000); await t.tick(4000);
+ t.service.presence('p2', 's2', true); assert.equal(t.service.state().readiness!.deadline, 6000);
+ await t.tick(1000); assert.equal(t.service.state().phase, 'preflop'); assert.equal(t.service.state().seats.length, 2);
+});
+
+test('Poker departures and session replacement invalidate readiness; ambiguous early start keeps frozen hand', async () => {
+ const t = setup(); await t.join(0); await t.join(1); const roundId = t.service.state().roundId;
+ t.service.ready('p0', 's0', roundId); t.service.ready('p1', 's1', roundId);
+ t.service.leave('p1'); t.actors.get('p1')!.sessionId = 'replacement';
+ assert.equal(t.service.state().readiness!.deadline, 0);
+ await t.command('p1', { action: 'poker-rejoin', escrowId: t.service.privateState('p1')!.escrowId });
+ assert.deepEqual(t.service.state().readiness!.readyProfileIds, ['p0']);
+ t.service.ready('p1', 'replacement', roundId); t.repo.ambiguousBegin = true;
+ await t.tick(1500); assert.equal(t.service.state().phase, 'paused'); assert.equal(t.deckCalls(), 0);
+ await t.tick(0); assert.equal(t.service.state().phase, 'preflop'); assert.equal(t.repo.hands.size, 1); assert.equal(t.deckCalls(), 1);
+ assert.deepEqual(t.repo.starts[0], t.repo.starts[1]);
+});
+
+test('Nonfinancial casino controls cannot reuse pending or remembered poker buy-in request IDs', async () => {
+ const t = setup(), requestId = randomUUID(); t.repo.ambiguousBuy = true;
+ await assert.rejects(t.command('p0', { action: 'poker-join', seat: 0, buyIn: 100 }, requestId));
+ assert.throws(() => t.service.checkControlRequest('p0', requestId), (e: EconomyError) => e.code === 'request_conflict');
+ await t.tick(0); assert.equal(t.service.state().seats.length, 1);
+ assert.throws(() => t.service.checkControlRequest('p0', requestId), (e: EconomyError) => e.code === 'request_conflict');
+ assert.equal(t.repo.buys.size, 1);
+});

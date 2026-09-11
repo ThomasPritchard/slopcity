@@ -20,9 +20,11 @@ Enter a name, customise your character in the 3D changing room, then join the sq
 
 Click or tap a visible neighbour, or select their name in **Social**, to open their player card. Invite them to a handshake or hug, send a mutual friend request, give credits, mute voice or block them. Shared emotes need consent and clear space within two metres; moving or choosing **Stop emote** ends the pose. Friends and requests are saved with your browser-bound guest profile. Gifts need both players within three metres and a confirmation. Each future salary payment adds the same amount to your outgoing gifting allowance; starting credits, received gifts and casino returns add none. You can give up to your allowance and wallet balance, with a 1,000-credit limit per gift. A pending gift can be checked after reloading without sending it twice.
 
-Walk into **Form & Thread** and choose **Browse Form & Thread** to try on clothes. Buying adds a piece to your collection; **Wear this** equips it for everyone to see. Click the wallet to open your saved wardrobe anywhere. Each guest receives **1,000 credits once**, then **100 credits per 10 accumulated real minutes in the visible town tab**. Sitting, chat and browsing count. Leaving or hiding the tab pauses salary and preserves progress.
+Walk into **Form & Thread** and choose **Browse Form & Thread** to try on clothes. Buying adds a piece to your collection; **Wear this** equips it for everyone to see. Click the wallet to open your saved wardrobe anywhere. Each guest receives **1,000 credits once**, then **100 credits per 5 accumulated real minutes in the visible town tab**. Sitting, chat and browsing count. Leaving or hiding the tab pauses salary and preserves progress.
 
-Walk into **The Meridian Casino**, approach a table or machine, then choose **Open**. Roulette accepts a separate confirmed bet on each press; blackjack requires a seat before betting; slots play one spin at a time; craps accepts one Pass or Don’t Pass line bet before the opening roll, followed by shared dice rolls until the wager resolves. House-game stakes are 10–100 fictional credits. Texas Hold’em seats two to six players with 5/10 blinds and a 200–1,000-credit buy-in from the wallet into table chips. Poker’s **Leave table** schedules a fold on your next turn and returns the remaining stack after the hand; all-in hands and completed betting remain live. Rules and returns are available in each panel. Closing a panel keeps accepted bets in play. Blackjack’s **Leave seat** releases your character and stands unfinished hands; slots release after their result interval. After a server restart, unfinished house wagers are refunded once and unfinished poker hands return their opening stacks; completed poker winnings are preserved.
+Walk into **The Meridian Casino**, approach a table or machine, then choose **Open**. Roulette accepts a separate confirmed bet on each press; blackjack requires a seat before betting; slots play one spin at a time; craps accepts one Pass or Don’t Pass line bet before the opening roll, followed by shared dice rolls until the wager resolves. Roulette stakes use 10-credit steps, up to your available balance and the 1,000-credit round limit; other house-game stakes are 10–100 fictional credits. Texas Hold’em seats two to six players with 5/10 blinds and a 100–1,000-credit buy-in from the wallet into table chips. Poker’s **Leave table** schedules a fold on your next turn and returns the remaining stack after the hand; all-in hands and completed betting remain live. Each panel has Play, How to play and Results views with fixed actions and paged details. Ready starts a round early once everyone playing is ready; opening the table gives a new player a brief joining grace. Personal win, loss and stake-return announcements appear after the reveal. Town chat stays available beside each game; press **/** to focus chat, **Enter** to send, or **Escape** to return to the game. Rules and returns are available in each panel. Closing a panel keeps accepted bets in play. Blackjack’s **Leave seat** releases your character and stands unfinished hands; slots release after their result interval. After a server restart, unfinished house wagers are refunded once and unfinished poker hands return their opening stacks; completed poker winnings are preserved.
+
+Walk west to **The Bridge Picture House** for the shared community reel and BridgeMind watch view. **Memories** opens the Polaroid board: zoom in, select a photo, then return to the board. **Share a memory** uploads a still image to Tom’s private approval queue. The review desk controls publication, promos, schedule cards and the selected livestream. Set up the separate administrator password with `npm run community:admin-password`, then restart the local game server. See [cinema and community design](docs/cinema-community-design.md) for limits and provider behaviour.
 
 ## Implemented
 
@@ -32,7 +34,7 @@ Walk into **The Meridian Casino**, approach a table or machine, then choose **Op
 - Shared appearance, town text chat, wave and departure.
 - Click/tap player cards, consent-based shared handshakes/hugs, saved mutual friends and atomic, retry-safe credit gifts with salary-earned allowance.
 - Centred location titles on arrival, fading away within four seconds; the town map retains your current location.
-- Eight server-owned seats on four benches, with an authored seated pose.
+- Twenty-six server-owned seats on thirteen benches, including eighteen seats at the garden cinema, with an authored seated pose.
 - Opt-in LiveKit voice, microphone off on join, distance fade and separate acoustic areas for the square and venue interiors.
 - Local voice mute plus persistent guest blocking that filters chat and voice in both directions. Blocked avatars remain visible.
 - Name-first onboarding and a live 3D changing room with skin/jacket colours.
@@ -70,6 +72,9 @@ npm run test:shop
 npm run test:shop-render
 npm run test:shop-signage
 npm run test:casino-browser
+npm run test:casino-ux
+npm run test:casino-qol
+npm run test:roulette-placement
 npm run test:casino-expansion
 npm run test:roulette-motion
 npm run test:craps-render
@@ -84,6 +89,8 @@ npm run test:interactions-network
 npm run test:interactions-browser
 npm run test:voice
 npm run test:startup
+npm run test:cinema-render
+npm run test:community-browser
 npm run test:browser
 npm run test:character
 npm run test:wave
@@ -91,9 +98,9 @@ npm run test:polish
 npm run test:crowd
 ```
 
-Most browser checks need the development server and all launch headlessly. Voice testing uses Chromium's synthetic microphone, never the user's real microphone. Set `PLAYWRIGHT_BROWSERS_PATH` for a custom browser directory. Screenshots/results go to ignored `output/playwright/`. The shop check defaults to WebKit; use `SHOP_BROWSER=chromium npm run test:shop` for Chromium (compact viewport and performance mode). The economy check uses an isolated PostgreSQL schema and simulated cumulative time to verify salary thresholds without a ten-minute wait.
+Most browser checks need the development server and all launch headlessly. Voice testing uses Chromium's synthetic microphone, never the user's real microphone. Set `PLAYWRIGHT_BROWSERS_PATH` for a custom browser directory. Screenshots/results go to ignored `output/playwright/`. The shop check defaults to WebKit; use `SHOP_BROWSER=chromium npm run test:shop` for Chromium (compact viewport and performance mode). The economy check uses an isolated PostgreSQL schema and simulated cumulative time to verify salary thresholds without a five-minute wait.
 
-The casino browser journey defaults to WebKit; `CASINO_BROWSER=chromium npm run test:casino-browser` runs a compact Chromium roulette compatibility check. `test:casino` uses an isolated PostgreSQL schema for wagering, concurrent wallet use and recovery. `test:casino-network` starts an isolated localhost server on port 2569 for shared casino protocol checks.
+The casino UI fixture check covers five games at desktop and phone sizes; run it separately from full-app browser journeys because fixture changes can reload Vite pages. The roulette placement check renders controlled outside bets on both actual table assets. The casino browser journey defaults to WebKit; `CASINO_BROWSER=chromium npm run test:casino-browser` runs a compact Chromium roulette compatibility check. `test:casino` uses an isolated PostgreSQL schema for wagering, concurrent wallet use and recovery. `test:casino-network` starts an isolated localhost server on port 2569 for shared casino protocol checks.
 
 The craps checks cover the imported table/dice renderer, a real browser journey and an isolated three-client protocol journey on port 2571. Poker checks cover escrow/rules, an isolated three-client journey on port 2572, the imported table renderer and full-app controls; see [the poker contract](docs/poker-design.md). See [the craps contract](docs/craps-design.md) for rules, motion and persistence details.
 
@@ -104,3 +111,21 @@ The network check starts its own localhost server on port 2568 and an isolated d
 ## Art sources
 
 See [art-source/README.md](art-source/README.md) for editable Blender sources and regeneration commands, [the implementation checkpoint](docs/implementation-status.md) for evidence and limits, and [the first-build proposal](docs/first-build-proposal.md) for the broader product scope.
+
+### Isolated community acceptance
+
+Run `npm run community:preview` with the local PostgreSQL service available. This creates a disposable schema and loopback-only servers at `http://localhost:5178` and port 2578. Ctrl+C stops both and removes the schema; the usual development town is unaffected. When opening through Orca, set `COMMUNITY_PREVIEW_ORIGIN` to the exact Orca preview URL before launching; that one additional loopback origin is allowed.
+
+In another terminal, run:
+
+```sh
+GAME_URL=http://localhost:5178 COMMUNITY_ACCESS_FILE=output/playwright/cinema-preview/access.json npm run test:community-ui
+GAME_URL=http://localhost:5178 npm run test:community-browser
+GAME_URL=http://localhost:5178 npm run test:cinema-render
+```
+
+The private access file belongs only to this disposable preview. Provider documents are mocked in the UI acceptance check; these checks do not prove live broadcast playback or audio.
+
+## Town safety administration
+
+Open `/admin` to view activity and manage temporary/permanent guest or IP bans. Login is disabled until the server admin password is set. See [town safety](docs/abuse-controls.md) for password setup, quotas and monitoring, and [deployment](docs/deployment.md#trusted-visitor-addresses-and-abuse-controls) for the required gateway upgrade. Run `npm run test:safety` for the isolated enforcement and browser checks.

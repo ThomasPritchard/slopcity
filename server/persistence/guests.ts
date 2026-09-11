@@ -26,7 +26,7 @@ export class GuestRepository {
    await client.query('SELECT pg_advisory_xact_lock(782641092)');
    await client.query('CREATE TABLE IF NOT EXISTS guest_schema_migrations (version integer PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
    const versions = await client.query('SELECT version FROM guest_schema_migrations ORDER BY version');
-   if (versions.rows.some(row => row.version !== 1 && row.version !== 2 && row.version !== 3 && row.version !== 4 && row.version !== 5 && row.version !== 6)) throw new Error('Unsupported guest schema version');
+   if (versions.rows.some(row => row.version !== 1 && row.version !== 2 && row.version !== 3 && row.version !== 4 && row.version !== 5 && row.version !== 6 && row.version !== 7 && row.version !== 8 && row.version !== 9)) throw new Error('Unsupported guest schema version');
    if (!versions.rowCount) {
     await client.query(await readFile(new URL('./migrations/001_guests.sql', import.meta.url), 'utf8'));
     await client.query('INSERT INTO guest_schema_migrations(version) VALUES (1)');

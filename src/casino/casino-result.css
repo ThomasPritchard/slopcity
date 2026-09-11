@@ -1,0 +1,28 @@
+.casino-result-region { position: absolute; z-index: 16; top: 43%; left: 50%; width: min(400px, calc(100% - 32px)); transform: translate(-50%, -50%); pointer-events: none; text-align: center; color: #f7f1de; }
+.casino-result-region.is-at-table { left: 27%; width: min(370px, 44vw); }
+.casino-result-announcement { padding: 20px 14px; border-radius: 50%; background: radial-gradient(ellipse, #10291eeb 12%, #10291e99 44%, transparent 72%); text-shadow: 0 2px 12px #0b2019; animation: casino-result-arrival 2.4s ease both; }
+.casino-result-detail { display: block; font: 500 10px/1.5 'DM Sans', sans-serif; text-transform: uppercase; letter-spacing: 1.2px; }
+.casino-result-announcement > strong { display: block; margin: 7px 0 3px; font: 400 clamp(28px, 4.5vw, 56px)/1.05 'Instrument Serif', Georgia, serif; }
+.casino-result-amount { display: block; font: 500 clamp(18px, 2.8vw, 30px)/1.4 'DM Sans', sans-serif; font-variant-numeric: tabular-nums; }
+.casino-result-announcement small { display: block; margin-top: 5px; font: 400 10px/1.5 'DM Sans', sans-serif; }
+.casino-result-announcement.is-win { color: #f8e2a7; }
+.casino-result-announcement.is-win::before { content: '✦'; display: block; font-size: 22px; margin-bottom: 6px; }
+@keyframes casino-result-arrival { 0% { opacity: 0; transform: translateY(7px) scale(.97); } 12%, 82% { opacity: 1; transform: none; } 100% { opacity: 0; transform: none; } }
+@media (max-width: 699px) and (orientation: portrait) {
+  .casino-result-region.is-at-table { top: 16%; left: 50%; width: calc(100% - 28px); }
+  .casino-result-region.is-at-table .casino-result-announcement { padding: 10px; }
+  .casino-result-detail { font-size: 9px; }
+  .casino-result-announcement.is-win::before { font-size: 17px; margin-bottom: 3px; }
+}
+@media (max-height: 620px) and (orientation: landscape) { .casino-result-region.is-at-table { left: 22%; width: 41vw; top: 46%; } }
+@media (prefers-reduced-motion: reduce) { .casino-result-announcement { animation: none; } }
+@media (max-height:620px) and (orientation:landscape) {
+  .at-table:has(.casino-chat.is-open) .casino-result-region { top: 26%; }
+}
+@media (max-width:699px) and (orientation:portrait) {
+  .at-table:has(.casino-chat.is-open) .casino-result-region { top: 14%; left: 80%; width: 36%; }
+  .at-table:has(.casino-chat.is-open) .casino-result-announcement { padding: 6px 2px; }
+  .at-table:has(.casino-chat.is-open) .casino-result-announcement > strong { font-size: 24px; }
+  .at-table:has(.casino-chat.is-open) .casino-result-amount { font-size: 16px; }
+  .at-table:has(.casino-chat.is-open) .casino-result-announcement small { font-size: 9px; }
+}

@@ -47,7 +47,7 @@ async function walk(page: Page, axis: 'x' | 'z', target: number) {
 async function screenshot(page: Page, name: string) {
   await page.waitForFunction(() => {
     const camera = (window as any).casinoScene?.activeCamera;
-    return camera && camera.viewport.y === (innerWidth < 700 && innerHeight > innerWidth ? .55 : 0);
+    return camera && camera.viewport.y === (innerWidth < 700 && innerHeight > innerWidth ? .72 : 0);
   });
   await page.waitForTimeout(180);
   const path = `${output}/${name}.png`;
@@ -108,6 +108,13 @@ function cardLabel(material: string) {
   return `${rank[match[1]] ?? match[1]} of ${match[2]}`;
 }
 
+async function showSeat(page: Page, seat: number) {
+  await page.getByRole('button', { name: /^Players \(/ }).click();
+  const previous = page.getByRole('button', { name: 'Previous seat page', exact: true });
+  while (await previous.isEnabled()) await previous.click();
+  for (let index = 0; index < seat; index++) await page.getByRole('button', { name: 'Next seat page', exact: true }).click();
+}
+
 async function verifyCards(player: typeof players[number], showdown = false) {
   const { page, seat, name } = player, otherSeat = seat === 0 ? 3 : 0;
   const physical = await page.evaluate(() => {
@@ -120,7 +127,8 @@ async function verifyCards(player: typeof players[number], showdown = false) {
   const ownUI = await page.locator('.poker-own-hand .poker-card:visible, .poker-dock-cards .poker-card:visible').evaluateAll(cards => cards.map(card => card.getAttribute('aria-label')));
   assert.equal(ownUI.length, 2, `${name}: two private cards in the UI`);
   assert.deepEqual(physical.slice(5 + seat * 2, 7 + seat * 2).map(card => { assert.ok(card.enabled); return cardLabel(card.material); }), ownUI, `${name}: private UI cards match physical faces`);
-  const otherUI = await page.locator('.poker-seats > .poker-seat').nth(otherSeat).locator('.poker-card').evaluateAll(cards => cards.map(card => card.getAttribute('aria-label')));
+  await showSeat(page, otherSeat);
+  const otherUI = await page.locator('.poker-seating .poker-seat-cards .poker-card').evaluateAll(cards => cards.map(card => card.getAttribute('aria-label')));
   const otherPhysical = physical.slice(5 + otherSeat * 2, 7 + otherSeat * 2);
   assert.ok(otherPhysical.every(card => card.enabled));
   if (showdown) assert.deepEqual(otherPhysical.map(card => cardLabel(card.material)), otherUI, `${name}: opponent showdown faces match`);
@@ -128,6 +136,7 @@ async function verifyCards(player: typeof players[number], showdown = false) {
     assert.deepEqual(otherUI, ['Face-down card', 'Face-down card']);
     assert.deepEqual(otherPhysical.map(card => card.material), ['Poker card back', 'Poker card back'], `${name}: opponent physical cards remain concealed`);
   }
+  await page.getByRole('button', { name: 'Community cards', exact: true }).click();
   const boardUI = await page.locator('.poker-board-cards .poker-card:not(.is-empty)').evaluateAll(cards => cards.map(card => card.getAttribute('aria-label')));
   assert.deepEqual(physical.slice(0, 5).filter(card => card.enabled).map(card => cardLabel(card.material)), boardUI, `${name}: community UI cards match physical faces`);
   cardEvidence.push({ player: name, phase: await phase(page), own: ownUI, opponent: otherUI, board: boardUI, physical });
@@ -170,12 +179,14 @@ async function mobile(player: typeof players[number]) {
 try {
   const a = await arrive('Poker browser A', 0), b = await arrive('Poker browser B', 3);
   for (const player of players) {
+    await showSeat(player.page, player.seat);
     await player.page.getByRole('button', { name: `Select seat ${player.seat + 1}`, exact: true }).click();
     await player.page.getByRole('button', { name: `Join seat ${player.seat + 1}`, exact: true }).click();
     await player.page.getByRole('button', { name: 'Leave seat', exact: true }).waitFor();
     player.afterBuyIn = (await wallet(player.page)).balance;
     assert.equal(player.afterBuyIn, player.before - POKER_DEFAULT_BUY_IN, `${player.name}: wallet buy-in debit`);
   }
+  for (const player of players) await player.page.locator('.casino-ready').click();
   await a.page.locator('.poker-game[data-phase="preflop"]').waitFor();
   await b.page.locator('.poker-game[data-phase="preflop"]').waitFor();
   await a.page.waitForTimeout(250);
@@ -220,12 +231,12 @@ try {
   assert.ok(actions.some(action => action.action.startsWith('Call ')) && actions.some(action => action.action === 'Check'), 'Actual call and check actions were accepted through the UI');
   assert.deepEqual([...visited], ['preflop', 'flop', 'turn', 'river']);
   assert.deepEqual(await verifyCards(a, true), await verifyCards(b, true));
-  const winners = await a.page.locator('.poker-winners').innerText();
-  assert.equal(await b.page.locator('.poker-winners').innerText(), winners);
-  const stacks = await Promise.all(players.map(async player => Number((await player.page.locator('.poker-seat.is-yours .poker-seat-stack').innerText()).replace(/[^0-9]/g, ''))));
+  for (const player of players) await player.page.getByRole('button', { name: 'Results', exact: true }).click();
+  const winners = await a.page.locator('.casino-table-result').innerText();
+  assert.equal(await b.page.locator('.casino-table-result').innerText(), winners);
+  const stacks = await Promise.all(players.map(async player => Number((await player.page.locator('.casino-dock-selection small').innerText()).replace(/[^0-9]/g, ''))));
   assert.equal(stacks.reduce((sum, stack) => sum + stack, 0), POKER_DEFAULT_BUY_IN * 2, 'Combined table chips conserved');
   for (const player of players) assert.equal((await wallet(player.page)).balance, player.afterBuyIn, 'Hand winnings remain in table chips until cash-out');
-  await a.page.locator('.poker-results').scrollIntoViewIfNeeded();
   await screenshot(a.page, 'desktop-showdown');
   await a.page.getByRole('button', { name: 'Leave seat', exact: true }).click();
   // The world exit must remain usable with a full-width portrait chat panel open.

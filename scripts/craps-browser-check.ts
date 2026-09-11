@@ -2,7 +2,7 @@ import { webkit,chromium,type Page } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdir,writeFile } from 'node:fs/promises';
 import { crapsReturn, resolveCraps } from '../shared/craps.ts';
-await mkdir('output/playwright',{recursive:true});
+await mkdir('output/playwright/craps',{recursive:true});
 const compact=process.env.CRAPS_BROWSER==='chromium';
 const browser=await(compact?chromium:webkit).launch({headless:true});
 const page=await browser.newPage({viewport:compact?{width:960,height:720}:{width:1440,height:960},hasTouch:!compact});
@@ -12,7 +12,7 @@ const wallet=()=>page.evaluate(async()=>await(await fetch('/game/api/economy')).
 async function position(){await page.getByRole('button',{name:'Open town map'}).click();const mark=page.locator('.town-map circle[fill="#253d33"]');const p={x:Number(await mark.getAttribute('cx')),z:-Number(await mark.getAttribute('cy'))};await page.getByRole('button',{name:'Close panel'}).click();return p;}
 async function walk(axis:'x'|'z',target:number){for(let i=0;i<(compact?48:20);i++){const delta=target-(await position())[axis];if(Math.abs(delta)<.30)return;const key=axis==='x'?(delta>0?'d':'a'):(delta>0?'w':'s');await page.locator('#world').focus();await page.keyboard.down(key);await page.waitForTimeout(Math.min(1600,Math.max(65,Math.abs(delta)/4.2*1000)));await page.keyboard.up(key);await page.waitForTimeout(180);}throw Error(`Could not walk to ${axis}=${target}`);}
 async function enabled(name:string){const button=page.getByRole('button',{name,exact:true});await button.waitFor();await page.waitForFunction(name=>{const button=[...document.querySelectorAll('button')].find(b=>b.textContent===name);return button&&!button.disabled;},name,{timeout:50000});return button;}
-async function shot(name:string){await page.waitForFunction(()=>{const w=(window as any).casinoScene?.activeCamera;if(!w)return false;const v=w.viewport;return document.querySelector('.casino-panel')&&innerWidth<700&&innerHeight>innerWidth?v.y===.55:v.y===0;});await page.waitForTimeout(350);await page.screenshot({path:`output/playwright/${name}.png`});}
+async function shot(name:string){await page.waitForFunction(()=>{const w=(window as any).casinoScene?.activeCamera;if(!w)return false;const v=w.viewport;return document.querySelector('.casino-panel')&&innerWidth<700&&innerHeight>innerWidth?v.y===.72:v.y===0;});await page.waitForTimeout(350);await page.screenshot({path:`output/playwright/${name}.png`});}
 async function mobileLayout(game:string,action:string){
  for(const [orientation,viewport]of [['portrait',{width:390,height:844}],['landscape',{width:844,height:390}]] as const){
   await page.setViewportSize(viewport);await page.waitForTimeout(200);
@@ -36,10 +36,10 @@ try {
  if(!compact)await mobileLayout('craps','Bet 10 on Don’t Pass');
  const before=(await wallet()).balance;
  await(await enabled('Bet 10 on Don’t Pass'))[compact?'click':'tap']();
- await page.locator('.craps-own-bet').waitFor(); assert.equal((await wallet()).balance,before-10);
+ await page.getByRole('group', { name: 'Your accepted line', exact: true }).waitFor(); assert.equal((await wallet()).balance,before-10);
  assert.equal(await page.evaluate(()=>(window as any).casinoScene.getMeshByName('craps-live/chip-0')?.isEnabled()),true);
  const chips=await page.evaluate(()=>(window as any).casinoScene.getMeshByName('craps-live/chip-0').position.asArray());assert.ok(Math.abs(chips[2]-(51.4-.88))<.001,'Own chip matches chosen physical line');
- await page.setViewportSize({width:1440,height:960});await page.locator('.casino-body').evaluate(n=>n.scrollTop=0);await shot('craps/browser-wager');
+ await page.setViewportSize({width:1440,height:960});await page.locator('.casino-body').evaluate(n=>n.scrollTop=0);await shot('craps/browser-wager');await page.locator('.casino-ready').click();
  let point: 4|5|6|8|9|10|null=null, terminal=false; const rolls=[];
  for(let roll=0;roll<60&&!terminal;roll++){
    await(await enabled('Roll dice')).click();

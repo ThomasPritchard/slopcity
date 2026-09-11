@@ -11,6 +11,8 @@ export function TownMapGround() {
     <rect x="-27" y="-27" width="54" height="54" rx="1" fill="#d9d3bd"/>
     <path d="M-4-26H4V26H-4ZM-26-1H26V5H-26Z" fill="#f2eedf"/>
     <rect x="-20" y="-56" width="40" height="42" fill="#687e6b"/>
+    <rect x="-25.5" y="-5.8" width="12" height="15.6" rx=".8" fill="#927e67"/>
+    <path d="M-24.5-4V8M-21.5-3V7M-18.5-3V7M-15.5-3V7" stroke="#e6dcc3" strokeWidth=".65"/>
     <rect x={SHOP_BOUNDS.front} y={-SHOP_BOUNDS.north} width={SHOP_LAYOUT.depth} height={SHOP_LAYOUT.width} fill="#a58f70"/>
     <circle cx="0" cy="-1" r="3.2" fill="#83aca5"/>
     {TREES.map(([x, y]) => <circle key={`${x}${y}`} cx={x} cy={y} r="2" fill="#8a996b"/>)}
@@ -24,7 +26,7 @@ export function TownMapSvg({ players, sessionId, labeled, ariaLabel }: { players
   const shopCentre = (SHOP_BOUNDS.front + SHOP_BOUNDS.rear) / 2;
   return <svg className={labeled ? 'town-map' : 'town-map-plain'} viewBox={`-30 -59 ${SHOP_BOUNDS.rear + 34} 89`} role="img" aria-label={ariaLabel}>
     <TownMapGround/>
-    {labeled && <><text x="0" y="-40" textAnchor="middle">CASINO</text><text x={shopCentre} y="1" textAnchor="middle" transform={`rotate(90 ${shopCentre} 1)`}>CLOTHING</text></>}
+    {labeled && <><text x="0" y="-40" textAnchor="middle">CASINO</text><text x="-19.5" y="12" textAnchor="middle" style={{fontSize:'2px'}}>PICTURE HOUSE</text><text x={shopCentre} y="1" textAnchor="middle" transform={`rotate(90 ${shopCentre} 1)`}>CLOTHING</text></>}
     {[...players.entries()].map(([id, p]) => <circle key={id} className={id === sessionId ? 'map-dot map-dot--you' : 'map-dot map-dot--neighbour'} cx={p.x} cy={-p.z} r={id === sessionId ? 1.1 : .6} fill={id === sessionId ? '#253d33' : '#9cab84'} stroke="#fff" strokeWidth=".25"/>)}
   </svg>;
 }

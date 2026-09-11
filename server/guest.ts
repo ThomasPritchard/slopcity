@@ -1,6 +1,8 @@
 import express, { type Application, type Request, type Response, type NextFunction } from 'express';
 import { parseProfile, SHIRTS, SKINS } from '../shared/world.ts';
 import { GuestRepository, CREDENTIAL_SECONDS, validCredential, validProfileId } from './persistence/guests.ts';
+import { clientAddress } from './clientAddress.ts';
+import { SafetyError, type SafetyService } from './safety.ts';
 export const COOKIE_NAME = 'slop_guest';
 export function parseGuestCookie(header: string | undefined): string | null {
  const values = (header ?? '').split(';').map(part => part.trim()).filter(part => part.startsWith(`${COOKIE_NAME}=`));
@@ -44,7 +46,7 @@ function validCosmetics(value: unknown): boolean {
  const v = value as Record<string, unknown>;
  return typeof v.name === 'string' && v.name.length <= 100 && typeof v.shirt === 'number' && Number.isInteger(v.shirt) && v.shirt >= 0 && v.shirt < SHIRTS.length && typeof v.skin === 'number' && Number.isInteger(v.skin) && v.skin >= 0 && v.skin < SKINS.length;
 }
-export function mountGuestRoutes(app: Application, repository: GuestRepository, sessions: SessionRegistry) {
+export function mountGuestRoutes(app: Application, repository: GuestRepository, sessions: SessionRegistry, safety?: SafetyService) {
  const router = express.Router();
  router.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -57,7 +59,10 @@ export function mountGuestRoutes(app: Application, repository: GuestRepository, 
   if (existing) { res.json(existing); return; }
   if (req.headers.cookie?.split(';').some(part => part.trim().startsWith(`${COOKIE_NAME}=`))) { res.status(401).json({ error: 'Guest credential expired or invalid' }); return; }
   if (!validCosmetics(req.body)) { res.status(400).json({ error: 'Invalid profile' }); return; }
+  const ip=clientAddress(req.headers);
+  if(safety){if(!ip)throw new SafetyError(503,'untrusted_proxy','Game gateway unavailable.');safety.checkBan(ip);safety.limit('guest',ip);}
   const created = await repository.create(parseProfile(req.body));
+  safety?.record('guest_created',ip??undefined,created.profile.id);
   res.setHeader('Set-Cookie', guestCookie(created.secret, req.headers.origin?.startsWith('https:'))); res.status(201).json(created.profile);
  });
  router.use(async (req, res, next) => {
@@ -92,6 +97,7 @@ export function mountGuestRoutes(app: Application, repository: GuestRepository, 
   await sessions.notifyBlocksChanged(res.locals.profile.id); res.json({ blocks: await repository.blocks(res.locals.profile.id) });
  });
  router.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  if(error instanceof SafetyError){if(error.status===429)res.setHeader('Retry-After',String(error.retryAfter));res.status(error.status).json({code:error.codeName,error:error.message});return;}
   const status = (error as { status?: number })?.status;
   if (status === 400 || status === 413) { res.status(status).json({ error: status === 413 ? 'Request too large' : 'Malformed JSON' }); return; }
   res.status(503).json({ error: 'Guest service temporarily unavailable' });

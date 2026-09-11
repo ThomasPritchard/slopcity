@@ -7,6 +7,7 @@ The character direction is deliberately endearing: the original fixed, wide-eyed
 - `citizen.blend`: rigged citizen, modular jackets/knitwear, trousers, sneakers/boots/loafers; Idle, Walk, Wave, Sit, Run, Jump, HandshakeA/B and HugA/B clips. `clothing.py` supplies the additional garments. `add_citizen_interactions.py`, called by `build_assets.py`, authors the six additional clips on the existing rig without root motion; runtime owns movement and the shared timeline.
 - `street-kit.blend`: original street furniture assembly. The dedicated sources below are current for the benches, fountain, lamp posts and planting; `build_environment.py` delegates those models to their dedicated builders.
 - `town-ground.blend`: patterned limestone promenades, concentric fountain paving, framed bench landings and compacted gravel courts. `build_ground.py` owns only this source and `town-ground.glb`; all stone/gravel colour, normal and roughness maps are generated and packed into both.
+- `cinema.blend`: The Bridge Picture House, with limestone surround, bronze letters, three shallow paved terraces, arrival ramp, planting beds, string lights and a programme noticeboard. `build_cinema.py` reads `shared/cinema-layout.json` and owns only `cinema.blend`/`cinema.glb`; the runtime places the existing benches and trees separately. The world-space import compensates Babylon’s X reflection with `cinema-instance.scaling.x = -1`; verify placement and lettering with `npm run test:cinema-render`.
 - `bench.blend`: editable civic bench with six rounded oak seat slats, a gently reclined five-slat back, timber arm caps, swept evergreen cast supports, stretcher, mounting shoes and bronze fasteners. `build_bench.py` owns only this source and `bench.glb`; its original timber grain is packed into both files.
 - `fountain.blend`: The Rising Wave, an original twisting bronze sculpture on a limestone plinth, a segmented stone basin, glazed mosaic floor and eight exposed jet nozzles. `build_fountain.py` owns only this source and `fountain.glb`; dynamic water is authored separately in `src/world/fountain.ts`.
 - `tree.blend`, `planter.blend`, `entrance-planter.blend`: original full-crowned branching civic trees and two sizes of hollow limestone planting bed, with recessed loam, mulch, folded grass and seed heads. `build_planting.py` owns only these three source/export pairs; foliage UVs preserve root-to-tip wind weights and clump phases.
@@ -34,6 +35,7 @@ Regenerate from the repository root with a separate background Blender process:
 ```sh
 blender --background --factory-startup --python art-source/build_assets.py
 blender --background --factory-startup --python art-source/build_environment.py
+blender --background --factory-startup --python art-source/build_cinema.py
 blender --background --factory-startup --python art-source/build_ground.py
 blender --background --factory-startup --python art-source/build_bench.py
 blender --background --factory-startup --python art-source/build_fountain.py

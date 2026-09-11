@@ -1,0 +1,26 @@
+.chat-panel .chat-close { margin-left: auto; flex-shrink: 0; display: grid; place-items: center; min-width: 44px; min-height: 44px; background: transparent; color: inherit; font-size: 24px; border-radius: 4px; }
+.chat-panel .chat-title { padding-top: 0; padding-bottom: 0; }
+.chat-panel .chat-silenced { font-style: normal; color: #f0d9a0; }
+.casino-chat { position: absolute; left: 28px; bottom: 24px; width: min(340px, calc(50vw - 56px)); pointer-events: auto; }
+.casino-chat .chat-panel { margin: 0; display: flex; flex-direction: column; height: 220px; max-height: 42dvh; background: #243b30f5; }
+.casino-chat .chat-history { display: block; flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
+.casino-chat .chat-history p { font-size: 12px; }
+.casino-chat .chat-title, .casino-chat form { flex-shrink: 0; }
+.casino-chat input { min-height: 44px; font-size: 16px; }
+.casino-chat form button { min-height: 44px; min-width: 44px; }
+.casino-chat-toggle { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 14px; background: #243b30f5; color: #f6f4e9; border: 1px solid #dcc38c55; border-radius: 7px; font-size: 13px; }
+.casino-chat-toggle kbd { padding: 2px 6px; border: 1px solid #dcc38c55; border-radius: 3px; }
+.casino-overlay:has(.casino-chat) .casino-world-note { display: none; }
+@media (max-height:620px) and (orientation:landscape) {
+  .casino-chat { left: 12px; bottom: 12px; width: calc(100vw - min(460px, 55vw) - 34px); }
+  .casino-chat .chat-panel { height: 174px; max-height: none; }
+  .casino-chat .chat-identity, .casino-chat .chat-population { display: none; }
+  .casino-chat .chat-title-label, .casino-chat .chat-title .live-dot { display: inline; }
+}
+@media (max-width:699px) and (orientation:portrait) {
+  .casino-chat { left: 8px; bottom: calc(72dvh + 8px); width: 58vw; }
+  .casino-chat.is-open { top: 8px; }
+  .casino-chat .chat-panel { height: 100%; max-height: none; max-width: none; }
+  .casino-chat .chat-identity small, .casino-chat .identity-status, .casino-chat .chat-population { display: none; }
+  .at-table:has(.casino-chat.is-open) .masthead { visibility: hidden; }
+}

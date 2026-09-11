@@ -1,11 +1,11 @@
-import type { CasinoOccupant } from './casino.ts';
+import type { CasinoOccupant, CasinoReadiness } from './casino.ts';
 import type { CrapsMotion } from './crapsMotion.ts';
 export type CrapsBetKind = 'pass' | 'dont-pass';
 export type CrapsBet = { kind: CrapsBetKind; stake: number };
 export type CrapsPoint = 4 | 5 | 6 | 8 | 9 | 10;
 export type DicePair = [number, number];
 export type CrapsResult = { dice: DicePair; total: number; pointBefore: CrapsPoint | null; pointAfter: CrapsPoint | null; resolution: 'point-set' | 'point-continues' | 'pass-wins' | 'dont-pass-wins' | 'bar-twelve' };
-export type CrapsView = { id: 'craps-1'; game: 'craps'; roundId: string; rollId: string; phase: 'betting' | 'awaiting-roll' | 'rolling' | 'result' | 'paused'; deadline: number; point: CrapsPoint | null; shooter: CasinoOccupant | null; betCount: number; result: CrapsResult | null; history: CrapsResult[]; motion: CrapsMotion | null };
+export type CrapsView = { readiness?: CasinoReadiness; id: 'craps-1'; game: 'craps'; roundId: string; rollId: string; phase: 'betting' | 'awaiting-roll' | 'rolling' | 'result' | 'paused'; deadline: number; point: CrapsPoint | null; shooter: CasinoOccupant | null; betCount: number; result: CrapsResult | null; history: CrapsResult[]; motion: CrapsMotion | null };
 export const CRAPS_BETTING_MS = 20_000;
 export const CRAPS_AWAITING_ROLL_MS = 15_000;
 export const CRAPS_POINTS: readonly CrapsPoint[] = [4, 5, 6, 8, 9, 10];

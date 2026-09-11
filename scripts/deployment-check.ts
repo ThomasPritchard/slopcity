@@ -100,7 +100,7 @@ async function docker(args: string[], input?: Buffer, captureStderr = false): Pr
 }
 if (process.argv.includes('--diagnostics')) {
   const credentials = [
-    gameEnv.DATABASE_URL!, gameEnv.LIVEKIT_API_KEY!, gameEnv.LIVEKIT_API_SECRET!,
+    gameEnv.DATABASE_URL!, gameEnv.LIVEKIT_API_KEY!, gameEnv.LIVEKIT_API_SECRET!, gameEnv.ABUSE_PROXY_SECRET ?? '',
     await readFile(`${directory}/postgres-password`, 'utf8'),
     await readFile(`${directory}/app-password`, 'utf8'),
   ];
@@ -211,6 +211,21 @@ try {
   const wallet = await api('economy', guests[0].cookie) as WalletState;
   console.log('PASS: 10 guest clients, secure cookies, shared population, chat and wave over proxied WSS.');
 
+  const submitted = await localFetch(`${origin}/game/api/community/submissions`, {
+    method: 'POST', headers: { Cookie: guests[0].cookie, Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: 'Container community check', credit: 'Disposable acceptance', imageBase64: (await readFile('public/community/first-memory.png')).toString('base64') }),
+  });
+  assert.equal(submitted.status, 201, 'production image decoder accepts the supplied still image');
+  const submission = await submitted.json() as { id: string; imageUrl: string; status: string };
+  assert.equal(submission.status, 'pending');
+  const imageResponse = await localFetch(`${origin}${submission.imageUrl}`, { headers: { Cookie: guests[0].cookie } });
+  assert.equal(imageResponse.status, 200);
+  const normalisedImage = Buffer.from(await imageResponse.arrayBuffer());
+  assert.equal(normalisedImage.toString('ascii', 8, 12), 'WEBP');
+  assert.equal((await localFetch(`${origin}/game/api/community/images/${submission.id}`)).status, 404);
+  assert.equal((await localFetch(`${origin}${submission.imageUrl}`, { headers: { Cookie: guests[1].cookie } })).status, 404);
+  console.log('PASS: container image decoding, private pending upload and denied public/other-guest reads through HTTPS.');
+
   const voice = await localFetch(`${origin}/game/api/voice/token`, { method: 'POST', headers: { Cookie: guests[0].cookie, Origin: origin } });
   assert.equal(voice.status, 200);
   const grant = await voice.json() as { token: string; url: string };
@@ -230,12 +245,15 @@ try {
   assert.equal(restored.id, guests[0].profile.id); assert.equal(restored.name, guests[0].profile.name);
   const restoredWallet = await api('economy', guests[0].cookie) as WalletState;
   assert.equal(restoredWallet.balance, wallet.balance); assert.deepEqual(restoredWallet.owned, wallet.owned);
+  const restoredImage = await localFetch(`${origin}${submission.imageUrl}`, { headers: { Cookie: guests[0].cookie } });
+  assert.equal(restoredImage.status, 200);
+  assert.deepEqual(Buffer.from(await restoredImage.arrayBuffer()), normalisedImage);
   const rejoined = watch(await client(guests[0].cookie).create<TownState>('town'));
   await until(() => rejoined.state?.players?.size === 1, 'post-restart admission');
   await rejoined.leave();
   console.log('PASS: game container restart preserves guest identity, wallet and clothing; admission works again.');
 
-  const countSql = 'SELECT (SELECT count(*) FROM guest_profiles), (SELECT count(*) FROM economy_wallets), (SELECT count(*) FROM economy_owned), (SELECT count(*) FROM casino_wagers)';
+  const countSql = "SELECT (SELECT count(*) FROM guest_profiles), (SELECT count(*) FROM economy_wallets), (SELECT count(*) FROM economy_owned), (SELECT count(*) FROM casino_wagers), (SELECT count(*) FROM community_images), (SELECT md5(string_agg(encode(image,'hex'),'' ORDER BY id)) FROM community_images), (SELECT revision FROM community_programme WHERE singleton)";
   const counts = await docker(['exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', 'slop_city', '-At', '-v', 'ON_ERROR_STOP=1', '-c', countSql]);
   const backup = await docker(['exec', '-T', 'postgres', 'pg_dump', '-U', 'postgres', '-d', 'slop_city', '--format=custom', '--no-owner']);
   assert.ok(backup.length > 100);
@@ -243,7 +261,7 @@ try {
   await docker(['exec', '-T', 'postgres', 'pg_restore', '-U', 'postgres', '-d', restoreDatabase, '--no-owner', '--exit-on-error'], backup);
   const restoredCounts = await docker(['exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', restoreDatabase, '-At', '-v', 'ON_ERROR_STOP=1', '-c', countSql]);
   assert.equal(restoredCounts.toString(), counts.toString());
-  console.log('PASS: PostgreSQL custom-format backup restored into a separate temporary database; profile, wallet, clothing and wager counts match.');
+  console.log('PASS: PostgreSQL backup restored into a temporary database; player/game counts, community image bytes and programme revision match.');
 } finally {
   await Promise.allSettled(rooms.filter(room => room.connection?.isOpen).map(room => room.leave(false)));
   if (restoreCreated) await docker(['exec', '-T', 'postgres', 'dropdb', '-U', 'postgres', '--if-exists', restoreDatabase]);

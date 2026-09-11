@@ -1,3 +1,4 @@
+import { SALARY_INTERVAL_MS } from '../shared/catalog.ts';
 import assert from 'node:assert/strict';
 import { loadEnvFile } from 'node:process';
 import { randomUUID } from 'node:crypto';
@@ -22,15 +23,23 @@ try{
  let s=await economy.ensure(id);await assert.rejects(economy.equip(id,'ink-knit',s.revision),(e:EconomyError)=>e.code==='not_owned');
  s=await economy.equip(id,'oat-knit',s.revision);assert.equal(s.outfit.top,'oat-knit');await assert.rejects(economy.equip(id,'starter-utility',1),(e:EconomyError)=>e.code==='stale_revision');
  await economy.purchase(id,'oxblood-boots','boots-request');await assert.rejects(economy.purchase(id,'rust-bomber','retry-request'),(e:EconomyError)=>e.code==='insufficient_funds');
- const epoch=randomUUID();await economy.openSession(id,epoch);await economy.checkpoint(id,epoch,599999);
- s=await economy.checkpoint(id,epoch,600000);assert.equal(s.balance,400);assert.equal(s.salaryProgressMs,0);
- await Promise.all(Array.from({length:8},()=>economy.checkpoint(id,epoch,600000)));assert.equal((await economy.ensure(id)).balance,400);
- const epoch2=randomUUID();await economy.checkpoint(id,epoch,600123);await economy.openSession(id,epoch2);
- await assert.rejects(economy.checkpoint(id,epoch,1200000),(e:EconomyError)=>e.code==='stale_session');
- s=await economy.checkpoint(id,epoch2,600000-123);assert.equal(s.balance,500);assert.equal(s.salaryProgressMs,0);
+ const epoch=randomUUID();await economy.openSession(id,epoch);await economy.checkpoint(id,epoch,SALARY_INTERVAL_MS-1);
+ s=await economy.checkpoint(id,epoch,SALARY_INTERVAL_MS);assert.equal(s.balance,400);assert.equal(s.salaryProgressMs,0);
+ await Promise.all(Array.from({length:8},()=>economy.checkpoint(id,epoch,SALARY_INTERVAL_MS)));assert.equal((await economy.ensure(id)).balance,400);
+ const epoch2=randomUUID();await economy.checkpoint(id,epoch,SALARY_INTERVAL_MS+123);await economy.openSession(id,epoch2);
+ await assert.rejects(economy.checkpoint(id,epoch,2*SALARY_INTERVAL_MS),(e:EconomyError)=>e.code==='stale_session');
+ s=await economy.checkpoint(id,epoch2,SALARY_INTERVAL_MS-123);assert.equal(s.balance,500);assert.equal(s.salaryProgressMs,0);
  s=await economy.purchase(id,'rust-bomber','retry-request');assert.equal(s.balance,80);
  const reconnected=new Pool({connectionString:url.toString()});
  try{economy=new EconomyRepository(reconnected);await economy.initialise();assert.deepEqual(await economy.ensure(id),s);assert.deepEqual(await economy.purchase(id,'rust-bomber','retry-request'),s);}finally{await reconnected.end();}
  assert.equal((await guests.pool.query("SELECT count(*)::int AS count FROM economy_ledger WHERE kind='salary'")).rows[0].count,2);
+ economy=new EconomyRepository(guests.pool);
+ const legacyId=(await guests.create({name:'Legacy salary',shirt:0,skin:0})).profile.id;
+ await economy.ensure(legacyId);
+ await guests.pool.query('UPDATE economy_wallets SET salary_remainder=599999 WHERE profile_id=$1',[legacyId]);
+ const legacyEpoch=randomUUID();await economy.openSession(legacyId,legacyEpoch);
+ const caughtUp=await economy.checkpoint(legacyId,legacyEpoch,1);
+ assert.equal(caughtUp.balance,1200);assert.equal(caughtUp.salaryProgressMs,0);
+ assert.equal((await economy.checkpoint(legacyId,legacyEpoch,1)).balance,1200);
  console.log('PASS: atomic grant, concurrent purchase/replay, ownership/revision, insufficient-funds retry, checkpoint replay/fencing/reconnect and repository restart.');
 }finally{await guests.close();await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);await admin.end();}

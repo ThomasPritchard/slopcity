@@ -1,3 +1,4 @@
+import { SALARY_INTERVAL_MS } from '../shared/catalog.ts';
 import assert from 'node:assert/strict';
 import { loadEnvFile } from 'node:process';
 import { randomUUID } from 'node:crypto';
@@ -16,11 +17,11 @@ const reject=(code:string)=>(e:unknown)=>e instanceof EconomyError&&e.code===cod
 try{
  await admin.query(`CREATE SCHEMA ${schema}`);await guests.initialise();await economy.initialise();await new CasinoRepository(economy).initialise();
  const a=(await guests.create({name:'Alice',shirt:0,skin:0})).profile.id,b=(await guests.create({name:'Bob',shirt:0,skin:0})).profile.id;
- const epoch=randomUUID();await economy.openSession(a,epoch);await economy.checkpoint(a,epoch,600000);
+ const epoch=randomUUID();await economy.openSession(a,epoch);await economy.checkpoint(a,epoch,SALARY_INTERVAL_MS);
  await social.initialise();await guests.initialise();await economy.initialise();await new CasinoRepository(economy).initialise();await social.initialise();
  assert.equal((await social.snapshot(a)).giftingAllowance,0,'historical salary grants no allowance');
  await assert.rejects(social.gift(a,b,1,randomUUID(),()=>true),reject('insufficient_allowance'));
- await economy.checkpoint(a,epoch,1200000);await economy.checkpoint(a,epoch,1200000);
+ await economy.checkpoint(a,epoch,2*SALARY_INTERVAL_MS);await economy.checkpoint(a,epoch,2*SALARY_INTERVAL_MS);
  assert.equal((await social.snapshot(a)).giftingAllowance,100);
  const request=randomUUID();const receipts=await Promise.all(Array.from({length:5},()=>social.gift(a,b,20,request,()=>true)));
  assert.equal(receipts.filter(r=>!r.replayed).length,1);assert.equal((await social.snapshot(a)).giftingAllowance,80);
@@ -33,7 +34,7 @@ try{
  const before=await economy.ensure(a);await assert.rejects(social.gift(a,b,20,randomUUID(),()=>false),reject('not_nearby'));assert.deepEqual(await economy.ensure(a),before);
  await Promise.all([social.gift(a,b,30,randomUUID(),()=>true),economy.purchase(a,'oat-knit','social-purchase')]);
  assert.equal((await social.snapshot(a)).giftingAllowance,50);
- const epochB=randomUUID();await economy.openSession(b,epochB);await economy.checkpoint(b,epochB,600000);
+ const epochB=randomUUID();await economy.openSession(b,epochB);await economy.checkpoint(b,epochB,SALARY_INTERVAL_MS);
  const sumBefore=(await economy.ensure(a)).balance+(await economy.ensure(b)).balance;
  await Promise.all([social.gift(a,b,10,randomUUID(),()=>true),social.gift(b,a,10,randomUUID(),()=>true)]);
  assert.equal((await economy.ensure(a)).balance+(await economy.ensure(b)).balance,sumBefore);

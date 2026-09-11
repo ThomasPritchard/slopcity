@@ -1,4 +1,5 @@
 import { SHOP_LAYOUT, inShop } from './shopLayout.ts';
+import { cinemaFloorHeight } from './cinemaLayout.ts';
 /** Metres in town coordinates. The network remains planar; both peers derive the same floor. */
 export const CASINO_LAYOUT = {
   halfWidth: 20, front: 14, rear: 56, floor: .9,
@@ -12,7 +13,7 @@ export function inCasino(x: number, z: number): boolean {
 
 export function floorHeight(x: number, z: number): number {
   if (inShop(x, z)) return SHOP_LAYOUT.floor;
-  if (!inCasino(x, z) || z <= CASINO_LAYOUT.stairs.start) return 0;
+  if (!inCasino(x, z) || z <= CASINO_LAYOUT.stairs.start) return cinemaFloorHeight(x, z);
   if (z >= CASINO_LAYOUT.stairs.end) return CASINO_LAYOUT.floor;
   if (Math.abs(x) <= CASINO_LAYOUT.stairs.halfWidth) {
     return Math.min(CASINO_LAYOUT.floor, Math.ceil((z - CASINO_LAYOUT.stairs.start) / CASINO_LAYOUT.stairs.tread) * CASINO_LAYOUT.stairs.riser);

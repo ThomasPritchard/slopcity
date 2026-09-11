@@ -10,6 +10,7 @@
     "build": "tsc --noEmit && vite build",
     "start": "node --env-file-if-exists=.env --import tsx server/index.ts",
     "test": "node --import tsx --test tests/*.test.ts",
+    "test:safety": "node --env-file=.env --import tsx scripts/safety-check.ts",
     "test:network": "node --import tsx scripts/network-check.ts",
     "test:browser": "node --import tsx scripts/browser-check.ts",
     "test:ground": "node --import tsx scripts/ground-check.ts",
@@ -54,7 +55,14 @@
     "test:poker-browser": "node --import tsx scripts/poker-browser-check.ts",
     "test:leaderboard-render": "node --import tsx scripts/credit-leaderboard-render-check.ts",
     "test:leaderboard-browser": "node --import tsx scripts/credit-leaderboard-browser-check.ts",
-    "test:community-browser": "node --import tsx scripts/community-browser-check.ts"
+    "test:community-browser": "node --import tsx scripts/community-browser-check.ts",
+    "test:casino-ux": "node --import tsx scripts/casino-ux-check.ts",
+    "test:roulette-placement": "node --import tsx scripts/roulette-placement-check.ts",
+    "test:casino-qol": "node --import tsx scripts/casino-qol-browser-check.ts",
+    "test:cinema-render": "node --import tsx scripts/cinema-render-check.ts",
+    "test:community-ui": "node --import tsx scripts/community-ui-check.ts",
+    "community:admin-password": "node scripts/community-admin-password.mjs",
+    "community:preview": "node --import tsx scripts/community-preview.ts"
   },
   "dependencies": {
     "@babylonjs/core": "9.25.0",
@@ -69,7 +77,8 @@
     "livekit-server-sdk": "2.19.0",
     "pg": "8.23.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "sharp": "0.35.4"
   },
   "devDependencies": {
     "@types/express": "5.0.6",

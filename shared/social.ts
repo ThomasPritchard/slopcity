@@ -1,4 +1,5 @@
 import type { Position } from './world.ts';
+import { CINEMA_BENCHES } from './cinemaLayout.ts';
 
 // Authored bench: 2.35m wide, seat top .5075m, back at local z=-.29.
 // Babylon imports the Blender -Y facing direction as +Z. Heading zero faces +Z.
@@ -8,6 +9,7 @@ export const BENCHES = [
   // Arrival benches face north into the square, with the planting behind their backs.
   { id: 'south-west', x: -10, z: -7, heading: 0 },
   { id: 'south-east', x: 10, z: -7, heading: 0 },
+  ...CINEMA_BENCHES,
 ] as const;
 export type Seat = Position & { id: string; benchId: string; heading: number; exit: Position };
 export const SIT_REACH = 2;

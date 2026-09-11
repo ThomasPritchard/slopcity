@@ -1,6 +1,6 @@
 # Economy and clothing technical design
 
-9 September 2026. Local only. Approved: 1,000 credits once per guest; 100 per 600,000 eligible milliseconds; three free starter items and nine paid tops/bottoms/shoes.
+Updated 11 September 2026. Approved: 1,000 credits once per guest; 100 per 300,000 eligible milliseconds; three free starter items and nine paid tops/bottoms/shoes.
 
 ## Architecture and data
 
@@ -8,7 +8,7 @@
 
 PostgreSQL owns wallet, ledger, salary remainder, owned items and equipment. Colyseus owns live eligibility. Try-on remains client-private; buying does not automatically equip. Purchase eligibility uses server shop coordinates; owned clothing can be equipped anywhere.
 
-Add migration 002; update the current runner's version-1-only guard. Tables: wallet (balance, revision, salary remainder/payment sequence, session epoch/cumulative checkpoint), immutable ledger (unique profile/operation key), owned items (unique profile/item), equipment (one owned item per slot). Lock the wallet for mutations; constrain nonnegative balance and remainder below 600,000. Initialise wallet, unique starting grant and starter wardrobe atomically for existing/new guests.
+Add migration 002; update the current runner's version-1-only guard. Tables: wallet (balance, revision, salary remainder/payment sequence, session epoch/cumulative checkpoint), immutable ledger (unique profile/operation key), owned items (unique profile/item), equipment (one owned item per slot). Lock the wallet for mutations; constrain nonnegative balance and remainder below 600,000 for compatibility with previously saved progress. The current salary interval is 300,000ms; a positive checkpoint converts any saved remainder using five-minute payments without discarding earned time. Initialise wallet, unique starting grant and starter wardrobe atomically for existing/new guests.
 
 ## Agreed contracts
 

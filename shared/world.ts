@@ -6,6 +6,7 @@ import { HOP_HEIGHT, PLAYER_HEIGHT, OVERHEAD_SOLIDS, SPRINT_MULTIPLIER } from '.
 import { BENCHES } from './social.ts';
 import { SHOP_WALLS, SHOP_FURNITURE, inShop } from './shopLayout.ts';
 import { MEMORIES_BOARD } from './memories.ts';
+import { CINEMA_WALLS, inCinema } from './cinemaLayout.ts';
 export const CAPACITY = 64;
 export const SPEED = 4.2;
 export const TICK_MS = 50;
@@ -14,7 +15,7 @@ export const SKINS = ['#f0c4a0', '#d5a079', '#ae7450', '#754a34', '#4e3228'];
 export type Profile = { name: string; shirt: number; skin: number };
 export type Position = { x: number; z: number };
 export type Input = { x: number; z: number; seq: number; sprint?: boolean };
-export type Wall = { x: number; z: number; w: number; d: number; h: number; kind: 'wall' | 'planter' | 'casino' | 'shop' | 'noticeboard' };
+export type Wall = { x: number; z: number; w: number; d: number; h: number; kind: 'wall' | 'planter' | 'casino' | 'shop' | 'noticeboard' | 'cinema' };
 // Visual beds and authoritative movement use the same footprints, including the arrival trees.
 export const PLANTING_BEDS = [
   { x: -10, z: 4, w: 4, d: 3, h: .6, asset: 'planter', treeScale: .9, rotation: .15 },
@@ -34,6 +35,7 @@ export const WALLS: Wall[] = [
   { x: 27, z: -19.5, w: 1, d: 15, h: 1, kind: 'wall' },
   ...CASINO_WALLS.map(w => ({ ...w, kind: 'casino' as const })),
   ...SHOP_WALLS.map(w => ({ ...w, kind: 'shop' as const })),
+  ...CINEMA_WALLS.map(w => ({ ...w, kind: 'cinema' as const })),
   ...PLANTING_BEDS.map(({ x, z, w, d, h }) => ({ x, z, w, d, h, kind: 'planter' as const })),
 ];
 const CASINO_SOLIDS = [
@@ -100,5 +102,5 @@ export function parseProfile(value: unknown): Profile {
   return { name: name || 'New neighbour', shirt: Number.isInteger(v.shirt) && v.shirt! >= 0 && v.shirt! < SHIRTS.length ? v.shirt! : 0, skin: Number.isInteger(v.skin) && v.skin! >= 0 && v.skin! < SKINS.length ? v.skin! : 0 };
 }
 export function district(x: number, z: number): string {
-  return inCasino(x, z) ? 'The Meridian Casino' : inShop(x, z) ? 'Form & Thread' : 'Town Square';
+  return inCasino(x, z) ? 'The Meridian Casino' : inShop(x, z) ? 'Form & Thread' : inCinema(x,z) ? 'The Bridge Picture House' : 'Town Square';
 }

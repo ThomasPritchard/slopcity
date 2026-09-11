@@ -1,9 +1,10 @@
 import { randomInt } from 'node:crypto';
-import { CASINO_MIN_STAKE, CASINO_MAX_STAKE, CASINO_STAKE_STEP, ROULETTE_RED_NUMBERS, ROULETTE_PROFIT_MULTIPLIER, SLOT_SYMBOLS, SLOT_REEL_WEIGHTS, type RouletteBet, type RouletteBetKind, type Card, type SlotSymbol } from '../../shared/casino.ts';
+import { ROULETTE_MAX_ROUND_STAKE, CASINO_MIN_STAKE, CASINO_MAX_STAKE, CASINO_STAKE_STEP, ROULETTE_RED_NUMBERS, ROULETTE_PROFIT_MULTIPLIER, SLOT_SYMBOLS, SLOT_REEL_WEIGHTS, type RouletteBet, type RouletteBetKind, type Card, type SlotSymbol } from '../../shared/casino.ts';
 import { EconomyError } from '../persistence/economy.ts';
 export type Random = (max: number) => number;
 export const cryptoRandom: Random = max => randomInt(max);
 export function validStake(stake: unknown): stake is number { return Number.isSafeInteger(stake) && Number(stake) >= CASINO_MIN_STAKE && Number(stake) <= CASINO_MAX_STAKE && Number(stake) % CASINO_STAKE_STEP === 0; }
+export function validRouletteStake(stake: unknown): stake is number { return Number.isSafeInteger(stake) && Number(stake) >= CASINO_MIN_STAKE && Number(stake) <= ROULETTE_MAX_ROUND_STAKE && Number(stake) % CASINO_STAKE_STEP === 0; }
 const range = (start: number, length: number) => Array.from({ length }, (_, i) => start + i);
 const canonical = new Map<RouletteBetKind, number[][]>();
 const add = (kind: RouletteBetKind, nums: number[]) => canonical.set(kind, [...(canonical.get(kind) ?? []), nums]);
@@ -24,12 +25,15 @@ for (let i = 0; i < 3; i++) { add('dozen', range(1 + 12 * i, 12)); add('column',
 export function rouletteBet(value: unknown): RouletteBet {
  if (!value || typeof value !== 'object') throw new EconomyError('invalid_bet', 'Choose a roulette bet', 400);
  const { kind, numbers, stake } = value as RouletteBet;
- if (!validStake(stake) || !Array.isArray(numbers) || numbers.some(n => !Number.isInteger(n))) throw new EconomyError('invalid_bet', 'Choose valid numbers and a stake in steps of 10', 400);
+ if (!validRouletteStake(stake) || !Array.isArray(numbers) || numbers.some(n => !Number.isInteger(n))) throw new EconomyError('invalid_bet', 'Choose valid numbers and a stake in steps of 10', 400);
  const sorted = [...numbers].sort((a, b) => a - b);
  if (!canonical.get(kind)?.some(ns => ns.length === sorted.length && ns.every((n, i) => n === sorted[i]))) throw new EconomyError('invalid_bet', 'Those numbers do not form that roulette bet', 400);
  return { kind, numbers: sorted, stake };
 }
 export function rouletteReturn(bet: RouletteBet, result: number) { return bet.numbers.includes(result) ? bet.stake * (ROULETTE_PROFIT_MULTIPLIER[bet.kind] + 1) : 0; }
+export function canSplit(cards: readonly Card[]) {
+ return cards.length === 2 && (cards[0].rank === cards[1].rank || cards.every(card => ['10', 'J', 'Q', 'K'].includes(card.rank)));
+}
 export function total(cards: readonly Card[]) {
  let value = cards.reduce((sum, c) => sum + (c.rank === 'A' ? 11 : ['J', 'Q', 'K'].includes(c.rank) ? 10 : Number(c.rank)), 0);
  let aces = cards.filter(c => c.rank === 'A').length;

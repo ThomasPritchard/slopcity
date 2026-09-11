@@ -6,6 +6,7 @@ import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTextur
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Vector4 } from '@babylonjs/core/Maths/math.vector';
 import { CASINO_LAYOUT } from '../../shared/casinoLayout';
+import { rouletteChipPosition, rouletteNumberPosition } from '../../shared/rouletteLayout';
 import { CASINO_ANCHORS, BLACKJACK_SEAT_OFFSETS, type Card, type CasinoState, type CasinoPrivateState, type SlotSymbol } from '../../shared/casino';
 
 /** Draw the same four recognisable symbols on the physical cabinet's reel texture. */
@@ -95,11 +96,11 @@ export class CasinoTableArt {
       const anchor = CASINO_ANCHORS.find(a => a.id === roulette.id)!;
       const covered = new Set<number>();
       const bets = this.privateState.rouletteBets.filter(bet => bet.tableId === roulette.id && bet.roundId === roulette.roundId);
-      const point = (number: number) => number === 0 ? { x: anchor.x + .95, z: anchor.z + .74 } : { x: anchor.x - .05 + (number - 1) % 6 * .4, z: anchor.z + .525 - Math.floor((number - 1) / 6) * .15 };
+      const point = (number: number) => { const local = rouletteNumberPosition(number); return { x: anchor.x + local.x, z: anchor.z + local.z }; };
       bets.forEach(({ bet }, index) => {
-        let x = 0, z = 0;
-        for (const number of bet.numbers) { covered.add(number); const p = point(number); x += p.x; z += p.z; }
-        this.chip(`${roulette.id}-own-${index}`, x / bet.numbers.length + (index % 3 - 1) * .04, z / bet.numbers.length, bet.stake, activeChips);
+        for (const number of bet.numbers) covered.add(number);
+        const p = rouletteChipPosition(bet);
+        this.chip(`${roulette.id}-own-${index}`, anchor.x + p.x, anchor.z + p.z, bet.stake, activeChips);
       });
       if (roulette.betCount > bets.length) this.chip(`${roulette.id}-others`, anchor.x + 2.30, anchor.z - .76, (roulette.betCount - bets.length) * 10, activeChips);
       for (const number of covered) {

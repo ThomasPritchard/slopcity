@@ -1,3 +1,4 @@
+import { ROULETTE_MAX_ROUND_STAKE } from '../../shared/casino.ts';
 import { PokerRepository } from './poker.ts';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -17,7 +18,7 @@ export class CasinoRepository {
   await this.economy.transaction(async c => {
    await c.query('SELECT pg_advisory_xact_lock(782641092)');
    const versions = (await c.query('SELECT version FROM guest_schema_migrations')).rows.map(r => r.version);
-   if (!versions.includes(2) || versions.some(v => ![1, 2, 3, 4, 5, 6].includes(v))) throw new Error('Unsupported casino schema');
+   if (!versions.includes(2) || versions.some(v => ![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(v))) throw new Error('Unsupported casino schema');
    if (!versions.includes(3)) {
     await c.query(await readFile(new URL('./migrations/003_casino.sql', import.meta.url), 'utf8'));
     await c.query('INSERT INTO guest_schema_migrations(version) VALUES(3)');
@@ -29,6 +30,10 @@ export class CasinoRepository {
    if (!versions.includes(5)) {
     await c.query(await readFile(new URL('./migrations/005_poker.sql', import.meta.url), 'utf8'));
     await c.query('INSERT INTO guest_schema_migrations(version) VALUES(5)');
+   }
+   if (!versions.includes(7)) {
+    await c.query(await readFile(new URL('./migrations/007_roulette_stakes.sql', import.meta.url), 'utf8'));
+    await c.query('INSERT INTO guest_schema_migrations(version) VALUES(7)');
    }
    await c.query('SELECT id,request_id,fingerprint,stake,status,returned FROM casino_wagers LIMIT 0');
   });
@@ -47,7 +52,8 @@ export class CasinoRepository {
   });
  }
  async accept(input: WagerInput, validate: () => void): Promise<WagerResult> {
-  if (!Number.isSafeInteger(input.stake) || input.stake < 10 || input.stake > 100 || input.stake % 10) throw new EconomyError('invalid_stake', 'Use 10–100 credits in steps of 10', 400);
+  const maxStake = input.details.game === 'roulette' ? ROULETTE_MAX_ROUND_STAKE : 100;
+  if (!Number.isSafeInteger(input.stake) || input.stake < 10 || input.stake > maxStake || input.stake % 10) throw new EconomyError('invalid_stake', `Use 10–${maxStake} credits in steps of 10`, 400);
   return this.economy.transaction(async c => {
    await this.economy.lock(c, input.profileId);
    const wallet = await this.economy.snapshot(c, input.profileId);
@@ -68,7 +74,7 @@ export class CasinoRepository {
  }
  async settle(entries: readonly { id: string; returned: number; outcome?: unknown }[], refund = false): Promise<Map<string, WalletState>> {
   if (!entries.length) return new Map();
-  if (new Set(entries.map(e => e.id)).size !== entries.length || entries.some(e => !Number.isSafeInteger(e.returned) || e.returned < 0 || e.returned > 5000)) throw new Error('Invalid casino settlement');
+  if (new Set(entries.map(e => e.id)).size !== entries.length || entries.some(e => !Number.isSafeInteger(e.returned) || e.returned < 0)) throw new Error('Invalid casino settlement');
   return this.economy.transaction(async c => {
    const rows = (await c.query('SELECT * FROM casino_wagers WHERE id=ANY($1::uuid[])', [entries.map(e => e.id)])).rows;
    if (rows.length !== entries.length) throw new Error('Unknown casino wager in settlement');
@@ -79,6 +85,7 @@ export class CasinoRepository {
    const outcomes = new Map(entries.map(e => [e.id, e.outcome ?? null]));
    for (const row of locked) {
     const returned = amounts.get(row.id)!;
+    if (returned > (row.game === 'roulette' ? row.stake * 36 : 5000)) throw new Error('Invalid casino settlement');
     if (refund && returned !== row.stake) throw new Error('Casino refund must return the original stake');
     if (row.status !== 'pending') {
      // Recovery racing an already committed settlement never replaces the result.

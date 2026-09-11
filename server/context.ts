@@ -1,3 +1,6 @@
+import { CommunityRepository } from './persistence/community.ts';
+import { SafetyRepository } from './persistence/safety.ts';
+import { SafetyService } from './safety.ts';
 import { existsSync } from 'node:fs';
 import { loadEnvFile } from 'node:process';
 import { GuestRepository } from './persistence/guests.ts';
@@ -14,6 +17,8 @@ export const sessions = new SessionRegistry();
 export const voice = new VoiceService();
 export const economy = new EconomyRepository(guests.pool);
 export const socialRepository = new SocialRepository(economy);
+export const communityRepository = new CommunityRepository(economy);
+export const safety = new SafetyService(new SafetyRepository(economy));
 export const casinoRepository = new CasinoRepository(economy);
 export const towns = new Map<string, { hasSession(id: string): boolean; socialPresence(profileId:string):{x:number;z:number;sessionId:string}|undefined; socialChanged(profileIds:string[]):void; refreshBlocks(id: string): Promise<void>; canPurchase(profileId:string):boolean; publishEconomy(profileId:string,sessionId:string,state:WalletState,accruing?:boolean):void; economyError(sessionId:string):void }>();
 export const salary = new SalaryTracker(economy, {

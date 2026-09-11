@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { Pool } from 'pg';
 import WebSocket from 'ws';
-import { chromium, type Page } from 'playwright';
+import { chromium, webkit, type Page } from 'playwright';
 import type { TownState } from '../shared/state.ts';
 import type { PrivateGuestProfile } from '../shared/profile.ts';
 
@@ -36,7 +36,7 @@ const server = spawn(process.execPath, ['--import', 'tsx', 'server/index.ts'], {
 // Third-party error output may include connection strings; keep child output private.
 server.stdout.resume(); server.stderr.resume();
 const vite = await (await import('vite')).createServer({
-  root: process.cwd(), logLevel: 'error', optimizeDeps: { force: true },
+  root: process.cwd(), cacheDir: 'output/playwright/chat-vite-cache', logLevel: 'error', optimizeDeps: { force: true },
   server: { host: '127.0.0.1', port: 5176, strictPort: true, proxy: {
     '/game': { target: endpoint, ws: true, rewrite: (path: string) => path.replace(/^\/game/, '') },
     '/voice': { target: 'http://127.0.0.1:17880', ws: true, rewrite: (path: string) => path.replace(/^\/voice/, '') },
@@ -55,7 +55,7 @@ async function guest(name: string) {
   assert.equal(response.status, 201);
   return { cookie: response.headers.get('set-cookie')!.split(';')[0], profile: await response.json() as PrivateGuestProfile };
 }
-const browser = await chromium.launch({ headless: true });
+const browser = await (process.env.CHAT_BROWSER === 'webkit' ? webkit : chromium).launch({ headless: true });
 try {
   await until(async () => { try { return (await fetch(`${endpoint}/health`)).ok; } catch { return false; } }, 'isolated server health');
   await until(async () => { try { return (await fetch(site)).ok; } catch { return false; } }, 'worktree vite serving');
@@ -63,6 +63,7 @@ try {
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error' && message.text().includes('same key')) errors.push(message.text()); });
   await page.goto(site);
   await page.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).fill('Chat Tester');
   await page.getByRole('button', { name: 'Enter', exact: true }).click();
@@ -136,6 +137,7 @@ try {
   await stubbed.route('**/shared/moderation.ts*', route => route.fulfill({ contentType: 'text/javascript', body: moderationStub }));
   const second = await stubbed.newPage();
   second.on('pageerror', error => errors.push(error.message));
+  second.on('console', message => { if (message.type() === 'error' && message.text().includes('same key')) errors.push(message.text()); });
   await second.goto(site);
   await second.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).fill('Silent Sam');
   await second.getByRole('button', { name: 'Enter', exact: true }).click();

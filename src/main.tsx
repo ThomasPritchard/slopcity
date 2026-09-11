@@ -2,9 +2,13 @@ import { useCreditLeaderboard } from './leaderboard/useCreditLeaderboard';
 import { CreditLeaderboardPanel } from './leaderboard/CreditLeaderboardPanel';
 import { nearCreditBoard } from '../shared/creditLeaderboard';
 import { nearMemoriesBoard } from '../shared/memories';
-import { CommunityNews, MemoryPostDialog } from './community/CommunityNews';
-import React, { useEffect, useRef, useState } from 'react';
+import { CommunityNews } from './community/CommunityNews';
+import { CommunityPanel, type CommunityView } from './community/CommunityPanel';
+import { useCommunity } from './community/useCommunity';
+import { inCinema } from '../shared/cinemaLayout';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { AdminPage } from './admin/AdminPage';
 import { Client, type Room } from '@colyseus/sdk';
 import { TownScene, type SceneStats, type PlayerView } from './world/scene';
 import { CAPACITY, SHIRTS, SKINS, parseProfile, type Profile } from '../shared/world';
@@ -26,17 +30,19 @@ import { getWallet, buyClothing, equipClothing, WalletError } from './economy/ap
 import { Wallet, type TimedWallet } from './economy/Wallet';
 import { ShopPanel } from './shop/ShopPanel';
 import { CasinoPanel } from './casino/CasinoPanel';
+import { CasinoResultAnnouncement } from './casino/CasinoResultAnnouncement';
+import type { CasinoResult } from './casino/casinoResults';
 import { CASINO_ANCHORS, CASINO_INTERACTION_RADIUS, type CasinoState, type CasinoPrivateState, type CasinoTableId, type CasinoCommand, type CasinoReceipt } from '../shared/casino';
 import { LocationAnnouncement } from './ui/LocationAnnouncement';
 import { TownMapSvg } from './ui/TownMapSvg';
 import { MiniMap } from './ui/MiniMap';
+import { TownChat, type ChatLine } from './ui/TownChat';
 import './ui/quiet-glass.css';
 import { loadPreferences, savePreferences, type Preferences } from './settings/preferences';
 import { TownAudio } from './audio/TownAudio';
 import { checkChat, moderationNoticeKey, type ModerationNoticeKey } from '../shared/moderation.ts';
 
 type Chat = { id: string; profileId: string; name: string; body: string };
-type ChatLine = { id: string; system?: boolean; profileId?: string; name?: string; body: string };
 // Local-only chat panel guidance shown when moderation intervenes. Never sent to the server and
 // never visible to anyone else; the server remains the authority on what is actually delivered.
 const SYSTEM_LINES: Record<ModerationNoticeKey, string> = {
@@ -79,6 +85,7 @@ function App() {
   const purchaseKeys=useRef(new Map<string,string>());
   const [casinoState,setCasinoState]=useState<CasinoState>({serverTime:Date.now(),tables:[]});
   const [casinoPrivate,setCasinoPrivate]=useState<CasinoPrivateState>({rouletteBets:[]});
+  const [casinoResults,setCasinoResults]=useState<Record<string,CasinoResult>>({});
   const [casinoTable,setCasinoTable]=useState<CasinoTableId|null>(null);
   const [casinoBusy,setCasinoBusy]=useState(false);
   const [casinoError,setCasinoError]=useState('');
@@ -113,7 +120,9 @@ function App() {
   const [error, setError] = useState('');
   const [players, setPlayers] = useState(new Map<string, PlayerView>());
   const [stats, setStats] = useState<SceneStats>({ fps: 0, district: 'Town Square', x: 0, z: -17 });
-  const [panel, setPanel] = useState<'map' | 'settings' | 'leaderboard' | 'memory' | null>(null);
+  const community = useCommunity();
+  const [panel, setPanel] = useState<'map' | 'settings' | 'leaderboard' | 'memory' | 'cinema' | 'submit' | 'admin' | null>(null);
+  const communityViewChanged=useCallback((view:CommunityView)=>setPanel(view==='board'?'memory':view),[]);
   const [chatOpen, setChatOpen] = useState(() => !matchMedia('(pointer: coarse)').matches);
   const [chatFocused, setChatFocused] = useState(false);
   const [messages, setMessages] = useState<ChatLine[]>([]);
@@ -125,7 +134,7 @@ function App() {
   const [wave, setWave] = useState(false);
   const [previewView, setPreviewView] = useState<'face' | 'outfit' | 'shoes'>('outfit');
   const [stick, setStick] = useState({ x: 0, z: 0 });
-  const chatEnd = useRef<HTMLDivElement>(null);
+  const chatInput = useRef<HTMLInputElement>(null);
   const joystick = useRef<HTMLDivElement>(null);
   const systemSeq = useRef(0);
   const shownSystem = useRef(new Set<ModerationNoticeKey>());
@@ -160,6 +169,7 @@ function App() {
       scene.onSprintChange = setSprintEnabled;
       scene.onCreditLeaderboard = () => { setPanel('leaderboard'); setHint(false); releaseStick(); };
       scene.onMemory = () => { setPanel('memory'); setHint(false); releaseStick(); };
+      scene.onCinema = () => { setPanel('cinema'); setHint(false); releaseStick(); };
       scene.onSelectPlayer = profileId => {
         const player = [...(room.current?.state.players.values() ?? [])].find(player => player.profileId === profileId);
         if (player) openNeighbour({ profileId, name: player.name });
@@ -196,7 +206,18 @@ function App() {
     viewport?.addEventListener('resize', update); viewport?.addEventListener('scroll', update); update();
     return () => { viewport?.removeEventListener('resize', update); viewport?.removeEventListener('scroll', update); };
   }, []);
-  useEffect(() => { chatEnd.current?.scrollIntoView({ block: 'nearest' }); }, [messages, chatOpen]);
+  useEffect(() => {
+    if (phase !== 'playing' || panel || socialOpen || selectedNeighbour || shopMode) return;
+    const chatShortcut = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable="true"],[contenteditable=""]')) return;
+      event.preventDefault(); event.stopPropagation();
+      setChatOpen(true); releaseStick();
+      requestAnimationFrame(() => chatInput.current?.focus({ preventScroll: true }));
+    };
+    document.addEventListener('keydown', chatShortcut, true);
+    return () => document.removeEventListener('keydown', chatShortcut, true);
+  }, [phase, panel, socialOpen, selectedNeighbour, shopMode]);
   useEffect(() => {
     if (!silencedUntil) return;
     const tick = () => {
@@ -211,6 +232,8 @@ function App() {
     tick(); const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
   }, [silencedUntil]);
+  useEffect(() => { if(ready) world.current?.syncCommunity(community.programme); }, [community.programme, ready]);
+  useEffect(() => { if(ready)world.current?.focusCommunity(phase==='playing' ? panel==='memory'?'board':panel==='cinema'?'cinema':null : null); }, [panel,phase,ready]);
   useEffect(() => { world.current?.setPaused(panel !== null || socialOpen || selectedNeighbour !== null || chatFocused || shopMode!==null || casinoTable!==null || phase !== 'playing'); }, [panel, socialOpen, selectedNeighbour, chatFocused, shopMode, casinoTable, phase]);
   useEffect(() => {
     if (phase === 'playing') room.current?.send('interaction-busy', panel !== null || shopMode !== null || casinoTable !== null || chatFocused);
@@ -234,10 +257,12 @@ function App() {
   },[phase]);
   function openCasino(id:CasinoTableId) {
     const anchor=CASINO_ANCHORS.find(anchor=>anchor.id===id);if(!anchor)return;
+    if (focusedCasino.current && focusedCasino.current !== id) room.current?.send('casino-command', { requestId: crypto.randomUUID(), action: 'table-presence', tableId: focusedCasino.current, viewing: false });
     focusedCasino.current=id;audio.current?.casino(casinoState,id);setPanel(null);setSocialOpen(false);setHint(false);setCasinoTable(id);setCasinoError('');setCasinoNotice('');world.current?.focusCasino(anchor);
+    room.current?.send('casino-command', { requestId: crypto.randomUUID(), action: 'table-presence', tableId: id, viewing: true });
     room.current?.send('casino-command',{requestId:crypto.randomUUID(),action:'sync'});
   }
-  function closeCasino() {focusedCasino.current=null;audio.current?.casino(casinoState,null);setCasinoTable(null);world.current?.focusCasino(null);}
+  function closeCasino() {if (focusedCasino.current) room.current?.send('casino-command', { requestId: crypto.randomUUID(), action: 'table-presence', tableId: focusedCasino.current, viewing: false });focusedCasino.current=null;audio.current?.casino(casinoState,null);setCasinoTable(null);world.current?.focusCasino(null);}
   function sendCasino(command:CasinoCommand,retry=false) {
     if(!room.current || casinoPending.current && !retry)return;
     casinoPending.current=command;setCasinoBusy(true);setCasinoRetry(false);setCasinoError('');setCasinoNotice('');
@@ -337,11 +362,11 @@ function App() {
         setSilencedSeconds(seconds); setSilencedUntil(seconds > 0 ? Date.now() + seconds * 1000 : 0);
       });
       connected.onError((_code, text) => setError(text || 'The connection encountered a problem.'));
-      connected.onLeave(() => {
+      connected.onLeave((code) => {
         if (room.current !== connected) return;
         room.current = null; setSelectedNeighbour(null); setEmoteInbox({ serverTime: 0, incoming: null, outgoing: null }); setShopMode(null);setCasinoTable(null);setCasinoState({serverTime:Date.now(),tables:[]});setCasinoPrivate({rouletteBets:[]});casinoPending.current=null;if(casinoTimeout.current)clearTimeout(casinoTimeout.current);setCasinoBusy(false);setCasinoRetry(false);world.current?.focusCasino(null); if(walletRef.current)acceptWallet(walletRef.current,false); void voiceClient.current?.leave(); voiceClient.current?.setTargets([]); setSocialOpen(false); setMuted(new Set()); world.current?.sync(new Map()); setPlayers(new Map()); setPhase('disconnected');
         setSilencedUntil(0); setSilencedSeconds(0); silencedAnnounced.current = false;
-        setError('You have left the town. Rejoin to continue.');
+        setError(code===4003?'Access to Slop City is currently restricted.':code===4008?'Too many game messages. Please wait before rejoining.':'You have left the town. Rejoin to continue.');
       });
       try { localStorage.setItem('slop-city-profile', JSON.stringify(clean)); } catch { /* A restricted browser can still play. */ }
       setNotice(''); world.current.enter(connected.sessionId); setPhase('playing'); setHint(true); setMessages([]);
@@ -362,6 +387,13 @@ function App() {
     try { const result = await setGuestBlock(profileId, blocked); setGuest(previous => previous ? { ...previous, blocks: result.blocks } : null); if (blocked) setMessages(previous => previous.filter(message => message.profileId !== profileId)); void socialData.refresh(); }
     catch { setNotice('That change could not be saved. Please try again.'); }
   }
+  function returnFromChat() {
+    setChatFocused(false);
+    if (focusedCasino.current) document.querySelector<HTMLButtonElement>('.casino-primary:not(:disabled), .casino-close')?.focus({ preventScroll: true });
+    else canvas.current?.focus({ preventScroll: true });
+  }
+  function closeChat() { setChatOpen(false); returnFromChat(); }
+  function openChat() { setChatOpen(true); requestAnimationFrame(() => chatInput.current?.focus({ preventScroll: true })); }
   function sendChat(event: React.FormEvent) {
     event.preventDefault();
     const body = message.trim(); if (!body || !room.current || silencedUntil > 0) return;
@@ -371,7 +403,7 @@ function App() {
       if (!shownSystem.current.has(verdict.reason)) { shownSystem.current.add(verdict.reason); pushSystem(SYSTEM_LINES[verdict.reason]); }
       return;
     }
-    room.current.send('chat', body); setMessage(''); canvas.current?.focus();
+    room.current.send('chat', body); setMessage(''); returnFromChat();
   }
   function doWave() {
     if (wave || !room.current) return;
@@ -406,6 +438,8 @@ function App() {
   const invitation = <EmotePrompt inbox={emoteInbox} onCommand={sendEmote}/>;
   const playing = phase === 'playing';
   const customising = phase === 'customising' || phase === 'joining';
+  const townChat = chatOpen ? <TownChat messages={messages} message={message} name={profile.name} colour={SHIRTS[profile.shirt]} population={players.size} silenced={silencedUntil>0} silencedSeconds={silencedSeconds} inputRef={chatInput} onChange={setMessage} onSubmit={sendChat} onFocus={()=>{setChatFocused(true);releaseStick();world.current?.setPaused(true);}} onBlur={()=>setChatFocused(false)} onClose={closeChat}/> : null;
+  const casinoChat = <aside className={`casino-chat${chatOpen?' is-open':''}`} aria-label="Chat while playing">{townChat ?? <button className="casino-chat-toggle" type="button" aria-label="Open town chat" aria-keyshortcuts="/" onClick={openChat}><Icon kind="chat"/>Chat<kbd>/</kbd></button>}</aside>;
   return <main className={playing ? `game playing${shopMode?' shopping':''}${casinoTable?' at-table':''}${chatFocused?' typing-chat':''}` : customising ? 'game customising' : 'game welcome-menu'}>
     <canvas id="world" ref={canvas} tabIndex={0} aria-label="Slop City 3D world. Use W A S D or arrows to walk, Shift to sprint, Space to jump, and drag to look around. Select a neighbour to interact." />
     <div className="vignette" />
@@ -462,23 +496,26 @@ function App() {
       <SocialPanel onInspect={(profileId, name) => openNeighbour({ profileId, name })} invitation={invitation} extra={<FriendsList snapshot={socialData.snapshot} busy={socialData.busy} error={socialData.error} notice={socialData.notice} pending={socialData.pending} onOpen={openNeighbour} onFriend={(id, action) => void socialData.friend(id, action)} onRetry={() => void socialData.refresh()}/>} open={socialOpen} onClose={() => setSocialOpen(false)} voice={voiceState} neighbours={neighbours} blockedProfiles={(guest?.blocks ?? []).map(profileId => ({profileId, name: knownNames.current.get(profileId) ?? 'Guest not in town'}))} onJoinVoice={() => void voiceClient.current?.join()} onLeaveVoice={() => void voiceClient.current?.leave()} onToggleMic={() => void voiceClient.current?.toggleMicrophone()} onResumeAudio={() => void voiceClient.current?.resumeAudio()} onMute={muteNeighbour} onBlock={id => void blockNeighbour(id,true)} onUnblock={id => void blockNeighbour(id,false)}/>
 
       {nearbyGames.length > 0 && <div className="casino-entry" aria-label="Nearby casino games">{nearbyGames.map(anchor=><button key={anchor.id} aria-current={focusGame?.id===anchor.id ? 'true' : undefined} style={nearbyGames.length>1&&focusGame&&focusGame.id!==anchor.id?{opacity:.72}:undefined} onPointerEnter={()=>setHoveredGame(anchor.id)} onPointerLeave={()=>setHoveredGame(null)} onFocus={()=>setHoveredGame(anchor.id)} onBlur={()=>setHoveredGame(null)} onPointerDown={()=>{setPickedGame(anchor.id);setHoveredGame(anchor.id);world.current?.setInteractionFocus(anchor);}} onClick={()=>{setPickedGame(anchor.id);setHoveredGame(anchor.id);world.current?.setInteractionFocus(anchor);openCasino(anchor.id);}}>Open {anchor.name}</button>)}</div>}
-      <CasinoPanel open={casinoTable!==null} table={casinoState.tables.find(table=>table.id===casinoTable)??null} serverTime={casinoState.serverTime} profileId={guest?.id??''} balance={wallet?.balance??0} privateState={casinoPrivate} busy={casinoBusy} error={casinoError} notice={casinoNotice} onCommand={command=>sendCasino(command)} onClose={closeCasino}/>
+      <CasinoPanel open={casinoTable!==null} table={casinoState.tables.find(table=>table.id===casinoTable)??null} serverTime={casinoState.serverTime} profileId={guest?.id??''} balance={wallet?.balance??0} privateState={casinoPrivate} busy={casinoBusy} error={casinoError} notice={casinoNotice} latestResult={casinoTable ? casinoResults[casinoTable] : undefined} onCommand={command=>sendCasino(command)} onClose={closeCasino} chat={casinoChat}/>
+      <CasinoResultAnnouncement state={casinoState} privateState={casinoPrivate} profileId={guest?.id??''} atTable={casinoTable!==null} onResults={results=>setCasinoResults(previous=>({...previous,...Object.fromEntries(results.map(result=>[result.tableId,result]))}))}/>
       {casinoRetry && <button className="casino-retry" onClick={()=>{if(casinoPending.current)sendCasino(casinoPending.current,true);}}>Retry last casino action</button>}
       {localPlayer && nearCreditBoard(localPlayer.x, localPlayer.z) && !panel && !socialOpen && !selectedNeighbour && !casinoTable && !shopMode && !localPlayer.emoteId && <button className="shop-entry" onClick={() => { setPanel('leaderboard'); setHint(false); releaseStick(); }}>View credit leaderboard</button>}
+      {localPlayer && inCinema(localPlayer.x,localPlayer.z) && !panel && !socialOpen && !selectedNeighbour && !casinoTable && !shopMode && !localPlayer.emoteId && <button className="shop-entry cinema-entry-action" onClick={() => { setPanel('cinema'); setHint(false); releaseStick(); }}>Visit the picture house</button>}
       {panel === 'leaderboard' && <CreditLeaderboardPanel snapshot={leaderboard.snapshot} unavailable={leaderboard.unavailable} onClose={() => setPanel(null)}/>}
-      {localPlayer && nearMemoriesBoard(localPlayer.x, localPlayer.z) && !panel && !socialOpen && !selectedNeighbour && !casinoTable && !shopMode && !localPlayer.emoteId && <button className="shop-entry" onClick={() => { setPanel('memory'); setHint(false); releaseStick(); }}>Read the memories board</button>}
+      {localPlayer && nearMemoriesBoard(localPlayer.x, localPlayer.z) && !panel && !socialOpen && !selectedNeighbour && !casinoTable && !shopMode && !localPlayer.emoteId && <button className="shop-entry" onClick={() => { setPanel('memory'); setHint(false); releaseStick(); }}>Examine the memories board</button>}
       <LocationAnnouncement key={stats.district} name={stats.district}/>
       {hint && <aside className="welcome-hint"><button className="close" aria-label="Dismiss welcome" onClick={() => setHint(false)}><Icon kind="close" size={16}/></button><span className="eyebrow">GOOD TO SEE YOU, {profile.name.toUpperCase()}</span><h2>Make yourself at home.</h2><p>Take a walk. Meet a neighbour.<br/>There’s no rush to be anywhere.</p></aside>}
       <div className="bottom-left">
-        {chatOpen && <section className="chat-panel" aria-label="Town chat"><div className="chat-title"><span className="live-dot"/><span className="chat-title-label">TOWN CHAT</span>{silencedUntil > 0 && <i className="chat-silenced" style={{ fontStyle: 'normal', color: '#f0d9a0' }}>Silenced · {silencedSeconds}s</i>}<span className="chat-identity"><span className="identity-dot" aria-hidden="true" style={{ background: SHIRTS[profile.shirt] }}/><b>{profile.name}</b><small>NEW NEIGHBOUR</small><span className="identity-status">IN TOWN</span></span><span>{players.size} in town</span></div><div className="chat-history" role="log" aria-live="polite">{messages.length === 0 && <p className="chat-empty">A simple hello goes a long way.</p>}{messages.map((m, i) => m.system ? <p className="chat-system" key={m.id}>[SYSTEM] {m.body}</p> : <p key={i}><strong>{m.name}</strong> {m.body}</p>)}<div ref={chatEnd}/></div><form onSubmit={sendChat}><input aria-label="Message to town" placeholder={silencedUntil > 0 ? 'Silenced for a moment…' : 'Say something…'} disabled={silencedUntil > 0} value={message} maxLength={240} onFocus={() => { setChatFocused(true); releaseStick(); world.current?.setPaused(true); }} onBlur={() => setChatFocused(false)} onChange={e => setMessage(e.target.value)}/><button aria-label="Send message" onMouseDown={event => event.preventDefault()} disabled={!message.trim() || silencedUntil > 0}><Icon kind="arrow" size={18}/></button></form></section>}
+        {!casinoTable && townChat}
         <div className="identity"><span className="identity-dot" style={{ background: SHIRTS[profile.shirt] }}/><span>{profile.name}<small>NEW NEIGHBOUR</small></span><span className="identity-status">IN TOWN</span></div>
       </div>
-      <div className="controls-hint"><kbd>W</kbd><span className="key-stack"><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Walk</span><span className="divider"/>Drag to look<span className="divider"/>Scroll to zoom</div>
+      <div className="controls-hint"><kbd>W</kbd><span className="key-stack"><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Walk</span><span className="divider"/>Drag to look<span className="divider"/>Scroll to zoom<span className="divider"/><kbd>/</kbd>Chat</div>
       {selectedNeighbour && <PlayerCard key={selectedNeighbour.profileId} person={selectedNeighbour} online={!!selectedLive} distance={selectedDistance} blocked={guest?.blocks.includes(selectedNeighbour.profileId) ?? false} muted={!!selectedLive && muted.has(selectedLive[0])} available={!movementDisabled && !selectedLive?.[1].seatId && !selectedLive?.[1].emoteId && !isHopping(selectedLive?.[1].jumpAt ?? 0, Date.now())} snapshot={socialData.snapshot} balance={wallet?.balance ?? 0} busy={socialData.busy} error={socialData.error} notice={socialData.notice} pending={socialData.pending} invitation={invitation} canInvite={!emoteInbox.incoming && !emoteInbox.outgoing} onClose={() => setSelectedNeighbour(null)} onMute={() => { if (selectedLive) muteNeighbour(selectedLive[0]); }} onBlock={() => void blockNeighbour(selectedNeighbour.profileId, !(guest?.blocks.includes(selectedNeighbour.profileId) ?? false))} onFriend={action => void socialData.friend(selectedNeighbour.profileId, action)} onEmote={kind => sendEmote({ action: 'request', targetId: selectedNeighbour.profileId, kind })} onGift={amount => socialData.gift(selectedNeighbour.profileId, selectedNeighbour.name, amount)}/>}
       {!socialOpen && !selectedNeighbour && !panel && !casinoTable && !shopMode && <div className="emote-world-prompt">{invitation}{localPlayer?.emoteId && <div className="emote-active"><span>{localPlayer.emoteKind === 'hug' ? EMOTE_POSES.hug.label : EMOTE_POSES.handshake.label} · A shared moment</span><button className="social-button" onClick={() => { sendEmote({ action: 'cancel' }); canvas.current?.focus(); }}>Stop emote</button></div>}</div>}
       {!socialOpen && !selectedNeighbour && !panel && !casinoTable && !shopMode && !chatFocused && <div className="mobility-controls" aria-label="Movement actions"><button aria-label="Toggle sprint" aria-pressed={sprintEnabled} disabled={!!localPlayer?.seatId || !!localPlayer?.emoteId} onMouseDown={event => event.preventDefault()} onClick={() => { world.current?.setSprint(!sprintEnabled); canvas.current?.focus(); }}>Sprint <kbd>Shift</kbd></button><button aria-label="Jump" disabled={movementDisabled} onMouseDown={event => event.preventDefault()} onClick={() => { world.current?.jump(); canvas.current?.focus(); }}>Jump <kbd>Space</kbd></button></div>}
       <nav className="toolbar" aria-label="Town tools">
-        <button title="Town chat" aria-label="Toggle town chat" aria-pressed={chatOpen} onClick={() => setChatOpen(!chatOpen)}><Icon kind="chat"/><span>Chat</span></button>
+        <button title="Community memories" aria-label="Open community memories" aria-pressed={panel==='memory'} onClick={()=>{setSocialOpen(false);setPanel('memory');}}><Icon kind="people"/><span>Memories</span></button>
+        <button title="Town chat (/)" aria-keyshortcuts="/" aria-label="Toggle town chat" aria-pressed={chatOpen} onClick={() => chatOpen ? closeChat() : openChat()}><Icon kind="chat"/><span>Chat</span></button>
         <button title="Wave" aria-label="Wave to neighbours" disabled={wave || movementDisabled} onClick={doWave}><Icon kind="wave"/><span>{wave ? 'Hello!' : 'Wave'}</span></button>
         <button title="Neighbours" aria-label="Open neighbours" aria-pressed={socialOpen} onClick={event => { event.currentTarget.focus(); setPanel(null); setSocialOpen(true); }}><Icon kind="people"/><span>Social</span></button>
         <button title="Town map" aria-label="Open town map" aria-pressed={panel === 'map'} onClick={() => setPanel(panel === 'map' ? null : 'map')}><Icon kind="map"/><span>Map</span></button>
@@ -487,9 +524,9 @@ function App() {
       </nav>
       <div className="joystick" ref={joystick} role="group" aria-label="Touch movement control" onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); moveStick(event); }} onPointerMove={moveStick} onPointerUp={releaseStick} onPointerCancel={releaseStick} onLostPointerCapture={releaseStick}><div className="stick-guide"/><div className="stick" style={{ transform: `translate(${stick.x * 35}px, ${stick.z * 35}px)` }}/></div>
       {error && <div role="alert" className="connection-alert">{error}</div>}
-      {(panel === 'map' || panel === 'settings') && <div className="modal-backdrop" onClick={() => setPanel(null)}><section className="modal" role="dialog" aria-modal="true" aria-label={panel === 'map' ? 'Town map' : 'Settings'} onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') setPanel(null); if (e.key === 'Tab') { const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input,select')]; const first = items[0], last = items[items.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } } }}><button autoFocus className="close" aria-label="Close panel" onClick={() => setPanel(null)}><Icon kind="close"/></button><span className="eyebrow">SLOP CITY</span><h2>{panel === 'map' ? 'Get your bearings.' : 'Make it comfortable.'}</h2>{panel === 'map' ? <><TownMapSvg players={players} sessionId={room.current?.sessionId} labeled ariaLabel="Map of the square: casino north, clothing shop east, fountain in the centre"/><p className="map-legend"><span className="live-dot"/> You are in {stats.district}.</p></> : <><div className="comfort-settings"><label className="setting"><span>Performance mode<small>Lighter water and shadows; a smaller render budget.</small></span><input type="checkbox" checked={low} onChange={e => updatePreferences({low:e.target.checked})}/></label><label className="setting"><span>Motion<small>Reduce decorative movement; keep game results visible.</small></span><select aria-label="Motion preference" value={preferences.motion} onChange={e=>updatePreferences({motion:e.target.value as Preferences['motion']})}><option value="system">Follow device</option><option value="reduced">Reduced</option><option value="full">Full</option></select></label><fieldset><legend>City sound</legend><label className="setting"><span>Sound effects <output>{Math.round(preferences.effects*100)}%</output></span><input aria-label="Sound effects volume" type="range" min="0" max="1" step="0.05" value={preferences.effects} onChange={e=>updatePreferences({effects:Number(e.target.value)})}/></label><label className="setting"><span>Fountain ambience <output>{Math.round(preferences.ambience*100)}%</output></span><input aria-label="Fountain ambience volume" type="range" min="0" max="1" step="0.05" value={preferences.ambience} onChange={e=>updatePreferences({ambience:Number(e.target.value)})}/></label><small>Slide to zero to mute. Saved for this browser.</small></fieldset></div><div className="setting"><span>Proximity voice<small>Join from Social. Your microphone starts muted.</small></span><Icon kind="mic"/></div><p className="diagnostics">Rendering at {stats.fps} fps · {players.size} connected<br/>Saved guest · Shared town</p><button className="secondary" onClick={() => { setPanel(null); void room.current?.leave(); }}>Leave the square</button></>}</section></div>}
+      {(panel === 'map' || panel === 'settings') && <div className="modal-backdrop" onClick={() => setPanel(null)}><section className="modal" role="dialog" aria-modal="true" aria-label={panel === 'map' ? 'Town map' : 'Settings'} onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') setPanel(null); if (e.key === 'Tab') { const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input,select')]; const first = items[0], last = items[items.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } } }}><button autoFocus className="close" aria-label="Close panel" onClick={() => setPanel(null)}><Icon kind="close"/></button><span className="eyebrow">SLOP CITY</span><h2>{panel === 'map' ? 'Get your bearings.' : 'Make it comfortable.'}</h2>{panel === 'map' ? <><TownMapSvg players={players} sessionId={room.current?.sessionId} labeled ariaLabel="Map of the square: casino north, clothing shop east, picture house west, fountain in the centre"/><p className="map-legend"><span className="live-dot"/> You are in {stats.district}.</p></> : <><div className="comfort-settings"><label className="setting"><span>Performance mode<small>Lighter water and shadows; a smaller render budget.</small></span><input type="checkbox" checked={low} onChange={e => updatePreferences({low:e.target.checked})}/></label><label className="setting"><span>Motion<small>Reduce decorative movement; keep game results visible.</small></span><select aria-label="Motion preference" value={preferences.motion} onChange={e=>updatePreferences({motion:e.target.value as Preferences['motion']})}><option value="system">Follow device</option><option value="reduced">Reduced</option><option value="full">Full</option></select></label><fieldset><legend>City sound</legend><label className="setting"><span>Sound effects <output>{Math.round(preferences.effects*100)}%</output></span><input aria-label="Sound effects volume" type="range" min="0" max="1" step="0.05" value={preferences.effects} onChange={e=>updatePreferences({effects:Number(e.target.value)})}/></label><label className="setting"><span>Fountain ambience <output>{Math.round(preferences.ambience*100)}%</output></span><input aria-label="Fountain ambience volume" type="range" min="0" max="1" step="0.05" value={preferences.ambience} onChange={e=>updatePreferences({ambience:Number(e.target.value)})}/></label><small>Slide to zero to mute. Saved for this browser.</small></fieldset></div><div className="setting"><span>Proximity voice<small>Join from Social. Your microphone starts muted.</small></span><Icon kind="mic"/></div><p className="diagnostics">Rendering at {stats.fps} fps · {players.size} connected<br/>Saved guest · Shared town</p><button className="secondary" onClick={() => { setPanel(null); void room.current?.leave(); }}>Leave the square</button></>}</section></div>}
     </>}
-    {panel === 'memory' && <MemoryPostDialog onClose={() => setPanel(null)}/>}
+    {(panel==='memory'||panel==='cinema'||panel==='submit'||panel==='admin') && <CommunityPanel initialView={panel==='memory'?'board':panel} onViewChange={communityViewChanged} guestAvailable={!!guest} onClose={()=>setPanel(null)}/>}
   </main>;
 }
-createRoot(document.getElementById('root')!).render(<App/>);
+createRoot(document.getElementById('root')!).render(/^\/admin\/?$/.test(location.pathname)?<AdminPage/>:<App/>);

@@ -175,6 +175,10 @@ try {
   await until(() => currentSlot()?.phase === 'result', 'slot result reveal');
   assert.equal(currentSlot()!.returned, savedSpin.returned); assert.equal(currentSlot()!.reels.length, 3);
   console.log('PASS: a real slot spin settles before animation; private receipt wallet matches PostgreSQL and economy API, with reels revealed only on completion.');
+  const repeat = await command(owner, { action: 'slots-spin', tableId: 'slots-1', stake: 10 });
+  assert.equal(repeat.ok, true, 'Owner can explicitly spin again during the result hold');
+  assert.notEqual(repeat.wagerId, spin.wagerId);
+  await until(() => currentSlot()?.phase === 'spinning', 'immediate owner re-spin');
 
   await until(() => currentSlot()?.phase === 'idle' && !player(owner).seatId, 'slot release before exploring the expanded hall', 10000);
   for (const [x, z] of [[-12, 26.7], [-12, 48], [0, 48], [0, 46.3]]) await walk(owner, x, z);
@@ -186,6 +190,14 @@ try {
   await until(() => owner.privateState!.rouletteBets.some(bet => bet.tableId === 'roulette-2' && bet.roundId === rearRound), 'second island private bet');
   assert.equal((await database.query('SELECT table_id FROM casino_wagers WHERE id=$1', [rearBet.wagerId])).rows[0].table_id, 'roulette-2');
   assert.ok(spectator.privateMessages.every(message => message.rouletteBets.length === 0));
+  assert.equal((await command(owner, { action: 'table-presence', tableId: 'roulette-2', viewing: true })).ok, true);
+  assert.equal((await command(owner, { action: 'round-ready', tableId: 'roulette-2', roundId: rearRound })).ok, true);
+  await until(() => !!rearRoulette().readiness?.deadline, 'shared Ready countdown');
+  const earlyDeadline = rearRoulette().readiness!.deadline;
+  assert.ok(earlyDeadline < rearRoulette().deadline, 'Ready beats the normal betting timer');
+  await until(() => (spectator.casino?.tables.find(table => table.id === 'roulette-2') as RouletteView)?.readiness?.deadline === earlyDeadline, 'spectator receives same early deadline');
+  await until(() => rearRoulette().phase === 'spinning', 'Ready starts the actual shared spin', 3500);
+  console.log('PASS: Ready starts a solo round early and broadcasts the same countdown to another protocol client.');
   for (const [x, z] of [[4, 46.3], [4, 42.5], [8, 42.5]]) await walk(owner, x, z);
   assert.equal((await command(owner, { action: 'blackjack-join', tableId: 'blackjack-6', seat: 2 })).ok, true);
   await until(() => player(owner).seatId === 'casino:blackjack-6:2', 'rear blackjack physical seat');

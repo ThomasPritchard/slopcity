@@ -1,15 +1,16 @@
+import { RoundPacing } from './pacing.ts';
 import { PokerService } from './poker.ts';
 import { POKER_MIN_BUY_IN, POKER_MAX_BUY_IN, POKER_BUY_IN_STEP, type PokerCommand } from '../../shared/poker.ts';
 import { resolveCraps, crapsReturn, CRAPS_BETTING_MS, CRAPS_AWAITING_ROLL_MS, type CrapsView, type CrapsBet, type CrapsResult } from '../../shared/craps.ts';
 import { CRAPS_ROLL_LEAD_MS, CRAPS_ROLL_MS } from '../../shared/crapsMotion.ts';
 import { createHash, randomUUID } from 'node:crypto';
-import { CASINO_ANCHORS, CASINO_INTERACTION_RADIUS, ROULETTE_BETTING_MS, ROULETTE_SPIN_MS, CASINO_RESULT_MS, BLACKJACK_BETTING_MS, BLACKJACK_ACTION_MS, SLOTS_SPIN_MS, type CasinoTableId, type CasinoCommand, type CasinoState, type CasinoReceipt, type CasinoTableView, type RouletteView, type RouletteBet, type BlackjackView, type BlackjackHandView, type CasinoOccupant, type SlotsView, type Card, type SlotSymbol } from '../../shared/casino.ts';
+import { ROULETTE_MAX_ROUND_STAKE, ROULETTE_MAX_BETS_PER_ROUND, CASINO_ANCHORS, CASINO_INTERACTION_RADIUS, ROULETTE_BETTING_MS, ROULETTE_SPIN_MS, CASINO_RESULT_MS, CASINO_SHARED_RESULT_MS, BLACKJACK_BETTING_MS, BLACKJACK_ACTION_MS, SLOTS_SPIN_MS, type CasinoTableId, type CasinoCommand, type CasinoState, type CasinoReceipt, type CasinoTableView, type RouletteView, type RouletteBet, type BlackjackView, type BlackjackHandView, type CasinoOccupant, type SlotsView, type Card, type SlotSymbol } from '../../shared/casino.ts';
 import { inCasino } from '../../shared/casinoLayout.ts';
 import { startRouletteMotion, ROULETTE_LANDING_LEAD_MS, ROULETTE_LANDING_MS } from '../../shared/rouletteMotion.ts';
 import type { WalletState } from '../../shared/catalog.ts';
 import { EconomyError } from '../persistence/economy.ts';
 import { CasinoRepository, type WagerInput, type WagerResult } from '../persistence/casino.ts';
-import { cryptoRandom, validStake, rouletteBet, rouletteReturn, shoe, natural, total, blackjackReturn, slotReels, slotsReturn, type Random } from './rules.ts';
+import { cryptoRandom, validStake, rouletteBet, rouletteReturn, shoe, natural, total, canSplit, blackjackReturn, slotReels, slotsReturn, type Random } from './rules.ts';
 
 export type CasinoHooks = {
  actor(profileId: string): { sessionId: string; name: string; x: number; z: number } | undefined;
@@ -20,7 +21,7 @@ export type CasinoHooks = {
 type Occupant = CasinoOccupant & { sessionId: string; departed: boolean };
 type Hand = { cards: Card[]; stake: number; wagers: string[]; split: boolean; state: BlackjackHandView['state']; outcome?: BlackjackHandView['outcome']; returned?: number };
 type Seat = { player: Occupant; hands: Hand[] };
-type Roulette = { view: RouletteView; bets: { wagerId: string; profileId: string; bet: RouletteBet }[]; outcome: number | null };
+type Roulette = { view: RouletteView; bets: { wagerId: string; profileId: string; bet: RouletteBet; player: Occupant }[]; outcome: number | null };
 type Blackjack = { view: BlackjackView; seats: Map<number, Seat>; cards: Card[]; dealer: Card[]; revealed: boolean };
 type Slots = { view: SlotsView; player: Occupant | null; outcome: SlotSymbol[]; wagerId: string | null; payout: number };
 type Pending = { depart: () => void; retryAt: number; profileId: string; command: CasinoCommand; fingerprint: string; tableId: CasinoTableId; run: () => Promise<void> };
@@ -29,6 +30,7 @@ const fail = (code: string, message: string): never => { throw new EconomyError(
 /** One queue serialises admission and deadline transitions, including all database awaits. */
 export class CasinoService {
  private poker?: PokerService;
+ private pacing = new Map<CasinoTableId, RoundPacing>();
  private pokerRecipients = new Set<string>();
  private craps!: { view: CrapsView; bets: { wagerId: string; profileId: string; bet: CrapsBet; player: Occupant }[]; shooter: Occupant | null; throwingShooter: Occupant | null; outcome: CrapsResult | null };
  private roulette = new Map<CasinoTableId, Roulette>();
@@ -77,18 +79,41 @@ export class CasinoService {
   if (!seat || !hand || this.blocked(table.view.id) || table.view.phase !== 'playing' || table.view.activeSeat !== index || table.view.activeHand !== handIndex || hand.state !== 'playing' || !this.connected(seat.player, table.view.id)) return [];
   const actions: BlackjackHandView['actions'] = ['hit', 'stand'];
   if (hand.cards.length === 2) actions.push('double');
-  if (hand.cards.length === 2 && seat.hands.length === 1 && hand.cards[0].rank === hand.cards[1].rank) actions.push('split');
+  if (seat.hands.length === 1 && canSplit(hand.cards)) actions.push('split');
   return actions;
  }
+ private pace(id: CasinoTableId, roundId: string) {
+  let pace = this.pacing.get(id); if (!pace) { pace = new RoundPacing(this.now); this.pacing.set(id, pace); }
+  pace.reset(roundId); return pace;
+ }
+ private participants(id: CasinoTableId) {
+  const roulette = this.roulette.get(id), blackjack = this.blackjack.get(id);
+  const players = roulette ? roulette.bets.map(b => b.player) : blackjack ? [...blackjack.seats.values()].filter(s => s.hands.length).map(s => s.player) : id === 'craps-1' ? this.craps.bets.map(b => b.player) : [];
+  return new Map(players.filter(p => this.connected(p, id)).map(p => [p.profileId, p.sessionId]));
+ }
+ private reclaimWagers(profileId: string, id: CasinoTableId) {
+  const bets = this.roulette.get(id)?.bets ?? (id === 'craps-1' ? this.craps.bets : []);
+  const own = bets.filter(b => b.profileId === profileId);
+  if (own.some(b => b.player.departed || b.player.sessionId !== this.hooks.actor(profileId)?.sessionId)) {
+   this.pacing.get(id)?.changed(profileId);
+   for (const bet of own) Object.assign(bet.player, this.occupant(profileId));
+  }
+ }
+ private readiness(view: RouletteView | BlackjackView | CrapsView) {
+  if (view.phase !== 'betting') return undefined;
+  return this.pace(view.id, view.roundId).state(this.participants(view.id), view.deadline, 1, (id, session) => this.hooks.actor(id)?.sessionId === session && this.near(id, view.id));
+ }
+ private bettingDeadline(view: RouletteView | BlackjackView | CrapsView) { return this.readiness(view)?.deadline || view.deadline; }
+ private houseView(id: CasinoTableId) { return this.roulette.get(id)?.view ?? this.blackjack.get(id)?.view ?? (id === 'craps-1' ? this.craps.view : undefined); }
  private state(): CasinoState {
-  const tables: CasinoTableView[] = [...this.roulette.values()].map(r => ({ ...r.view, motion: r.view.motion ? { ...r.view.motion } : null, history: [...r.view.history], phase: this.blocked(r.view.id) ? 'paused' : r.view.phase, betCount: r.bets.length }));
+  const tables: CasinoTableView[] = [...this.roulette.values()].map(r => ({ ...r.view, readiness: this.readiness(r.view), motion: r.view.motion ? { ...r.view.motion } : null, history: [...r.view.history], phase: this.blocked(r.view.id) ? 'paused' : r.view.phase, betCount: r.bets.length }));
   for (const t of this.blackjack.values()) {
-   tables.push({ ...t.view, phase: this.blocked(t.view.id) ? 'paused' : t.view.phase, dealer: t.revealed ? t.dealer.map(c => ({ ...c })) : t.dealer.length ? [{ ...t.dealer[0] }, null] : [], dealerTotal: t.revealed ? total(t.dealer).total : null,
+   tables.push({ ...t.view, readiness: this.readiness(t.view), phase: this.blocked(t.view.id) ? 'paused' : t.view.phase, dealer: t.revealed ? t.dealer.map(c => ({ ...c })) : t.dealer.length ? [{ ...t.dealer[0] }, null] : [], dealerTotal: t.revealed ? total(t.dealer).total : null,
     seats: [...t.seats.entries()].sort(([a], [b]) => a - b).map(([index, s]) => ({ seat: index, player: this.publicPlayer(s.player, t.view.id), hands: s.hands.map((h, hi) => ({ cards: h.cards.map(c => ({ ...c })), stake: h.stake, ...total(h.cards), state: h.state, ...(h.outcome ? { outcome: h.outcome, returned: h.returned } : {}), actions: this.actions(t, index, hi) })) })) });
   }
   for (const t of this.slots.values()) tables.push({ ...t.view, phase: this.blocked(t.view.id) ? 'paused' : t.view.phase, player: t.player ? this.publicPlayer(t.player, t.view.id) : null, reels: [...t.view.reels] });
   const c = this.craps;
-  tables.push(structuredClone({ ...c.view, phase: this.blocked('craps-1') ? 'paused' : c.view.phase, betCount: c.bets.length, shooter: c.shooter ? this.publicPlayer(c.shooter, 'craps-1') : null }));
+  tables.push(structuredClone({ ...c.view, readiness: this.readiness(c.view), phase: this.blocked('craps-1') ? 'paused' : c.view.phase, betCount: c.bets.length, shooter: c.shooter ? this.publicPlayer(c.shooter, 'craps-1') : null }));
   if (this.poker) tables.push(this.poker.state());
   return { serverTime: this.now(), tables };
  }
@@ -123,6 +148,8 @@ export class CasinoService {
   if (v.action === 'sync') return { action: 'sync', requestId };
   if (typeof v.tableId !== 'string' || !CASINO_ANCHORS.some(a => a.id === v.tableId)) fail('invalid_table', 'Unknown casino table');
   const tableId = v.tableId as CasinoTableId;
+  if (v.action === 'table-presence') { if (typeof v.viewing !== 'boolean') fail('invalid_presence', 'Invalid table presence'); return { action: 'table-presence', requestId, tableId, viewing: v.viewing as boolean }; }
+  if (v.action === 'round-ready') { if (typeof v.roundId !== 'string' || !v.roundId || v.roundId.length > 100 || this.slots.has(tableId)) fail('invalid_round', 'Invalid ready round'); return { action: 'round-ready', requestId, tableId, roundId: v.roundId as string }; }
   if (typeof v.action === 'string' && v.action.startsWith('poker-')) {
    if (tableId !== 'poker-1') fail('invalid_table', 'Choose the poker table');
    if (v.action === 'poker-join') {
@@ -173,6 +200,41 @@ export class CasinoService {
    }
    const pending = this.pending.get(key);
    if (pending) { if (pending.fingerprint !== fingerprint) this.rejected(profileId, command, fingerprint, new EconomyError('request_conflict', 'This request was used for another action')); else await this.attempt(key, pending); return; }
+   if (command.action === 'table-presence' || command.action === 'round-ready') {
+    try {
+     // Request IDs share the durable wager namespace, including after a restart/cache eviction.
+     await this.repository.replay(profileId, command.requestId, fingerprint);
+     this.poker?.checkControlRequest(profileId, command.requestId);
+     if (!originSession || this.hooks.actor(profileId)?.sessionId !== originSession) fail('session_ended', 'This game session has ended');
+     if (command.action === 'table-presence' && !command.viewing) {
+      if (command.tableId === 'poker-1') this.poker?.presence(profileId, originSession!, false);
+      else this.pacing.get(command.tableId)?.presence(profileId, originSession!, false);
+     } else {
+      this.eligible(profileId, command.tableId, originSession!);
+      if (command.tableId === 'poker-1') {
+       if (!this.poker) fail('table_unavailable', 'The poker table is unavailable');
+       if (command.action === 'table-presence') this.poker!.presence(profileId, originSession!, true);
+       else this.poker!.ready(profileId, originSession!, command.roundId);
+      } else {
+       const view = this.houseView(command.tableId);
+       if (view) {
+        const pace = this.pace(view.id, view.roundId);
+        if (command.action === 'table-presence') {
+         if (view.phase !== 'betting' || this.now() < this.bettingDeadline(view)) { this.reclaimWagers(profileId, view.id); pace.presence(profileId, originSession!, true); }
+        }
+        else {
+         if (this.blocked(view.id)) fail('table_saving', 'This table is saving. Please wait.');
+         if (view.phase !== 'betting' || view.roundId !== command.roundId || this.now() >= this.bettingDeadline(view)) fail('betting_closed', 'This round is no longer waiting');
+         if (this.participants(view.id).get(profileId) !== originSession) fail('not_participating', 'Place a wager before getting ready');
+         pace.mark(profileId, originSession!);
+        }
+       }
+      }
+     }
+     this.ok(profileId, command, fingerprint); this.publish();
+    } catch (error) { this.rejected(profileId, command, fingerprint, error); }
+    return;
+   }
    try {
     // Durable replay precedes current location, occupancy, phase and deadline checks.
     const prior = await this.repository.replay(profileId, command.requestId, fingerprint);
@@ -204,32 +266,32 @@ export class CasinoService {
   catch (error) { if (error instanceof EconomyError) this.pending.delete(key); else operation.retryAt = this.now() + 1000; if (notifyError || error instanceof EconomyError) this.rejected(operation.profileId, operation.command, operation.fingerprint, error); this.publish(); }
  }
  private financial(profileId: string, command: CasinoCommand, fingerprint: string, sessionId: string): Pending {
-  if (command.action === 'sync' || command.action === 'leave' || command.action === 'blackjack-join' || command.action === 'craps-roll' || command.action === 'poker-join' || command.action === 'poker-action' || command.action === 'poker-leave' || command.action === 'poker-rejoin') return fail('invalid_action', 'Invalid financial action');
+  if (command.action === 'table-presence' || command.action === 'round-ready' || command.action === 'sync' || command.action === 'leave' || command.action === 'blackjack-join' || command.action === 'craps-roll' || command.action === 'poker-join' || command.action === 'poker-action' || command.action === 'poker-leave' || command.action === 'poker-rejoin') return fail('invalid_action', 'Invalid financial action');
   let departed = false;
   let stake: number, roundId: string, details: Record<string, unknown>, validate: () => void, apply: (result: WagerResult) => void;
   if (command.action === 'craps-bet') {
    const table = this.craps, player = this.occupant(profileId); stake = command.bet.stake; roundId = command.roundId; details = { game: 'craps', bet: command.bet };
-   validate = () => { this.eligible(profileId, 'craps-1', sessionId); if (table.view.roundId !== roundId || table.view.phase !== 'betting' || table.view.point !== null || this.now() >= table.view.deadline) fail('betting_closed', 'Craps betting has closed'); if (table.bets.some(b => b.profileId === profileId)) fail('already_bet', 'One line bet per cycle'); };
+   validate = () => { this.eligible(profileId, 'craps-1', sessionId); if (table.view.roundId !== roundId || table.view.phase !== 'betting' || table.view.point !== null || this.now() >= this.bettingDeadline(table.view)) fail('betting_closed', 'Craps betting has closed'); if (table.bets.some(b => b.profileId === profileId)) fail('already_bet', 'One line bet per cycle'); };
    apply = result => { player.departed = departed; table.bets.push({ wagerId: result.wager.id, profileId, bet: command.bet, player }); this.chooseCrapsShooter(); };
   } else if (command.action === 'roulette-bet') {
-   const table = this.roulette.get(command.tableId)!; stake = command.bet.stake; roundId = command.roundId; details = { game: 'roulette', bet: command.bet };
+   const table = this.roulette.get(command.tableId)!, player = this.occupant(profileId); stake = command.bet.stake; roundId = command.roundId; details = { game: 'roulette', bet: command.bet };
    validate = () => {
     this.eligible(profileId, command.tableId, sessionId);
-    if (table.view.roundId !== roundId || table.view.phase !== 'betting' || this.now() >= table.view.deadline) fail('betting_closed', 'Roulette betting has closed');
+    if (table.view.roundId !== roundId || table.view.phase !== 'betting' || this.now() >= this.bettingDeadline(table.view)) fail('betting_closed', 'Roulette betting has closed');
     const mine = table.bets.filter(b => b.profileId === profileId);
-    if (mine.length >= 20 || mine.reduce((s, b) => s + b.bet.stake, 0) + stake > 1000) fail('round_limit', 'This round allows 20 bets and 1,000 credits per person');
+    if (mine.length >= ROULETTE_MAX_BETS_PER_ROUND || mine.reduce((s, b) => s + b.bet.stake, 0) + stake > ROULETTE_MAX_ROUND_STAKE) fail('round_limit', 'This round allows 20 bets and 1,000 credits per person');
    };
-   apply = result => { table.bets.push({ wagerId: result.wager.id, profileId, bet: command.bet }); };
+   apply = result => { player.departed = departed; table.bets.push({ wagerId: result.wager.id, profileId, bet: command.bet, player }); this.pace(table.view.id, roundId).changed(profileId); };
   } else if (command.action === 'slots-spin') {
    const table = this.slots.get(command.tableId)!, occupant = this.occupant(profileId); stake = command.stake; roundId = randomUUID();
    const reels = slotReels(this.random), payout = slotsReturn(reels, stake); details = { game: 'slots', reels, returned: payout };
-   validate = () => { this.eligible(profileId, command.tableId, sessionId); if (table.view.phase !== 'idle') fail('machine_busy', 'This machine is occupied'); this.unoccupied(profileId, command.tableId); };
+   validate = () => { this.eligible(profileId, command.tableId, sessionId); if (table.view.phase !== 'idle' && !(table.view.phase === 'result' && table.player?.profileId === profileId && this.connected(table.player, command.tableId))) fail('machine_busy', 'This machine is occupied'); this.unoccupied(profileId, command.tableId); };
    apply = result => { occupant.departed = departed; table.player = occupant; table.outcome = reels; table.payout = payout; table.wagerId = result.wager.id; table.view.roundId = roundId; table.view.phase = 'spinning'; table.view.deadline = this.now() + SLOTS_SPIN_MS; table.view.stake = stake; table.view.returned = null; table.view.reels = []; };
   } else if (command.action === 'blackjack-bet') {
    const table = this.blackjack.get(command.tableId)!; stake = command.stake; roundId = command.roundId; details = { game: 'blackjack', action: 'bet' };
    validate = () => {
     this.eligible(profileId, command.tableId, sessionId); const seat = this.findSeat(table, profileId)?.[1];
-    if (table.view.roundId !== roundId || table.view.phase !== 'betting' || this.now() >= table.view.deadline) fail('betting_closed', 'Blackjack betting has closed');
+    if (table.view.roundId !== roundId || table.view.phase !== 'betting' || this.now() >= this.bettingDeadline(table.view)) fail('betting_closed', 'Blackjack betting has closed');
     if (!seat || !this.connected(seat.player, command.tableId)) fail('not_seated', 'Take a seat before betting');
     if (seat!.hands.length) fail('already_bet', 'You have already bet in this round');
    };
@@ -291,7 +353,7 @@ export class CasinoService {
   const t = this.craps, v = t.view;
   if (this.blocked(v.id)) return;
   this.chooseCrapsShooter();
-  if (v.phase === 'betting' && this.now() >= v.deadline) {
+  if (v.phase === 'betting' && this.now() >= this.bettingDeadline(v)) {
    if (!t.bets.length) { v.roundId = randomUUID(); v.rollId = randomUUID(); v.deadline = this.now() + CRAPS_BETTING_MS; }
    else { v.phase = 'awaiting-roll'; v.deadline = this.now() + CRAPS_AWAITING_ROLL_MS; }
   }
@@ -299,7 +361,7 @@ export class CasinoService {
   if (v.phase === 'rolling' && this.now() >= v.deadline) {
    v.result = structuredClone(t.outcome!); v.point = t.outcome!.pointAfter; v.history = [structuredClone(t.outcome!), ...v.history].slice(0, 12);
    if (t.outcome!.pointBefore !== null && t.outcome!.total === 7 && t.shooter === t.throwingShooter) this.chooseCrapsShooter(true);
-   v.phase = 'result'; v.deadline = this.now() + CASINO_RESULT_MS;
+   v.phase = 'result'; v.deadline = this.now() + CASINO_SHARED_RESULT_MS;
   }
   if (v.phase === 'result' && this.now() >= v.deadline) {
    t.outcome = null; t.throwingShooter = null; v.result = null; v.rollId = randomUUID();
@@ -332,7 +394,7 @@ export class CasinoService {
   if (table.view.roundId !== command.roundId || table.view.phase !== 'playing' || this.now() >= table.view.deadline || !seat || table.view.activeSeat !== seat[0] || table.view.activeHand !== command.hand || !hand || hand.state !== 'playing' || !this.connected(seat[1].player, command.tableId)) fail('not_your_turn', 'That hand is not waiting for your action');
   // Do not consult the projection's saving flag: this validation also runs under the wallet lock of its own pending action.
   if ((command.move === 'double' || command.move === 'split') && hand!.cards.length !== 2) fail('action_unavailable', 'This action requires your first two cards');
-  if (command.move === 'split' && (seat![1].hands.length !== 1 || hand!.cards[0].rank !== hand!.cards[1].rank)) fail('action_unavailable', 'Only one split of identical ranks is allowed');
+  if (command.move === 'split' && (seat![1].hands.length !== 1 || !canSplit(hand!.cards))) fail('action_unavailable', 'Only one split of matching ranks or two ten-value cards is allowed');
   return { table, hand: hand! };
  }
  private draw(table: Blackjack) { const card = table.cards.pop(); if (!card) throw new Error('Blackjack shoe exhausted'); return card; }
@@ -365,9 +427,11 @@ export class CasinoService {
   const wallets = await this.repository.settle(entries);
   for (const [profileId, wallet] of wallets) this.hooks.wallet(profileId, wallet);
   for (const hand of hands) { Object.assign(hand, blackjackReturn(hand.cards, table.dealer, hand.stake, hand.split)); hand.state = 'settled'; }
-  table.revealed = true; table.view.phase = 'result'; table.view.deadline = this.now() + CASINO_RESULT_MS;
+  table.revealed = true; table.view.phase = 'result'; table.view.deadline = this.now() + CASINO_SHARED_RESULT_MS;
  }
  private depart(profileId: string, id?: CasinoTableId) {
+  for (const [tableId, pace] of this.pacing) if (!id || id === tableId) pace.depart(profileId);
+  for (const [tableId, table] of this.roulette) if (!id || id === tableId) for (const bet of table.bets) if (bet.profileId === profileId) bet.player.departed = true;
   if (!id || id === 'poker-1') this.poker?.leave(profileId);
   if (!id || id === 'craps-1') { for (const b of this.craps.bets) if (b.profileId === profileId) b.player.departed = true; if (this.craps.shooter?.profileId === profileId) this.craps.shooter.departed = true; this.chooseCrapsShooter(); }
   for (const operation of this.pending.values()) if (operation.profileId === profileId && (!id || id === operation.tableId)) operation.depart();
@@ -394,7 +458,7 @@ export class CasinoService {
      else if (table.view.phase === 'playing') for (const hand of seat.hands) if (hand.state === 'playing') hand.state = 'stood';
     }
     try {
-     if (table.view.phase === 'betting' && this.now() >= table.view.deadline) this.deal(table);
+     if (table.view.phase === 'betting' && this.now() >= this.bettingDeadline(table.view)) this.deal(table);
      if (table.view.phase === 'playing') {
       const hand = table.seats.get(table.view.activeSeat!)?.hands[table.view.activeHand!];
       if (hand?.state === 'playing' && this.now() >= table.view.deadline) hand.state = 'stood';
@@ -408,7 +472,8 @@ export class CasinoService {
     } catch { table.view.phase = 'paused'; }
    }
    for (const r of this.roulette.values()) if (!this.blocked(r.view.id)) {
-    if (r.view.phase === 'betting' && this.now() >= r.view.deadline) {
+    if (r.view.phase === 'betting' && this.now() >= this.bettingDeadline(r.view)) {
+     if (!r.bets.length) { r.view.roundId = randomUUID(); r.view.deadline = this.now() + ROULETTE_BETTING_MS; continue; }
      r.outcome = this.random(37); r.view.phase = 'spinning';
      r.view.motion = startRouletteMotion(r.view.roundId, this.now(), r.view.motion);
      r.view.deadline = this.now() + ROULETTE_SPIN_MS;
@@ -424,7 +489,7 @@ export class CasinoService {
     }
     if (r.view.phase === 'landing' && this.now() >= r.view.deadline) {
      r.view.history = [r.outcome!, ...r.view.history].slice(0, 12);
-     r.view.phase = 'result'; r.view.deadline = this.now() + CASINO_RESULT_MS;
+     r.view.phase = 'result'; r.view.deadline = this.now() + CASINO_SHARED_RESULT_MS;
     }
     if (r.view.phase === 'result' && this.now() >= r.view.deadline) {
      const players = new Set(r.bets.map(b => b.profileId)); r.bets = []; r.outcome = null; r.view.result = null; r.view.roundId = randomUUID(); r.view.phase = 'betting'; r.view.deadline = this.now() + ROULETTE_BETTING_MS;

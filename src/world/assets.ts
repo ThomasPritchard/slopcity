@@ -111,7 +111,7 @@ export class AuthoredAssets {
   private containers = new Map<string, AssetContainer>();
   constructor(private scene: Scene) {}
   async load() {
-    await Promise.all(['citizen', 'citizen-lod', 'town-ground', 'changing-room', 'fountain', 'bench', 'tree', 'planter', 'entrance-planter', 'lamp', 'clothing-shop', 'form-thread-shell', 'form-thread-roof', 'meridian-shell', 'meridian-roof', 'meridian-ceiling', 'meridian-chandelier', 'meridian-interior', 'roulette-table', 'blackjack-table', 'slot-machine', 'casino-chair', 'roulette-wheel', 'craps-table', 'poker-table', 'signpost', 'shop-sign', 'shop-tagline', 'casino-sign', 'casino-entry-sign', 'casino-tagline'].map(async name => {
+    await Promise.all(['citizen', 'citizen-lod', 'cinema', 'town-ground', 'changing-room', 'fountain', 'bench', 'tree', 'planter', 'entrance-planter', 'lamp', 'clothing-shop', 'form-thread-shell', 'form-thread-roof', 'meridian-shell', 'meridian-roof', 'meridian-ceiling', 'meridian-chandelier', 'meridian-interior', 'roulette-table', 'blackjack-table', 'slot-machine', 'casino-chair', 'roulette-wheel', 'craps-table', 'poker-table', 'signpost', 'shop-sign', 'shop-tagline', 'casino-sign', 'casino-entry-sign', 'casino-tagline'].map(async name => {
       this.containers.set(name, await LoadAssetContainerAsync(`/models/${name}.glb`, this.scene));
     }));
   }
@@ -119,7 +119,7 @@ export class AuthoredAssets {
   place(name: string, x: number, y: number, z: number, rotation = 0, scale = 1): TransformNode {
     const root = new TransformNode(`${name}-instance`, this.scene);
     // Unique focal props use copies to keep their PBR rendering stable across quality changes.
-    const entries = this.containers.get(name)!.instantiateModelsToScene(original => `${name}/${original}`, false, { doNotInstantiate: ['meridian-shell', 'meridian-roof', 'meridian-ceiling', 'meridian-chandelier', 'meridian-interior', 'town-ground', 'tree', 'planter', 'entrance-planter', 'lamp', 'fountain', 'changing-room', 'clothing-shop', 'form-thread-shell', 'form-thread-roof', 'signpost', 'shop-sign', 'shop-tagline', 'casino-sign', 'casino-entry-sign', 'casino-tagline'].includes(name) });
+    const entries = this.containers.get(name)!.instantiateModelsToScene(original => `${name}/${original}`, false, { doNotInstantiate: ['cinema', 'meridian-shell', 'meridian-roof', 'meridian-ceiling', 'meridian-chandelier', 'meridian-interior', 'town-ground', 'tree', 'planter', 'entrance-planter', 'lamp', 'fountain', 'changing-room', 'clothing-shop', 'form-thread-shell', 'form-thread-roof', 'signpost', 'shop-sign', 'shop-tagline', 'casino-sign', 'casino-entry-sign', 'casino-tagline'].includes(name) });
     for (const node of entries.rootNodes) node.parent = root;
     root.position.set(x, y, z); root.rotation.y = rotation; root.scaling.setAll(scale);
     return root;
