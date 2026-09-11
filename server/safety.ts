@@ -4,6 +4,7 @@ import { CAPACITY } from '../shared/world.ts';
 import { networkKey, normalizeIP } from './clientAddress.ts';
 import { validProfileId } from './persistence/guests.ts';
 import type { SafetyRepository } from './persistence/safety.ts';
+import { isBlockedProfileName, PROFILE_NAME_ERROR } from '../shared/profileModeration.ts';
 
 export class SafetyError extends ServerError {
  constructor(public status: number, public codeName: string, message: string, public retryAfter = 60) { super(status, message); }
@@ -52,6 +53,19 @@ export class SafetyService {
   for (const kind of ['guest','join','upgrade','api','voice'] as const) { const c = SAFETY_LIMITS[kind]; this.limiters.set(kind,{ip:new TokenBucket(c.ip,c.window),global:new TokenBucket(c.global,c.window)}); }
  }
  async initialise() { await this.repository.initialise(); this.bans = await this.repository.active(); }
+ async banProhibitedNames(): Promise<number> {
+  let after: string | null = null, count = 0;
+  for (;;) {
+   const profiles = await this.repository.profileNames(after);
+   if (!profiles.length) return count;
+   for (const profile of profiles) {
+    if (!isBlockedProfileName(profile.name) || this.isBanned(undefined,profile.id)) continue;
+    await this.addBan({kind:'guest',target:profile.id,reason:'Automatic ban: profile name contains a prohibited slur or extreme profanity.',durationMinutes:null});
+    count++;
+   }
+   after = profiles.at(-1)!.id;
+  }
+ }
  startLogging() {
   this.logger = setInterval(() => console.info(JSON.stringify({event:'town_safety_summary',at:this.now(),startedAt:this.startedAt,activeConnections:this.connections.size,counters:Object.fromEntries(this.counters)})),60_000);
   this.logger.unref();
@@ -70,6 +84,10 @@ export class SafetyService {
  }
  checkBan(ip: string, profileId?: string) {
   if (this.isBanned(ip,profileId)) { this.record('ban_rejected',ip,profileId); throw new SafetyError(403,'banned','Access to Slop City is currently restricted.'); }
+ }
+ checkProfile(ip: string, profile: {id:string;name:string}) {
+  this.checkBan(ip,profile.id);
+  if (isBlockedProfileName(profile.name)) throw new SafetyError(403,'invalid_name',PROFILE_NAME_ERROR);
  }
  limit(kind: LimitKind, ip: string, profileId?: string) {
   const limiter = this.limiters.get(kind)!, now = this.now();

@@ -10,6 +10,7 @@ import { Pool } from 'pg';
 import { Client, type Room } from '@colyseus/sdk';
 import { chromium } from 'playwright';
 import { hashCommunityPassword } from '../server/communityAuth.ts';
+import { PROFILE_NAME_ERROR } from '../shared/profileModeration.ts';
 
 if (!process.env.DATABASE_URL) throw new Error('Load the local .env for the isolated safety check.');
 const dbURL=new URL(process.env.DATABASE_URL);
@@ -36,7 +37,24 @@ async function login(){const response=await request('/api/community/admin/login'
 let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined;
 try {
  await pool.query(`CREATE SCHEMA ${schema}`);await start();
+ for(const name of ['nigger10','n1gg3r','n i g g e r','ni<>gger']){
+  const rejected=await request('/api/guest','POST',{name,shirt:0,skin:0},'198.51.100.30');
+  assert.equal(rejected.status,400);assert.equal((await rejected.json()).error,PROFILE_NAME_ERROR);assert.equal(rejected.headers.get('set-cookie'),null);
+ }
+ assert.equal((await pool.query(`SELECT count(*)::int AS count FROM ${schema}.guest_profiles`)).rows[0].count,0);
+ const legacy=await guest('Legacy name','198.51.100.31');
+ assert.equal((await request('/api/profile','PATCH',{name:'nigger',shirt:0,skin:0,revision:1},legacy.ip,legacy.cookie)).status,400);
+ assert.equal((await(await request('/api/profile','GET',undefined,legacy.ip,legacy.cookie)).json()).name,'Legacy name');
+ // Simulate a profile saved by the old release; normal creation now rejects it.
+ await pool.query(`UPDATE ${schema}.guest_profiles SET name=$2 WHERE id=$1`,[legacy.profile.id,'nigger4']);
+ assert.equal((await request('/api/profile','GET',undefined,legacy.ip,legacy.cookie)).status,403);
+ await assert.rejects(()=>join(legacy));
+ await stop();await start();
  const admin=await login();
+ const legacyBans=(await(await request('/api/community/admin/safety','GET',undefined,undefined,admin)).json()).bans;
+ assert.ok(legacyBans.some((ban:any)=>ban.kind==='guest'&&ban.target===legacy.profile.id&&ban.expiresAt===null));
+ assert.equal((await request('/api/profile','GET',undefined,legacy.ip,legacy.cookie)).status,403);
+ await assert.rejects(()=>join(legacy));
  assert.equal((await request('/api/community/admin/safety')).status,401);
  assert.equal((await fetch(endpoint+'/api/guest',{method:'POST',headers:{origin,'content-type':'application/json','x-slop-client-ip':'192.0.2.1'},body:JSON.stringify({name:'Spoof',shirt:0,skin:0})})).status,503);
  assert.equal((await fetch(endpoint+'/api/community/admin/safety',{headers:{cookie:admin,'x-slop-client-ip':'192.0.2.1','x-slop-proxy-key':'é'.repeat(64)}})).status,503);
@@ -56,6 +74,7 @@ try {
  assert.equal((await request('/api/guest','POST',{name:'New banned guest',shirt:0,skin:0},alice.ip)).status,403);
  assert.equal((await request('/api/community/admin/safety','GET',undefined,alice.ip,admin)).status,200,'admin remains reachable from a banned network');
  await stop();await start();const adminAfterRestart=await login();
+ const repeatedSweep=await pool.query(`SELECT count(*)::int AS count FROM ${schema}.safety_bans WHERE target=$1`,[legacy.profile.id]);assert.equal(repeatedSweep.rows[0].count,1,'startup name sweep does not duplicate existing bans');
  assert.equal((await request('/api/profile','GET',undefined,alice.ip,alice.cookie)).status,403,'ban persists through full server restart');
  await request(`/api/community/admin/safety/bans/${ipBanValue.id}`,'DELETE',undefined,undefined,adminAfterRestart);
  a=await join(alice);let flooded=false;a.onLeave(()=>{flooded=true;});for(let i=0;i<150;i++)a.send('input',{x:0,z:0,seq:i});
@@ -65,7 +84,7 @@ try {
  const rejected=await request('/api/guest','POST',{name:'Quota exceeded',shirt:0,skin:0},'198.51.100.50');assert.equal(rejected.status,429);assert.ok(rejected.headers.get('retry-after'));
  assert.equal((await request('/api/guest','POST',{name:'Same saved guest',shirt:0,skin:0},'198.51.100.50',bob.cookie)).status,200,'restores do not consume guest creation quota');
  // Real browser UI, real isolated backend; route only API traffic to the disposable server.
- browser=await chromium.launch({headless:true});const context=await browser.newContext({viewport:{width:1440,height:1000}});const page=await context.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ browser=await chromium.launch({headless:true,args:['--use-angle=metal']});const context=await browser.newContext({viewport:{width:1440,height:1000}});const page=await context.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/game/**',async route=>{const req=route.request(),url=new URL(req.url());const response=await route.fetch({url:endpoint+url.pathname.replace(/^\/game/,'')+url.search,headers:{...req.headers(),...headers('203.0.113.200',req.headers().cookie)}});await route.fulfill({response});});
  await page.goto(origin+'/admin');await page.getByLabel('Admin password').fill(password);await page.getByRole('button',{name:'Open the review desk',exact:true}).click();
  await page.getByRole('heading',{name:'Town safety',exact:true}).waitFor();
@@ -77,8 +96,13 @@ try {
  await page.getByRole('button',{name:`Lift ban for ${bob.profile.id}`,exact:true}).click();await page.getByRole('button',{name:'Confirm lift',exact:true}).click();await page.getByRole('button',{name:`Lift ban for ${bob.profile.id}`,exact:true}).waitFor({state:'detached'});
  assert.equal((await request('/api/profile','GET',undefined,bob.ip,bob.cookie)).status,200);
  await page.getByRole('button',{name:'Sign out',exact:true}).click();await page.getByLabel('Admin password').waitFor();assert.deepEqual(errors,[]);
+ let guestPosts=0;page.on('request',req=>{if(req.url().endsWith('/api/guest')&&req.method()==='POST')guestPosts++;});
+ await page.setViewportSize({width:1440,height:1000});
+ await page.goto(origin);await page.getByRole('textbox',{name:'WHAT SHOULD WE CALL YOU?'}).fill('n1gg3r');await page.getByRole('button',{name:'Enter',exact:true}).click();await page.getByText(PROFILE_NAME_ERROR,{exact:true}).waitFor();assert.equal(guestPosts,0,'blocked onboarding name is rejected before a request');
+ await page.getByRole('textbox',{name:'WHAT SHOULD WE CALL YOU?'}).fill('Name check');await page.getByRole('button',{name:'Enter',exact:true}).click();await page.getByRole('button',{name:'Join the square',exact:true}).waitFor();
+ await page.getByRole('textbox',{name:'Character name',exact:true}).fill('nigger9');await page.getByRole('button',{name:'Join the square',exact:true}).click();await page.getByText(PROFILE_NAME_ERROR,{exact:true}).waitFor();await page.screenshot({path:`${out}/blocked-character-name.png`});assert.deepEqual(errors,[]);
  const audit=await pool.query(`SELECT count(*)::int AS count FROM ${schema}.safety_audit`);assert.ok(audit.rows[0].count>=6);
- await writeFile(`${out}/results.json`,JSON.stringify({passed:true,checks:['guest creation quota and cookie restore','forged proxy identity rejected','real guest/IP bans remove matching WebSockets','guest ban prevents restore and rejoin','admin rescue from banned IP','ban survives process restart','message flood disconnect and metrics','authenticated browser search, ban and unban','desktop, portrait, landscape without horizontal overflow','browser logout','durable admin audit'],errors},null,2));
+ await writeFile(`${out}/results.json`,JSON.stringify({passed:true,checks:['severe names rejected by creation and rename APIs without writes','legacy profile denied HTTP/WebSocket admission and permanently banned on startup','repeated startup sweep does not duplicate bans','onboarding and character editor show name rejection','guest creation quota and cookie restore','forged proxy identity rejected','real guest/IP bans remove matching WebSockets','guest ban prevents restore and rejoin','admin rescue from banned IP','ban survives process restart','message flood disconnect and metrics','authenticated browser search, ban and unban','desktop, portrait, landscape without horizontal overflow','browser logout','durable admin audit'],errors},null,2));
  console.log('PASS: isolated safety HTTP, WebSocket, PostgreSQL restart and responsive admin browser checks.');
 } catch(error) {
  console.error(error instanceof Error?error.message:'Safety check failed.');

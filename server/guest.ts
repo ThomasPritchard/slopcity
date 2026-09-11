@@ -3,6 +3,7 @@ import { parseProfile, SHIRTS, SKINS } from '../shared/world.ts';
 import { GuestRepository, CREDENTIAL_SECONDS, validCredential, validProfileId } from './persistence/guests.ts';
 import { clientAddress } from './clientAddress.ts';
 import { SafetyError, type SafetyService } from './safety.ts';
+import { assertAllowedProfileName, BlockedProfileNameError } from '../shared/profileModeration.ts';
 export const COOKIE_NAME = 'slop_guest';
 export function parseGuestCookie(header: string | undefined): string | null {
  const values = (header ?? '').split(';').map(part => part.trim()).filter(part => part.startsWith(`${COOKIE_NAME}=`));
@@ -61,6 +62,7 @@ export function mountGuestRoutes(app: Application, repository: GuestRepository, 
   if (!validCosmetics(req.body)) { res.status(400).json({ error: 'Invalid profile' }); return; }
   const ip=clientAddress(req.headers);
   if(safety){if(!ip)throw new SafetyError(503,'untrusted_proxy','Game gateway unavailable.');safety.checkBan(ip);safety.limit('guest',ip);}
+  assertAllowedProfileName(req.body.name);
   const created = await repository.create(parseProfile(req.body));
   safety?.record('guest_created',ip??undefined,created.profile.id);
   res.setHeader('Set-Cookie', guestCookie(created.secret, req.headers.origin?.startsWith('https:'))); res.status(201).json(created.profile);
@@ -77,6 +79,7 @@ export function mountGuestRoutes(app: Application, repository: GuestRepository, 
  router.get('/profile', (_req,res) => { res.json(res.locals.profile); });
  router.patch('/profile', async (req,res) => {
   if (!validCosmetics(req.body) || !Number.isSafeInteger(req.body.revision) || req.body.revision < 1) { res.status(400).json({ error: 'Invalid profile' }); return; }
+  assertAllowedProfileName(req.body.name);
   const id = res.locals.profile.id as string;
   if (!sessions.beginEdit(id)) { res.status(409).json({ error: 'Leave town before editing your profile' }); return; }
   try {
@@ -97,6 +100,7 @@ export function mountGuestRoutes(app: Application, repository: GuestRepository, 
   await sessions.notifyBlocksChanged(res.locals.profile.id); res.json({ blocks: await repository.blocks(res.locals.profile.id) });
  });
  router.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  if(error instanceof BlockedProfileNameError){res.status(400).json({code:'invalid_name',error:error.message});return;}
   if(error instanceof SafetyError){if(error.status===429)res.setHeader('Retry-After',String(error.retryAfter));res.status(error.status).json({code:error.codeName,error:error.message});return;}
   const status = (error as { status?: number })?.status;
   if (status === 400 || status === 413) { res.status(status).json({ error: status === 413 ? 'Request too large' : 'Malformed JSON' }); return; }

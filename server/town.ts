@@ -224,7 +224,7 @@ export class TownRoom extends Room<{ state: TownState }> {
     safety.checkBan(ip);
     const profile = await authenticateGuest(context.headers.get('cookie') ?? undefined, guests);
     if (!profile) throw new ServerError(401, 'Your guest profile could not be restored.');
-    safety.checkBan(ip,profile.id);
+    safety.checkProfile(ip,profile);
     safety.limitGuestJoin(ip,profile.id);
     return { profile };
   }
@@ -238,12 +238,12 @@ export class TownRoom extends Room<{ state: TownState }> {
       safety.connect({sessionId:client.sessionId,profileId:auth.profile.id,name:auth.profile.name,ip:identity.ip},()=>this.stopClient(client,4003,'Access to Slop City is currently restricted.'));
       const profile = await authenticateGuest(identity.cookie, guests);
       if (!profile || profile.id!==auth.profile.id) throw new ServerError(401, 'Your guest profile has expired.');
-      safety.checkBan(identity.ip,profile.id);
+      safety.checkProfile(identity.ip,profile);
       client.auth = { profile }; // Do not retain the credential after admission.
       delete identity.cookie;
       const wallet = await salary.start(profile.id,client.sessionId,this.roomId);
       salaryStarted=true;
-      safety.checkBan(identity.ip,profile.id);
+      safety.checkProfile(identity.ip,profile);
       if(this.stoppedSessions.has(client.sessionId)||!identity.isOpen())throw new SafetyError(403,'disconnected','Connection ended.');
       const citizen = new Citizen();
       Object.assign(citizen, { profileId: profile.id, name: profile.name, shirt: profile.shirt, skin: profile.skin });

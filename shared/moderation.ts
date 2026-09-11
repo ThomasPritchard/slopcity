@@ -94,7 +94,7 @@ for (const term of new Set([...BLOCKED_TERMS, ...BLOCKED_STEMS])) {
 const SHORT = [...SHORT_SOURCES].map(source => new RegExp(source));
 const LONG = [...LONG_SOURCES].map(source => new RegExp(source));
 
-const usesBlockedWord = (input: string) => {
+export const containsSevereProfanity = (input: string) => {
   const shapes = foldedShapes(input);
   const hit = (needles: readonly RegExp[], forms: readonly string[]) => needles.some(word => forms.some(form => word.test(form)));
   return hit(LONG, shapes.plain) || hit(LONG, shapes.spaced) || hit(SHORT, shapes.plain);
@@ -123,7 +123,7 @@ const hasUrl = (body: string) => {
 export function checkChat(body: string): ChatVerdict {
   const text = typeof body === 'string' ? body : '';
   if (hasUrl(text)) return { ok: false, reason: 'url' };
-  return usesBlockedWord(text) ? { ok: false, reason: 'profanity' } : { ok: true };
+  return containsSevereProfanity(text) ? { ok: false, reason: 'profanity' } : { ok: true };
 }
 
 // Exact strings the town server sends as chat-moderation notices. The client maps them to local

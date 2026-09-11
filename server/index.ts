@@ -30,6 +30,8 @@ try {
   await socialRepository.initialise();
   await communityRepository.initialise();
   await safety.initialise();
+  const bannedNames = await safety.banProhibitedNames();
+  if (bannedNames) console.info(JSON.stringify({event:'prohibited_profile_names_banned',count:bannedNames}));
   await casinoRepository.recoverPending();
 } catch {
   await guests.close();
@@ -47,7 +49,7 @@ const transport = new GameTransport({ server: httpServer, maxPayload: 4096, befo
     safety.checkBan(ip); safety.limit('upgrade',ip);
     const profile = await authenticateGuest(context.headers.get('cookie') ?? undefined,guests);
     if (!profile) throw new SafetyError(401,'unauthenticated','Restore your guest profile first.');
-    safety.checkBan(ip,profile.id);
+    safety.checkProfile(ip,profile);
   } catch(error) {
     const known=error instanceof SafetyError;
     return new Response(known?error.message:'Game unavailable.',{status:known?error.status:503,headers:{'Cache-Control':'no-store',...(known&&error.status===429?{'Retry-After':String(error.retryAfter)}:{})}});

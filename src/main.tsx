@@ -41,6 +41,7 @@ import './ui/quiet-glass.css';
 import { loadPreferences, savePreferences, type Preferences } from './settings/preferences';
 import { TownAudio } from './audio/TownAudio';
 import { checkChat, moderationNoticeKey, type ModerationNoticeKey } from '../shared/moderation.ts';
+import { isBlockedProfileName, PROFILE_NAME_ERROR } from '../shared/profileModeration.ts';
 
 type Chat = { id: string; profileId: string; name: string; body: string };
 // Local-only chat panel guidance shown when moderation intervenes. Never sent to the server and
@@ -298,6 +299,7 @@ function App() {
   async function customise() {
     if (saving || !guestReady) return;
     if (!profile.name.trim() || profile.name === 'New neighbour') { setError('Please enter your name.'); return; }
+    if (isBlockedProfileName(profile.name)) { setError(PROFILE_NAME_ERROR); return; }
     setSaving(true); setError('');
     try {
       if (!guest) {
@@ -314,6 +316,7 @@ function App() {
   }
   async function join() {
     if (joining.current || !world.current || !guest) return;
+    if (isBlockedProfileName(profile.name)) { setError(PROFILE_NAME_ERROR); return; }
     joining.current = true; setError(''); setPhase('joining');
     const clean = parseProfile(profile); setProfile(clean);
     try {

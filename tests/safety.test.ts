@@ -73,3 +73,23 @@ test('monitoring aggregates repeats and bounds detailed event retention',()=>{
  assert.equal(safety.snapshot().recentEvents.length,200);advance(86400_001);assert.equal(safety.snapshot().recentEvents.length,0);
  assert.equal(safety.snapshot().metrics.find(m=>m.name==='api_rate_limited')?.count,100);
 });
+
+test('saved-name sweep visits every page, persists only matching guest bans and is idempotent',async()=>{
+ const {safety}=fixture();
+ const bad=randomUUID(),existing=randomUUID(),good=randomUUID();let kicked=0;
+ const pages=[{id:bad,name:'nigger10'},{id:good,name:'Nigel'},{id:existing,name:'n1gg3r'}];
+ safety.repository.profileNames=async after=>after===null?pages.slice(0,2):after===good?pages.slice(2):[];
+ await safety.addBan({kind:'guest',target:existing,reason:'Existing moderation',durationMinutes:null});
+ safety.connect({sessionId:'offender',profileId:bad,name:'nigger10',ip:'192.0.2.1'},()=>kicked++);
+ safety.connect({sessionId:'innocent',profileId:good,name:'Nigel',ip:'192.0.2.1'},()=>{throw Error('Innocent neighbour disconnected');});
+ assert.equal(await safety.banProhibitedNames(),1);assert.equal(kicked,1);
+ assert.equal(await safety.banProhibitedNames(),0);
+ const bans=safety.snapshot().bans;assert.equal(bans.length,2);assert.ok(bans.every(b=>b.kind==='guest'&&b.expiresAt===null));
+ assert.ok(safety.isBanned('203.0.113.1',bad));assert.equal(safety.isBanned('192.0.2.1',good),false);
+});
+
+test('admission also rejects unsafe legacy names even without a cached ban',()=>{
+ const {safety}=fixture(),id=randomUUID();
+ assert.throws(()=>safety.checkProfile('192.0.2.1',{id,name:'nigger'}),error=>error instanceof Error&&error.message.includes('Choose a different name'));
+ assert.doesNotThrow(()=>safety.checkProfile('192.0.2.1',{id,name:'Nigel'}));
+});

@@ -42,7 +42,7 @@ export function mountSafetyGuards(app: Application, safety: SafetyService, guest
    if(!ip){safety.count('untrusted_proxy');throw new SafetyError(503,'untrusted_proxy','The game gateway is not configured correctly.');}
    if(req.path.startsWith('/api/')){
     const profile=await authenticateGuest(req.headers.cookie,guests);
-    if(profile)safety.checkBan(ip,profile.id);
+    if(profile)safety.checkProfile(ip,profile);
    }
    next();
   }catch(error){safetyResponse(error,res);}

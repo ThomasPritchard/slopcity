@@ -17,6 +17,9 @@ export class SafetyRepository {
  async active(): Promise<SafetyBan[]> {
   return (await this.economy.pool.query('SELECT * FROM safety_bans WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at>now()) ORDER BY created_at DESC')).rows.map(ban);
  }
+ async profileNames(after: string | null): Promise<{id:string;name:string}[]> {
+  return (await this.economy.pool.query('SELECT id,name FROM guest_profiles WHERE ($1::uuid IS NULL OR id>$1::uuid) ORDER BY id LIMIT 500',[after])).rows;
+ }
  async add(kind: SafetyBan['kind'], target: string, reason: string, durationMinutes: number | null): Promise<SafetyBan> {
   return this.economy.transaction(async c => {
    await c.query('SELECT pg_advisory_xact_lock(782641094)');

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { Pool, type PoolClient } from 'pg';
 import { parseProfile, type Profile } from '../../shared/world.ts';
 import type { GuestProfile, PrivateGuestProfile } from '../../shared/profile.ts';
+import { assertAllowedProfileName } from '../../shared/profileModeration.ts';
 export const CREDENTIAL_SECONDS = 90 * 24 * 60 * 60;
 export const validCredential = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);
 export const validProfileId = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -38,6 +39,7 @@ export class GuestRepository {
  }
  close() { return this.pool.end(); }
  async create(input: Profile): Promise<{ profile: PrivateGuestProfile; secret: string }> {
+  assertAllowedProfileName(input.name);
   const profile = { ...parseProfile(input), id: randomUUID(), revision: 1, blocks: [] };
   const secret = randomBytes(32).toString('base64url');
   await this.transaction(async client => {
@@ -52,6 +54,7 @@ export class GuestRepository {
   return result.rows[0] ? { ...result.rows[0], blocks: await this.blocks(result.rows[0].id) } : null;
  }
  async update(id: string, input: Profile, revision: number): Promise<GuestProfile | null> {
+  assertAllowedProfileName(input.name);
   const profile = parseProfile(input);
   const result = await this.pool.query<GuestProfile>(`UPDATE guest_profiles SET name=$2,shirt=$3,skin=$4,revision=revision+1,updated_at=now() WHERE id=$1 AND revision=$5 RETURNING ${columns}`, [id, profile.name, profile.shirt, profile.skin, revision]);
   return result.rows[0] ?? null;

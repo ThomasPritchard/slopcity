@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { randomBytes } from 'node:crypto';
 import { authenticateGuest, guestCookie, isAllowedOrigin, mountGuestRoutes, parseGuestCookie, SessionRegistry } from '../server/guest.ts';
 import { GuestRepository } from '../server/persistence/guests.ts';
+import { PROFILE_NAME_ERROR } from '../shared/profileModeration.ts';
 test('credential cookies are strict, scoped and never accept ambiguous values', () => {
  const secret = randomBytes(32).toString('base64url');
  const cookie = guestCookie(secret, true);
@@ -85,4 +86,20 @@ test('expired credentials are removed so the browser can establish a new guest',
   const response = await fetch(`http://127.0.0.1:${port}/api/profile`, {headers:{Cookie:`slop_guest=${randomBytes(32).toString('base64url')}`}});
   assert.equal(response.status,401); assert.ok(response.headers.get('set-cookie')?.includes('Max-Age=0'));
  } finally { server.close(); await once(server,'close'); }
+});
+
+test('HTTP creation and rename reject severe names without writing or issuing credentials',async()=>{
+ const profile={id:'guest-id',name:'Neighbour',shirt:0,skin:0,revision:1,blocks:[]};
+ let creates=0,updates=0;
+ const repository={resolve:async()=>profile,create:async()=>{creates++;throw Error('Unexpected create');},update:async()=>{updates++;throw Error('Unexpected update');}} as unknown as GuestRepository;
+ const app=express();mountGuestRoutes(app,repository,new SessionRegistry());
+ const server=app.listen(0,'127.0.0.1');await once(server,'listening');
+ const {port}=server.address() as {port:number};
+ try {
+  for(const name of ['nigger7','N1GG3R','n i g g e r','ni<>gger'])for(const rename of [false,true]) {
+   const response=await fetch(`http://127.0.0.1:${port}/api/${rename?'profile':'guest'}`,{method:rename?'PATCH':'POST',headers:{Origin:process.env.APP_ORIGIN??'http://localhost:5173','Content-Type':'application/json',...(rename?{Cookie:`slop_guest=${randomBytes(32).toString('base64url')}`}:{})},body:JSON.stringify({name,shirt:0,skin:0,revision:1})});
+   assert.equal(response.status,400);assert.deepEqual(await response.json(),{code:'invalid_name',error:PROFILE_NAME_ERROR});assert.equal(response.headers.get('set-cookie'),null);
+  }
+  assert.equal(creates,0);assert.equal(updates,0);
+ }finally{server.close();await once(server,'close');}
 });
