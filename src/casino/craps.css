@@ -1,0 +1,62 @@
+.craps-outcome { display: flex; align-items: center; gap: 14px; padding: 18px 0 16px; }
+.craps-dice { display: flex; flex-shrink: 0; align-items: center; gap: 5px; }
+.craps-die { display: block; width: 40px; height: 40px; fill: #26372d; }
+.craps-die-face { fill: #f2eddc; stroke: #e4dabc; stroke-width: 1px; }
+.craps-die.is-unrevealed .craps-die-face { fill: #172e2377; stroke: #dcc38c70; }
+.craps-die-waiting { fill: none; stroke: var(--casino-brass); stroke-width: 2px; stroke-linecap: round; }
+.craps-outcome-copy { min-width: 0; }
+.craps-outcome-copy > strong { display: flex; align-items: center; gap: 9px; margin-top: 4px; font: 400 25px/1.15 'Instrument Serif', Georgia, serif; }
+.craps-total { flex-shrink: 0; color: var(--casino-brass); font-variant-numeric: tabular-nums; font-size: 35px; }
+.craps-outcome-copy p { margin-top: 5px; font-size: 10px; line-height: 1.6; color: var(--casino-muted); }
+.craps-point-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.craps-point-heading > span:last-child { color: var(--casino-muted); font-size: 10px; }
+.craps-point ol { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; list-style: none; margin: 9px 0 0; padding: 0; }
+.craps-point li { display: flex; align-items: center; justify-content: center; gap: 3px; min-height: 39px; border: 1px solid #dcc38c35; border-radius: 4px; color: #d9deca; font-size: 17px; font-variant-numeric: tabular-nums; }
+.craps-point li[aria-current='true'] { background: var(--casino-brass); border-color: var(--casino-brass); color: #24382d; font-weight: 600; }
+.craps-point li small { font-size: 6px; letter-spacing: .5px; }
+.craps-table-status { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 12px 0 15px; font-size: 9px; line-height: 1.6; color: var(--casino-muted); }
+.craps-table-status > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.craps-table-status strong { color: #f1ead8; font-weight: 500; margin-left: 4px; }
+.craps-table-status > span:last-child { flex-shrink: 0; }
+.craps-line-choice legend { margin-bottom: 8px; color: var(--casino-muted); font-size: 10px; letter-spacing: 0; font-weight: 400; }
+.craps-line-choice > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.craps-line-choice button { position: relative; min-width: 0; padding: 10px 12px; border: 1px solid #dcc38c50; background: #172e2377; color: #f1ead8; text-align: left; }
+.craps-line-choice button[aria-pressed='true'] { border-color: var(--casino-brass); box-shadow: inset 0 0 0 1px var(--casino-brass); background: #dcc38c18; }
+.craps-line-choice button strong { display: block; font-weight: 500; font-size: 13px; }
+.craps-line-choice button small { display: block; margin-top: 4px; color: var(--casino-muted); font-size: 9px; }
+.craps-line-choice:disabled button[aria-pressed='true'] { opacity: 1; }
+.craps-own-bet { margin-top: 13px; color: #f1ead8; font-size: 11px; line-height: 1.7; }
+.craps-own-bet strong { font-weight: 500; color: var(--casino-brass); }
+.craps-own-bet > span { display: block; color: var(--casino-brass); }
+.craps-action-reason { min-height: 30px; }
+.craps-controls { margin-top: 16px; }
+.craps-controls .casino-return-line { margin-bottom: 0; }
+.craps-primary { min-height: 44px; overflow-wrap: anywhere; }
+.craps-history { margin-top: 20px; }
+.craps-history ol { display: flex; flex-wrap: wrap; gap: 5px; list-style: none; padding: 0; margin: 8px 0 0; }
+.craps-history li { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid #dcc38c35; border-radius: 4px; color: #e7dfc7; font-size: 11px; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 699px) and (orientation: portrait), (max-height: 620px) and (orientation: landscape) {
+  .craps-outcome { gap: 11px; padding: 10px 0 12px; }
+  .craps-dice { gap: 4px; }
+  .craps-die { width: 30px; height: 30px; }
+  .craps-outcome-copy > strong { font-size: 22px; gap: 7px; }
+  .craps-total { font-size: 29px; }
+  .craps-outcome-copy p { font-size: 9px; margin-top: 4px; }
+  .craps-point ol { margin-top: 7px; gap: 4px; }
+  .craps-point li { min-height: 33px; font-size: 15px; }
+  .craps-table-status { padding: 9px 0 10px; }
+  .craps-line-choice button { padding: 8px 10px; }
+  .craps-line-choice button strong { font-size: 12px; }
+  .craps-line-choice button small { margin-top: 3px; }
+  .craps-action-dock .casino-dock-summary { gap: 8px; }
+  .craps-action-dock .casino-dock-controls { grid-template-columns: 136px minmax(0, 1fr); }
+  .craps-history { margin-top: 16px; }
+  .craps-rules { margin-top: 17px; }
+}
+
+@media (max-width: 359px) {
+  .craps-action-dock .casino-dock-controls { grid-template-columns: 132px minmax(0, 1fr); }
+  .craps-dice { gap: 3px; }
+  .craps-die { width: 27px; height: 27px; }
+}

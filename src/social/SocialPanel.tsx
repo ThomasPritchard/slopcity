@@ -1,9 +1,12 @@
-import { useEffect, useId, useRef, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, type ReactNode, type KeyboardEvent } from 'react';
 import './social.css';
 
 export interface SocialPanelProps {
   open: boolean;
   onClose(): void;
+  onInspect?(profileId: string, name: string): void;
+  extra?: ReactNode;
+  invitation?: ReactNode;
   voice: {
     status: 'off' | 'connecting' | 'connected' | 'error';
     micEnabled: boolean;
@@ -42,7 +45,7 @@ function SocialIcon({ kind }: { kind: 'mic' | 'mic-off' | 'close' | 'sound' }) {
 }
 
 export function SocialPanel({
-  open, onClose, voice, neighbours, blockedProfiles,
+  open, onClose, onInspect, extra, invitation, voice, neighbours, blockedProfiles,
   onJoinVoice, onLeaveVoice, onToggleMic, onResumeAudio, onMute, onBlock, onUnblock,
 }: SocialPanelProps) {
   const panel = useRef<HTMLElement>(null);
@@ -80,14 +83,9 @@ export function SocialPanel({
     } else if (event.key === 'Tab') {
       const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')]
         .filter(button => button.getClientRects().length > 0);
-      const first = buttons[0], last = buttons[buttons.length - 1];
-      if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel.current)) {
-        event.preventDefault();
-        first?.focus();
-      }
+      event.preventDefault();
+      const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      buttons[(index + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
     }
   }
 
@@ -103,6 +101,7 @@ export function SocialPanel({
         <button ref={closeButton} type="button" className="social-close" aria-label="Close neighbours panel" onClick={onClose}><SocialIcon kind="close" /></button>
       </header>
       <div className="social-content">
+        {invitation}
         <section className="social-voice" aria-labelledby={voiceTitleId}>
           <div className="social-section-heading"><h3 id={voiceTitleId}>Proximity voice</h3><span className={`social-connection${connected ? ' is-connected' : ''}`} role="status">{voiceLabel}</span></div>
           <p className="social-copy">{connected ? 'Hear neighbours nearby. Voices fade as you move apart.' : 'Join to hear neighbours nearby. Your microphone starts off.'}</p>
@@ -128,7 +127,7 @@ export function SocialPanel({
           {neighbours.length === 0 ? <p className="social-empty">A little quiet here. Take a walk to find your neighbours.</p> : <ul className="social-list">
             {neighbours.map(neighbour => <li key={neighbour.sessionId} className="social-person">
               <span className={`social-person-mark${neighbour.speaking && !neighbour.muted && !neighbour.blocked ? ' is-speaking' : ''}`} aria-hidden="true">{neighbour.name.trim().slice(0, 1).toUpperCase() || '·'}</span>
-              <div className="social-person-name"><strong>{neighbour.name}</strong><span>{neighbour.blocked ? 'Blocked' : neighbour.muted ? 'Muted for you' : neighbour.speaking ? 'Speaking' : `${Math.max(0, Math.round(neighbour.distance))} m away`}</span></div>
+              <div className="social-person-name">{onInspect ? <button className="friend-name" aria-label={`View ${neighbour.name}`} onClick={() => onInspect(neighbour.profileId, neighbour.name)}><strong>{neighbour.name}</strong></button> : <strong>{neighbour.name}</strong>}<span>{neighbour.blocked ? 'Blocked' : neighbour.muted ? 'Muted for you' : neighbour.speaking ? 'Speaking' : `${Math.max(0, Math.round(neighbour.distance))} m away`}</span></div>
               <div className="social-person-actions">
                 <button type="button" className="social-button" aria-label={`Mute ${neighbour.name}`} aria-pressed={neighbour.muted} disabled={neighbour.blocked} onClick={() => onMute(neighbour.sessionId)}>{neighbour.muted ? 'Muted' : 'Mute'}</button>
                 <button type="button" className="social-button" aria-label={`${neighbour.blocked ? 'Unblock' : 'Block'} ${neighbour.name}`} onClick={() => neighbour.blocked ? onUnblock(neighbour.profileId) : onBlock(neighbour.profileId)}>{neighbour.blocked ? 'Unblock' : 'Block'}</button>
@@ -137,6 +136,7 @@ export function SocialPanel({
           </ul>}
         </section>
 
+        {extra}
         <section className="social-blocked" aria-labelledby={blockedTitleId}>
           <div className="social-section-heading"><h3 id={blockedTitleId}>Blocked guests</h3><span className="social-count">{blockedProfiles.length}</span></div>
           <p className="social-copy">A blocked guest’s chat and audio are hidden from you. Their avatar stays visible.</p>

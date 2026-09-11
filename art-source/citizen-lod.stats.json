@@ -1,7 +1,7 @@
 {
-  "source_sha256": "aa12372629ffb66e9d595348dc195ffb3e92b070facd964e7c24e8a15c205c88",
+  "source_sha256": "bac234025f68f91259433ebe3e0cfbd2cf907f54d3e40197e5e4f2129041f150",
   "original": {
-    "bytes": 3988004,
+    "bytes": 4061932,
     "triangles": 84588,
     "vertices": 67104,
     "mesh_count": 32,
@@ -91,16 +91,40 @@
       "wear_utility__Seam"
     ],
     "animations": [
+      "HandshakeA",
+      "HandshakeB",
+      "HugA",
+      "HugB",
       "Idle",
+      "Jump",
+      "Run",
       "Sit",
       "Walk",
       "Wave"
     ],
     "animation_channels": {
+      "HandshakeA": 48,
+      "HandshakeB": 48,
+      "HugA": 48,
+      "HugB": 48,
       "Idle": 48,
+      "Jump": 48,
+      "Run": 48,
       "Sit": 48,
       "Walk": 48,
       "Wave": 48
+    },
+    "animation_durations": {
+      "HandshakeA": 3.2,
+      "HandshakeB": 3.2,
+      "HugA": 3.6,
+      "HugB": 3.6,
+      "Idle": 2.0,
+      "Jump": 0.6,
+      "Run": 0.6,
+      "Sit": 2.0,
+      "Walk": 1.0,
+      "Wave": 2.8
     },
     "skins": [
       [
@@ -125,7 +149,7 @@
     "all_primitives_skinned": true
   },
   "lod": {
-    "bytes": 1248076,
+    "bytes": 1322008,
     "triangles": 23128,
     "vertices": 20070,
     "mesh_count": 32,
@@ -215,16 +239,40 @@
       "wear_utility__Seam"
     ],
     "animations": [
+      "HandshakeA",
+      "HandshakeB",
+      "HugA",
+      "HugB",
       "Idle",
+      "Jump",
+      "Run",
       "Sit",
       "Walk",
       "Wave"
     ],
     "animation_channels": {
+      "HandshakeA": 48,
+      "HandshakeB": 48,
+      "HugA": 48,
+      "HugB": 48,
       "Idle": 48,
+      "Jump": 48,
+      "Run": 48,
       "Sit": 48,
       "Walk": 48,
       "Wave": 48
+    },
+    "animation_durations": {
+      "HandshakeA": 3.2,
+      "HandshakeB": 3.2,
+      "HugA": 3.6,
+      "HugB": 3.6,
+      "Idle": 2.0,
+      "Jump": 0.6,
+      "Run": 0.6,
+      "Sit": 2.0,
+      "Walk": 1.0,
+      "Wave": 2.8
     },
     "skins": [
       [

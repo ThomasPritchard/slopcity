@@ -1,10 +1,11 @@
 import { Room, ServerError, type AuthContext, type Client } from '@colyseus/core';
 import { Citizen, TownState } from '../shared/state.ts';
-import { CAPACITY, TICK_MS, move, parseInput, isWalkable, type Input } from '../shared/world.ts';
+import { CAPACITY, TICK_MS, move, parseInput, isWalkable, canHopAt, type Input } from '../shared/world.ts';
 
 import { guests, sessions, towns, voice, salary, casinoRepository } from './context.ts';
 import { CasinoService } from './casino/service.ts';
 import { CASINO_ANCHORS, BLACKJACK_SEAT_OFFSETS, type CasinoState, type CasinoTableId } from '../shared/casino.ts';
+import { POKER_SEAT_OFFSETS } from '../shared/pokerLayout.ts';
 import { randomUUID } from 'node:crypto';
 import { isInShop, type WalletState } from '../shared/catalog.ts';
 import { authenticateGuest, isAllowedOrigin } from './guest.ts';
@@ -13,11 +14,29 @@ import { requestSit, requestStand } from './seating.ts';
 import { voiceGain, type VoiceNeighbour } from '../shared/voice.ts';
 import { checkChat, MODERATION_NOTICES, sanitizeChatBody } from '../shared/moderation.ts';
 import { ChatDiscipline } from './moderation.ts';
+import { SharedEmotes } from './emotes.ts';
+import { HOP_COOLDOWN_MS, isHopping } from '../shared/mobility.ts';
 
 export class TownRoom extends Room<{ state: TownState }> {
   maxClients = CAPACITY;
   state = new TownState();
   private movementInputs = new Map<string, { input: Input; at: number }>();
+  private interactionBusy = new Set<string>();
+  private emotes = new SharedEmotes({
+    players: () => this.state.players.entries(),
+    blocked: (a, b) => !!this.isBlocked(a, b),
+    busy: id => this.interactionBusy.has(id),
+    inbox: (id, value) => this.clients.find(client => client.sessionId === id)?.send('emote-inbox', value),
+    notice: (id, value) => this.clients.find(client => client.sessionId === id)?.send('notice', value),
+    stopInput: id => this.movementInputs.delete(id),
+  });
+  socialPresence(profileId: string) {
+    for (const [sessionId, player] of this.state.players) if (player.profileId === profileId) return { sessionId, x: player.x, z: player.z };
+    return undefined;
+  }
+  socialChanged(profileIds: string[]) {
+    for (const client of this.clients) if (profileIds.includes(this.state.players.get(client.sessionId)?.profileId ?? '')) client.send('social-changed', {});
+  }
   private chatAt = new Map<string, number>();
   private waveAt = new Map<string, number>();
   private discipline = new ChatDiscipline();
@@ -38,10 +57,20 @@ export class TownRoom extends Room<{ state: TownState }> {
         if(table.game==='blackjack') {
           const occupied=table.seats.find(seat=>seat.player.profileId===citizen.profileId && seat.player.connected);
           if(occupied) {const offset=BLACKJACK_SEAT_OFFSETS[occupied.seat];if(offset)seat={id:`casino:${table.id}:${occupied.seat}`,x:anchor.x+offset.x,z:anchor.z+offset.z,heading:offset.heading};}
+        } else if(table.game==='poker') {
+          // An authenticated reconnect returns to its reserved chair; rejoin still gates actions.
+          const occupied=table.seats.find(seat=>seat.player.profileId===citizen.profileId);
+          if(occupied) {const offset=POKER_SEAT_OFFSETS[occupied.seat];if(offset)seat={id:`casino:${table.id}:${occupied.seat}`,x:anchor.x+offset.x,z:anchor.z+offset.z,heading:offset.heading};}
         } else if(table.game==='slots' && table.player?.profileId===citizen.profileId && table.player.connected) seat={id:`casino:${table.id}:0`,x:anchor.x,z:anchor.z-1.25,heading:0};
       }
-      if(seat) {citizen.seatId=seat.id;citizen.x=seat.x;citizen.z=seat.z;citizen.heading=seat.heading;citizen.moving=false;}
-      else if(citizen.seatId.startsWith('casino:')) {citizen.seatId='';const z=citizen.z-.85;if(isWalkable(citizen.x,z))citizen.z=z;}
+      if(seat) {for(const [id,p] of this.state.players)if(p===citizen)this.emotes.cancelFor(id);citizen.jumpAt=0;citizen.sprinting=false;citizen.seatId=seat.id;citizen.x=seat.x;citizen.z=seat.z;citizen.heading=seat.heading;citizen.moving=false;}
+      else if(citizen.seatId.startsWith('casino:')) {
+        const previous=citizen.seatId;citizen.seatId='';
+        if(previous.startsWith('casino:poker-1:')) {
+          const anchor=CASINO_ANCHORS.find(a=>a.id==='poker-1')!, offset=POKER_SEAT_OFFSETS[Number(previous.split(':')[2])];
+          if(offset && isWalkable(anchor.x+offset.exitX,anchor.z+offset.exitZ)){citizen.x=anchor.x+offset.exitX;citizen.z=anchor.z+offset.exitZ;}
+        } else {const z=citizen.z-.85;if(isWalkable(citizen.x,z))citizen.z=z;}
+      }
     }
   }
   canPurchase(profileId:string) { const active=sessions.get(profileId); const player=active && this.state.players.get(active.sessionId); return !!player && player.profileId===profileId && isInShop(player.x,player.z); }
@@ -103,11 +132,24 @@ export class TownRoom extends Room<{ state: TownState }> {
     this.clock.setInterval(() => this.updateVoice(), 250);
     this.onMessage('presence',(client,visible:unknown)=>{if(typeof visible==='boolean')salary.heartbeat(client.sessionId,visible);});
     this.onMessage('economy-sync',client=>{const player=this.state.players.get(client.sessionId),wallet=this.wallets.get(client.sessionId);if(player&&wallet)this.publishEconomy(player.profileId,client.sessionId,wallet);});
+    this.onMessage('emote-command', (client, command: unknown) => this.emotes.handle(client.sessionId, command));
+    this.onMessage('interaction-busy', (client, busy: unknown) => {
+      if (typeof busy !== 'boolean') return;
+      if (busy) { this.interactionBusy.add(client.sessionId); this.emotes.cancelFor(client.sessionId); this.movementInputs.delete(client.sessionId); }
+      else this.interactionBusy.delete(client.sessionId);
+    });
+    this.onMessage('jump', client => {
+      const player = this.state.players.get(client.sessionId), now = Date.now();
+      if (!player || player.seatId || player.emoteId || this.interactionBusy.has(client.sessionId) || now - player.jumpAt < HOP_COOLDOWN_MS) return;
+      if (!canHopAt(player.x, player.z)) { client.send('notice', 'Move into a clear space to jump.'); return; }
+      this.emotes.cancelFor(client.sessionId); player.jumpAt = now;
+    });
     this.onMessage('sit', (client, id: unknown) => {
       const citizen = this.state.players.get(client.sessionId); if (!citizen) return;
+      if (isHopping(citizen.jumpAt, Date.now())) { client.send('notice', 'Land before taking a seat.'); return; }
       const next = requestSit(citizen, id, this.state.players.values());
       if (!next) { client.send('notice', 'That seat is occupied or too far away.'); return; }
-      Object.assign(citizen, next); citizen.moving = false; this.movementInputs.delete(client.sessionId);
+      this.emotes.cancelFor(client.sessionId); Object.assign(citizen, next); citizen.sprinting = false; citizen.moving = false; this.movementInputs.delete(client.sessionId);
     });
     this.onMessage('stand', client => {
       const citizen = this.state.players.get(client.sessionId); if (!citizen) return;
@@ -117,7 +159,11 @@ export class TownRoom extends Room<{ state: TownState }> {
     this.patchRate = TICK_MS;
     this.onMessage('input', (client, value: unknown) => {
       const input = parseInput(value), previous = this.movementInputs.get(client.sessionId);
-      if (input && (!previous || input.seq > previous.input.seq)) this.movementInputs.set(client.sessionId, { input, at: performance.now() });
+      const player = this.state.players.get(client.sessionId);
+      if (input && input.seq > Math.max(previous?.input.seq ?? -1, player?.ack ?? -1)) {
+        if (player?.emoteId && Math.hypot(input.x, input.z) > .01) this.emotes.cancelFor(client.sessionId);
+        this.movementInputs.set(client.sessionId, { input, at: performance.now() });
+      }
     });
     this.onMessage('chat', (client, value: unknown) => {
       if (typeof value !== 'string') return;
@@ -153,7 +199,7 @@ export class TownRoom extends Room<{ state: TownState }> {
       const now = performance.now();
       if (now - (this.waveAt.get(client.sessionId) ?? -10000) < 2000) return;
       const citizen = this.state.players.get(client.sessionId);
-      if (citizen && !citizen.seatId) { citizen.wave = Date.now(); this.waveAt.set(client.sessionId, now); }
+      if (citizen && !citizen.seatId && !citizen.emoteId && !isHopping(citizen.jumpAt, Date.now()) && !this.interactionBusy.has(client.sessionId)) { citizen.wave = Date.now(); this.waveAt.set(client.sessionId, now); }
     });
     this.setSimulationInterval(() => this.tick(), TICK_MS);
   }
@@ -183,6 +229,7 @@ export class TownRoom extends Room<{ state: TownState }> {
   async onLeave(client: Client) {
     const profile = client.auth?.profile as PrivateGuestProfile | undefined;
     const ownsSession = profile && sessions.get(profile.id)?.sessionId===client.sessionId;
+    this.emotes.leave(client.sessionId); this.interactionBusy.delete(client.sessionId);
     if(ownsSession)this.casino.leave(profile.id);
     this.casinoCommandAt.delete(client.sessionId);
     // Freeze accrual immediately; retain admission ownership until its final write settles.
@@ -200,12 +247,14 @@ export class TownRoom extends Room<{ state: TownState }> {
   async onDispose() { towns.delete(this.roomId); await this.casino.dispose(); }
   private tick() {
     const now = performance.now();
+    this.emotes.tick();
     for (const [id, citizen] of this.state.players) {
-      if (citizen.seatId) { citizen.moving = false; continue; }
+      if (citizen.seatId || citizen.emoteId || this.interactionBusy.has(id)) { citizen.moving = false; citizen.sprinting = false; continue; }
       const request = this.movementInputs.get(id);
       const input = request && now - request.at < 250 ? request.input : { x: 0, z: 0, seq: -1 };
-      const next = move(citizen, input, TICK_MS / 1000);
+      const next = move(citizen, input, TICK_MS / 1000, isHopping(citizen.jumpAt, Date.now()));
       citizen.moving = Math.hypot(next.x - citizen.x, next.z - citizen.z) > .001;
+      citizen.sprinting = citizen.moving && !!input.sprint;
       if (citizen.moving) citizen.heading = Math.atan2(input.x, input.z);
       citizen.x = next.x; citizen.z = next.z;
       if (request) citizen.ack = request.input.seq;

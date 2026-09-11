@@ -15,7 +15,7 @@ export class EconomyRepository {
   await this.transaction(async c=>{
    await c.query('SELECT pg_advisory_xact_lock(782641092)');
    const versions=await c.query('SELECT version FROM guest_schema_migrations');
-   if(!versions.rows.some(r=>r.version===1)||versions.rows.some(r=>r.version!==1&&r.version!==2&&r.version!==3))throw new Error('Unsupported economy schema');
+   if(!versions.rows.some(r=>r.version===1)||versions.rows.some(r=>r.version!==1&&r.version!==2&&r.version!==3&&r.version!==4&&r.version!==5&&r.version!==6))throw new Error('Unsupported economy schema');
    if(!versions.rows.some(r=>r.version===2)) {await c.query(await readFile(new URL('./migrations/002_economy.sql',import.meta.url),'utf8'));await c.query('INSERT INTO guest_schema_migrations(version) VALUES(2)');}
    await c.query('SELECT balance,revision,salary_remainder,salary_sequence,session_epoch,session_checkpoint FROM economy_wallets LIMIT 0');
   });

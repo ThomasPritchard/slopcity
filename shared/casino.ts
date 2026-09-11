@@ -1,18 +1,21 @@
+import type { CrapsBet, CrapsView } from './craps.ts';
+import type { PokerCommand, PokerPrivateState, PokerView } from './poker.ts';
 import type { WalletState } from './catalog.ts';
+import type { RouletteMotion } from './rouletteMotion.ts';
 
-export type CasinoGame = 'roulette' | 'blackjack' | 'slots';
-export type CasinoTableId = 'roulette-1' | 'blackjack-1' | 'blackjack-2' | 'slots-1' | 'slots-2' | 'slots-3' | 'slots-4' | 'slots-5' | 'slots-6';
+export type CasinoGame = 'roulette' | 'blackjack' | 'slots' | 'craps' | 'poker';
+export type RouletteTableId = `roulette-${number}`;
+export type BlackjackTableId = `blackjack-${number}`;
+export type SlotsTableId = `slots-${number}`;
+export type CasinoTableId = RouletteTableId | BlackjackTableId | SlotsTableId | 'craps-1' | 'poker-1';
 export type CasinoAnchor = { id: CasinoTableId; game: CasinoGame; name: string; x: number; z: number };
+/** Stable station IDs are persisted with wagers. Add stations here; never repurpose an ID for another game. */
 export const CASINO_ANCHORS: readonly CasinoAnchor[] = [
-  { id: 'roulette-1', game: 'roulette', name: 'European roulette', x: -8, z: 20 },
-  { id: 'blackjack-1', game: 'blackjack', name: 'Blackjack · Table 1', x: 3, z: 19 },
-  { id: 'blackjack-2', game: 'blackjack', name: 'Blackjack · Table 2', x: 10, z: 19 },
-  { id: 'slots-1', game: 'slots', name: 'Meridian reels · 1', x: -12, z: 24 },
-  { id: 'slots-2', game: 'slots', name: 'Meridian reels · 2', x: -7, z: 24 },
-  { id: 'slots-3', game: 'slots', name: 'Meridian reels · 3', x: -2, z: 24 },
-  { id: 'slots-4', game: 'slots', name: 'Meridian reels · 4', x: 3, z: 24 },
-  { id: 'slots-5', game: 'slots', name: 'Meridian reels · 5', x: 8, z: 24 },
-  { id: 'slots-6', game: 'slots', name: 'Meridian reels · 6', x: 13, z: 24 },
+  { id: 'poker-1', game: 'poker', name: 'Texas Hold’em', x: 11.5, z: 51.4 },
+  { id: 'craps-1', game: 'craps', name: 'Craps', x: -11.5, z: 51.4 },
+  ...[32, 44].map((z, i): CasinoAnchor => ({ id: `roulette-${i + 1}`, game: 'roulette', name: `European roulette · Table ${i + 1}`, x: 0, z })),
+  ...[-8, 8].flatMap((x, side) => [30, 37.7, 45.4].map((z, row): CasinoAnchor => ({ id: `blackjack-${side * 3 + row + 1}`, game: 'blackjack', name: `Blackjack · Table ${side * 3 + row + 1}`, x, z }))),
+  ...[-1, 1].flatMap((side, bank) => [14.6, 16.6].flatMap((offset, row) => Array.from({ length: 6 }, (_, i): CasinoAnchor => ({ id: `slots-${bank * 12 + row * 6 + i + 1}`, game: 'slots', name: `Meridian reels · ${bank * 12 + row * 6 + i + 1}`, x: side * offset, z: 28.8 + i * 3.15 })))),
 ];
 export const CASINO_INTERACTION_RADIUS = 3.2;
 export const CASINO_MIN_STAKE = 10;
@@ -56,19 +59,21 @@ export const BLACKJACK_SEAT_OFFSETS: readonly { x: number; z: number; heading: n
   { x: 1.15, z: -1.5, heading: -.654 },
   { x: 1.8, z: -.6, heading: -1.249 },
 ];
-export type RouletteView = { id: 'roulette-1'; game: 'roulette'; roundId: string; phase: 'betting' | 'spinning' | 'result' | 'paused'; deadline: number; result: number | null; betCount: number; history: number[] };
-export type BlackjackView = { id: 'blackjack-1' | 'blackjack-2'; game: 'blackjack'; roundId: string; phase: 'betting' | 'playing' | 'dealer' | 'result' | 'paused'; deadline: number; dealer: (Card | null)[]; dealerTotal: number | null; seats: BlackjackSeatView[]; activeSeat: number | null; activeHand: number | null };
+export type RouletteView = { id: RouletteTableId; game: 'roulette'; roundId: string; phase: 'betting' | 'spinning' | 'landing' | 'result' | 'paused'; deadline: number; result: number | null; betCount: number; history: number[]; motion: RouletteMotion | null };
+export type BlackjackView = { id: BlackjackTableId; game: 'blackjack'; roundId: string; phase: 'betting' | 'playing' | 'dealer' | 'result' | 'paused'; deadline: number; dealer: (Card | null)[]; dealerTotal: number | null; seats: BlackjackSeatView[]; activeSeat: number | null; activeHand: number | null };
 export type SlotsView = { id: CasinoTableId; game: 'slots'; roundId: string; phase: 'idle' | 'spinning' | 'result' | 'paused'; deadline: number; player: CasinoOccupant | null; reels: SlotSymbol[]; stake: number; returned: number | null };
-export type CasinoTableView = RouletteView | BlackjackView | SlotsView;
+export type CasinoTableView = RouletteView | BlackjackView | SlotsView | CrapsView | PokerView;
 export type CasinoState = { serverTime: number; tables: CasinoTableView[] };
 export type CasinoCommand = { requestId: string } & (
   | { action: 'sync' }
-  | { action: 'roulette-bet'; tableId: 'roulette-1'; roundId: string; bet: RouletteBet }
-  | { action: 'blackjack-join'; tableId: 'blackjack-1' | 'blackjack-2'; seat: number }
-  | { action: 'blackjack-bet'; tableId: 'blackjack-1' | 'blackjack-2'; roundId: string; stake: number }
-  | { action: 'blackjack-action'; tableId: 'blackjack-1' | 'blackjack-2'; roundId: string; hand: number; move: BlackjackAction }
+  | { action: 'craps-bet'; tableId: 'craps-1'; roundId: string; bet: CrapsBet }
+  | { action: 'craps-roll'; tableId: 'craps-1'; roundId: string; rollId: string }
+  | { action: 'roulette-bet'; tableId: RouletteTableId; roundId: string; bet: RouletteBet }
+  | { action: 'blackjack-join'; tableId: BlackjackTableId; seat: number }
+  | { action: 'blackjack-bet'; tableId: BlackjackTableId; roundId: string; stake: number }
+  | { action: 'blackjack-action'; tableId: BlackjackTableId; roundId: string; hand: number; move: BlackjackAction }
   | { action: 'slots-spin'; tableId: CasinoTableId; stake: number }
   | { action: 'leave'; tableId: CasinoTableId }
-);
+)|PokerCommand;
 export type CasinoReceipt = { requestId: string; ok: boolean; code?: string; message: string; wallet?: WalletState; wagerId?: string; roundId?: string };
-export type CasinoPrivateState = { rouletteBets: { wagerId: string; roundId: string; bet: RouletteBet }[] };
+export type CasinoPrivateState = { poker?: PokerPrivateState | null; crapsBets?: { tableId: 'craps-1'; roundId: string; wagerId: string; bet: CrapsBet }[]; rouletteBets: { tableId: RouletteTableId; wagerId: string; roundId: string; bet: RouletteBet }[] };

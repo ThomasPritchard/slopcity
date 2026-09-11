@@ -16,32 +16,35 @@ Open [http://localhost:5173](http://localhost:5173). The game and its database/v
 
 `services:start` creates project-specific PostgreSQL storage under ignored `.local/`, generates private credentials in `.env`, and runs PostgreSQL/LiveKit as local processes. It does not install login services. Use `npm run services:stop` to stop those services; Ctrl+C stops the development command. Prerequisites may also be supplied through `PG_BIN` and `LIVEKIT_BINARY`. The local voice configuration uses macOS's `lo0` interface. `.nvmrc` recommends Node 24; current local checks used Node 26.8.1.
 
-Enter a name, customise your character in the 3D changing room, then join the square. Walk with WASD/arrows, drag to orbit and scroll to zoom. Touch controls are present; tap Chat to expand it on a phone. Settings saves Performance mode, motion preferences and separate city-effects/fountain volumes in this browser. Approach a bench and choose **Sit down**; **Stand up** releases the seat. Open **Social** to join voice, then explicitly enable your microphone if desired. A separate private browser window gives you a second guest for local testing.
+Enter a name, customise your character in the 3D changing room, then join the square. Walk with WASD/arrows, hold **Shift** to sprint, press **Space** for a short jump, drag to orbit and scroll to zoom. Phones have a movement stick, **Sprint** toggle and **Jump** button; tap Chat to expand it. Jumping keeps obstacle and ledge restrictions active. Settings saves Performance mode, motion preferences and separate city-effects/fountain volumes in this browser. Approach a bench and choose **Sit down**; **Stand up** releases the seat. Open **Social** to join voice, then explicitly enable your microphone if desired. A separate private browser window gives you a second guest for local testing.
+
+Click or tap a visible neighbour, or select their name in **Social**, to open their player card. Invite them to a handshake or hug, send a mutual friend request, give credits, mute voice or block them. Shared emotes need consent and clear space within two metres; moving or choosing **Stop emote** ends the pose. Friends and requests are saved with your browser-bound guest profile. Gifts need both players within three metres and a confirmation. Each future salary payment adds the same amount to your outgoing gifting allowance; starting credits, received gifts and casino returns add none. You can give up to your allowance and wallet balance, with a 1,000-credit limit per gift. A pending gift can be checked after reloading without sending it twice.
 
 Walk into **Form & Thread** and choose **Browse Form & Thread** to try on clothes. Buying adds a piece to your collection; **Wear this** equips it for everyone to see. Click the wallet to open your saved wardrobe anywhere. Each guest receives **1,000 credits once**, then **100 credits per 10 accumulated real minutes in the visible town tab**. Sitting, chat and browsing count. Leaving or hiding the tab pauses salary and preserves progress.
 
-Walk into **The Meridian Casino**, approach a table or machine, then choose **Open**. Roulette accepts a separate confirmed bet on each press; blackjack requires a seat before betting; slots play one spin at a time. Stakes are 10–100 fictional credits. Rules and returns are available in each panel. Closing a panel keeps accepted bets in play. Blackjack’s **Leave seat** releases your character and stands unfinished hands; slots release after their result interval. Unfinished wagers are refunded once after a server restart.
+Walk into **The Meridian Casino**, approach a table or machine, then choose **Open**. Roulette accepts a separate confirmed bet on each press; blackjack requires a seat before betting; slots play one spin at a time; craps accepts one Pass or Don’t Pass line bet before the opening roll, followed by shared dice rolls until the wager resolves. House-game stakes are 10–100 fictional credits. Texas Hold’em seats two to six players with 5/10 blinds and a 200–1,000-credit buy-in from the wallet into table chips. Poker’s **Leave table** schedules a fold on your next turn and returns the remaining stack after the hand; all-in hands and completed betting remain live. Rules and returns are available in each panel. Closing a panel keeps accepted bets in play. Blackjack’s **Leave seat** releases your character and stands unfinished hands; slots release after their result interval. After a server restart, unfinished house wagers are refunded once and unfinished poker hands return their opening stacks; completed poker winnings are preserved.
 
 ## Implemented
 
-- Server-owned movement/collisions and a 64-client room cap.
+- Server-owned movement/collisions, sprinting and short hops with clearance checks, and a 64-client room cap.
 - PostgreSQL guest identity, saved name/skin/jacket, revision checks and one active town session per guest.
 - An opaque HttpOnly guest cookie; clearing site data or expiry loses browser access to that character. Accounts and cross-device recovery are not implemented.
 - Shared appearance, town text chat, wave and departure.
+- Click/tap player cards, consent-based shared handshakes/hugs, saved mutual friends and atomic, retry-safe credit gifts with salary-earned allowance.
 - Centred location titles on arrival, fading away within four seconds; the town map retains your current location.
 - Eight server-owned seats on four benches, with an authored seated pose.
 - Opt-in LiveKit voice, microphone off on join, distance fade and separate acoustic areas for the square and venue interiors.
 - Local voice mute plus persistent guest blocking that filters chat and voice in both directions. Blocked avatars remain visible.
 - Name-first onboarding and a live 3D changing room with skin/jacket colours.
-- Original Blender character and idle/walk/wave/sit clips; fountain, benches, lamps, planters, olive trees and changing-room assets.
+- Original Blender character with idle/walk/run/jump/wave/sit and paired handshake/hug clips; fountain, benches, lamps, planters, olive trees and changing-room assets.
 - Fountain ripples, reflection/refraction and water jets, with local ambience and reduced-motion support.
 - Recoverable camera zoom, blended character transitions, sharper phone rendering, 44px touch controls and saved comfort settings.
 - Rigged remote-character LOD, bounded nearby shadows and restricted fountain reflections; [polish measurements and limits](docs/polish-review.md).
-- Blender-furnished Meridian Casino: shared European roulette, two five-seat blackjack tables and six individual slot machines.
+- Blender-furnished Meridian Casino: two independent European roulette islands, six five-seat blackjack tables, 24 individual slot machines and a shared craps table in the left rear bay and six-seat Texas Hold’em in the right rear bay, reached through a reception foyer and steps or a side ramp.
 - Server-owned casino rules, hidden outcomes, explicit stakes, shared seats/spectating, durable debit/return receipts and restart refunds for unfinished wagers.
-- Matching 3D roulette chips/coverage, animated cards and split hands, spinning wheel/ball and illustrated slot reels.
+- Matching 3D roulette chips/coverage, animated cards and split hands, spinning wheel/ball, illustrated slot reels and shared tumbling dice with a physical point marker.
 - Phone portrait/landscape casino layouts with a visible 3D table and fixed bet/spin/hand controls.
-- Furnished Blender clothing shop with rails, folded garments, checkout and a 3D fitting alcove.
+- Form & Thread boutique with connected departments, display-window outfits, parquet, six rails, checkout, warm interior lighting and two mirrored fitting bays; [shop direction and scope](docs/clothing-shop-overhaul-design.md).
 - Twelve wardrobe items across tops, trousers and shoes, including three free starters; distinct knit, bomber, denim, cargo, boot and loafer meshes.
 - Server-owned credits, salary checkpoints, atomic purchases, retry-safe receipts, owned-only equipment and saved wardrobes. Only equipped clothes replicate to other players; try-ons and wallet data stay private.
 - A recoverable startup screen and pinned Colyseus SDK WebKit compatibility patch, reapplied by `postinstall`.
@@ -64,8 +67,21 @@ npm run test:casino-network
 npm run test:network
 npx playwright install chromium-headless-shell webkit
 npm run test:shop
+npm run test:shop-render
+npm run test:shop-signage
 npm run test:casino-browser
+npm run test:casino-expansion
+npm run test:roulette-motion
+npm run test:craps-render
+npm run test:craps-browser
+npm run test:craps-network
+npm run test:poker-network
+npm run test:poker-render
+npm run test:poker-browser
 npm run test:social
+npm run test:social-persistence
+npm run test:interactions-network
+npm run test:interactions-browser
 npm run test:voice
 npm run test:startup
 npm run test:browser
@@ -75,9 +91,13 @@ npm run test:polish
 npm run test:crowd
 ```
 
-Browser checks need the development server and always launch headlessly. Voice testing uses Chromium's synthetic microphone, never the user's real microphone. Set `PLAYWRIGHT_BROWSERS_PATH` for a custom browser directory. Screenshots/results go to ignored `output/playwright/`. The shop check defaults to WebKit; use `SHOP_BROWSER=chromium npm run test:shop` for Chromium (compact viewport and performance mode). The economy check uses an isolated PostgreSQL schema and simulated cumulative time to verify salary thresholds without a ten-minute wait.
+Most browser checks need the development server and all launch headlessly. Voice testing uses Chromium's synthetic microphone, never the user's real microphone. Set `PLAYWRIGHT_BROWSERS_PATH` for a custom browser directory. Screenshots/results go to ignored `output/playwright/`. The shop check defaults to WebKit; use `SHOP_BROWSER=chromium npm run test:shop` for Chromium (compact viewport and performance mode). The economy check uses an isolated PostgreSQL schema and simulated cumulative time to verify salary thresholds without a ten-minute wait.
 
 The casino browser journey defaults to WebKit; `CASINO_BROWSER=chromium npm run test:casino-browser` runs a compact Chromium roulette compatibility check. `test:casino` uses an isolated PostgreSQL schema for wagering, concurrent wallet use and recovery. `test:casino-network` starts an isolated localhost server on port 2569 for shared casino protocol checks.
+
+The craps checks cover the imported table/dice renderer, a real browser journey and an isolated three-client protocol journey on port 2571. Poker checks cover escrow/rules, an isolated three-client journey on port 2572, the imported table renderer and full-app controls; see [the poker contract](docs/poker-design.md). See [the craps contract](docs/craps-design.md) for rules, motion and persistence details.
+
+The [player interaction contract](docs/player-interactions-design.md) records movement, consent, friends and gifting rules. `test:social-persistence` checks transactions and migrations in a disposable local schema. `test:interactions-network` starts an isolated server on port 2574 for three-client protocol and private HTTP checks. `test:interactions-browser` starts its own isolated backend on 2576 and a source-snapshot preview on 5184, so it needs no running development server; it defaults to WebKit, with `BROWSER=chromium` selecting Chromium. On macOS that check uses Metal because headless Chromium otherwise uses CPU-based SwiftShader; both browser paths test normal game quality unless `INTERACTION_PERFORMANCE=1` is set. These checks use the local `.env` database, remove their temporary schemas, and simulate salary payments only in those schemas. Browser evidence covers real UI and renderer behavior; emulated touch/layout checks do not establish physical-phone performance.
 
 The network check starts its own localhost server on port 2568 and an isolated database schema, then removes that schema. It checks 64 protocol clients, admission, movement, chat/blocking and seat contention. It does not establish smooth 64-avatar rendering or voice capacity. Separate synthetic renderer measurements are documented in [the polish implementation](docs/polish-review.md); dense crowds still need native-device profiling. Synthetic voice reception and mobile emulation are separate from native microphone, physical phone or Windows runtime evidence.
 

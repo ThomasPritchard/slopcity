@@ -64,7 +64,7 @@ try{
  await page.waitForFunction(t=>(window as any).world.fountain.elapsed>t,stillBefore.time);
  assert.equal((await state()).spray,true);
  // Existing focused-view policy pauses water effects and restores the selected quality.
- await page.evaluate(()=>(window as any).world.focusCasino({id:'blackjack-1',game:'blackjack',x:3,z:19,name:'Blackjack'}));
+ await page.evaluate(()=>(window as any).world.focusCasino({id:'blackjack-1',game:'blackjack',x:-8,z:30,name:'Blackjack'}));
  await page.waitForTimeout(300);assert.equal((await state()).reflection,0);assert.equal((await state()).spray,false);
  await page.evaluate(()=>(window as any).world.focusCasino(null));await page.waitForTimeout(500);
  assert.equal((await state()).reflection,3);assert.equal((await state()).spray,true);

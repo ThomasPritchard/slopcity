@@ -23,7 +23,7 @@ try{
  await page.evaluate(()=>{const w=(window as any).world;w.customise((window as any).players.get('local'),false,true);});await page.waitForTimeout(300);await page.evaluate(()=>(window as any).world.enter('local'));await page.waitForTimeout(400);
  const view=()=>page.evaluate(()=>{const w=(window as any).world,c=w.camera;return{alpha:c.alpha,beta:c.beta,radius:c.radius,water:w.scene.materials.find((m:any)=>m.name==='Living fountain water').reflectionTexture.refreshRate};});
  const wardrobe=await view();assert.ok(Math.abs(wardrobe.alpha+1.1)<.01&&Math.abs(wardrobe.radius-9)<.05);
- await page.evaluate(()=>{const w=(window as any).world;w.setQuality(true);w.focusCasino({id:'blackjack-1',game:'blackjack',x:3,z:19,name:'Blackjack'});});await page.waitForTimeout(400);assert.equal((await view()).water,0);
+ await page.evaluate(()=>{const w=(window as any).world;w.setQuality(true);w.focusCasino({id:'blackjack-1',game:'blackjack',x:-8,z:30,name:'Blackjack'});});await page.waitForTimeout(400);assert.equal((await view()).water,0);
  await page.evaluate(()=>(window as any).world.focusCasino(null));await page.waitForTimeout(500);const casino=await view();assert.ok(Math.abs(casino.alpha+1.1)<.01&&Math.abs(casino.radius-9)<.05);assert.equal(casino.water,3);
  await page.evaluate(()=>{const w=(window as any).world;w.setReducedMotion(true);w.syncCasino({serverTime:Date.now(),tables:[{id:'roulette-1',game:'roulette',roundId:'r',phase:'spinning',deadline:Date.now()+5000,result:null,betCount:1,history:[]}]});});
  const wheel=()=>page.evaluate(()=>{const w=(window as any).world;return{angle:w.scene.transformNodes.find((n:any)=>n.name==='roulette-wheel-instance').rotation.y,spray:Number(w.scene.getMeshByName('Fountain spray').isEnabled())};});

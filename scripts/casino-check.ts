@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { loadEnvFile } from 'node:process';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -14,9 +15,26 @@ const guests = new GuestRepository(url.toString()), economy = new EconomyReposit
 const input = (profileId: string, overrides: Partial<WagerInput> = {}): WagerInput => ({ profileId, requestId: randomUUID(), fingerprint: randomUUID(), roomId: 'test-room', tableId: 'roulette-1', roundId: randomUUID(), stake: 100, details: { game: 'roulette', bet: { kind: 'red' } }, ...overrides });
 const valid = () => {};
 try {
- await admin.query(`CREATE SCHEMA ${schema}`); await guests.initialise(); await economy.initialise(); await casino.initialise();
+ await admin.query(`CREATE SCHEMA ${schema}`); await guests.initialise(); await economy.initialise();
+ // Start from the deployed three-game schema, then exercise the additive upgrade.
+ await guests.pool.query(await readFile(new URL('../server/persistence/migrations/003_casino.sql', import.meta.url), 'utf8'));
+ await guests.pool.query('INSERT INTO guest_schema_migrations(version) VALUES(3)');
+ await casino.initialise();
  await guests.initialise(); await economy.initialise(); await casino.initialise();
  const profile = async () => (await guests.create({ name: 'Casino test', shirt: 0, skin: 0 })).profile.id;
+ // Migration 004 remains compatible with all initializers; craps uses the same atomic ledger/recovery.
+ assert.ok((await guests.pool.query('SELECT version FROM guest_schema_migrations WHERE version=4')).rowCount);
+ const crapsId = await profile();
+ const crapsInput = input(crapsId, { tableId: 'craps-1', details: { game: 'craps', bet: { kind: 'dont-pass', stake: 100 } }, roomId: 'craps-recovery' });
+ const crapsAccepted = await casino.accept(crapsInput, valid);
+ assert.equal(crapsAccepted.wallet.balance, 900);
+ await casino.recoverPending('craps-recovery'); await casino.recoverPending('craps-recovery');
+ assert.equal((await economy.ensure(crapsId)).balance, 1000);
+ assert.equal((await casino.replay(crapsId, crapsInput.requestId, crapsInput.fingerprint))?.wager.status, 'refunded');
+ const crapsSettled = await casino.accept(input(crapsId, { tableId: 'craps-1', details: { game: 'craps' } }), valid);
+ await casino.settle([{ id: crapsSettled.wager.id, returned: 200, outcome: { dice: [3, 4] } }]);
+ await casino.settle([{ id: crapsSettled.wager.id, returned: 200, outcome: { dice: [3, 4] } }]);
+ assert.equal((await economy.ensure(crapsId)).balance, 1100);
  const id = await profile(), same = input(id);
  const accepted = await Promise.all(Array.from({ length: 8 }, () => casino.accept(same, valid)));
  assert.ok(accepted.every(r => r.wallet.balance === 900 && r.wager.id === accepted[0].wager.id));

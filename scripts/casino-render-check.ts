@@ -14,7 +14,7 @@ type RenderedCard={name:string;material:string;x:number;y:number;z:number};
 const activeCards=():Promise<RenderedCard[]>=>page.evaluate(()=>(window as any).world.scene.meshes.filter((mesh:any)=>mesh.name.startsWith('casino-card-')&&mesh.isEnabled()).map((mesh:any)=>({name:mesh.name,material:mesh.material.name,x:mesh.position.x,y:mesh.position.y,z:mesh.position.z})));
 try{
  await page.goto('http://localhost:5173/output/playwright/casino-render-fixture.html');await page.waitForFunction(()=>Boolean((window as any).ready));
- await page.evaluate(state=>{const world=(window as any).world;world.syncCasino(state);world.focusCasino({id:'blackjack-1',game:'blackjack',x:3,z:19,name:'Blackjack'});},state);
+ await page.evaluate(state=>{const world=(window as any).world;world.syncCasino(state);world.focusCasino({id:'blackjack-1',game:'blackjack',x:-8,z:30,name:'Blackjack'});},state);
  await page.waitForTimeout(550);let cards=await activeCards();assert.equal(cards.length,6);assert.equal(cards.find(c=>c.name.endsWith('dealer-1'))?.material,'card-back');assert.ok(cards.every(c=>c.y>1.145&&c.y<1.2));
  const left=cards.find(c=>c.name.endsWith('-2-0-0'))!,right=cards.find(c=>c.name.endsWith('-2-1-0'))!;assert.ok(right.x-left.x>.4,'split hands separate on the felt');
  await page.screenshot({path:'output/playwright/casino-render-split-fixture.png'});

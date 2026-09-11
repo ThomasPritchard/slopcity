@@ -20,7 +20,7 @@ try{
  await page.goto(fixture);await page.waitForFunction(()=>(window as any).ready&&(window as any).world.scene.isReady());
  const setup=await page.evaluate(()=>{
   const w=(window as any).world;
-  return{lights:w.lampLighting.lights.map((l:any)=>({position:l.position.asArray(),range:l.range,warm:l.diffuse.r>l.diffuse.g&&l.diffuse.g>l.diffuse.b,interiorExcluded:l.excludedMeshes.some((m:any)=>m.name==='casino floor')})),
+  return{lights:w.lampLighting.lights.map((l:any)=>({position:l.position.asArray(),range:l.range,warm:l.diffuse.r>l.diffuse.g&&l.diffuse.g>l.diffuse.b,interiorExcluded:l.excludedMeshes.some((m:any)=>m.name.startsWith('meridian-interior/'))})),
    posts:w.lampPosts.map((root:any)=>{root.computeWorldMatrix(true);const bounds=root.getHierarchyBoundingVectors();return{position:root.position.asArray(),height:bounds.max.y-bounds.min.y,copies:root.getChildMeshes().every((m:any)=>!m.sourceMesh)}}),
    groundBudget:Math.min(...w.scene.meshes.filter((m:any)=>m.name.startsWith('town-ground/')&&m.material).map((m:any)=>m.material.maxSimultaneousLights))};
  });

@@ -1,3 +1,4 @@
+import { PokerRepository } from './poker.ts';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { EconomyError, EconomyRepository } from './economy.ts';
@@ -10,15 +11,24 @@ function wager(row: Record<string, any>): Wager {
  return { id: row.id, profileId: row.profile_id, requestId: row.request_id, fingerprint: row.fingerprint, roomId: row.room_id, tableId: row.table_id, roundId: row.round_id, stake: row.stake, details: row.details, status: row.status, returned: row.returned };
 }
 export class CasinoRepository {
- constructor(readonly economy: EconomyRepository) {}
+ readonly poker: PokerRepository;
+ constructor(readonly economy: EconomyRepository) { this.poker = new PokerRepository(economy); }
  async initialise() {
   await this.economy.transaction(async c => {
    await c.query('SELECT pg_advisory_xact_lock(782641092)');
    const versions = (await c.query('SELECT version FROM guest_schema_migrations')).rows.map(r => r.version);
-   if (!versions.includes(2) || versions.some(v => ![1, 2, 3].includes(v))) throw new Error('Unsupported casino schema');
+   if (!versions.includes(2) || versions.some(v => ![1, 2, 3, 4, 5, 6].includes(v))) throw new Error('Unsupported casino schema');
    if (!versions.includes(3)) {
     await c.query(await readFile(new URL('./migrations/003_casino.sql', import.meta.url), 'utf8'));
     await c.query('INSERT INTO guest_schema_migrations(version) VALUES(3)');
+   }
+   if (!versions.includes(4)) {
+    await c.query(await readFile(new URL('./migrations/004_craps.sql', import.meta.url), 'utf8'));
+    await c.query('INSERT INTO guest_schema_migrations(version) VALUES(4)');
+   }
+   if (!versions.includes(5)) {
+    await c.query(await readFile(new URL('./migrations/005_poker.sql', import.meta.url), 'utf8'));
+    await c.query('INSERT INTO guest_schema_migrations(version) VALUES(5)');
    }
    await c.query('SELECT id,request_id,fingerprint,stake,status,returned FROM casino_wagers LIMIT 0');
   });
@@ -27,7 +37,10 @@ export class CasinoRepository {
   return this.economy.transaction(async c => {
    await this.economy.lock(c, profileId);
    const row = (await c.query('SELECT * FROM casino_wagers WHERE profile_id=$1 AND request_id=$2', [profileId, requestId])).rows[0];
-   if (!row) return null;
+   if (!row) {
+    if ((await c.query('SELECT 1 FROM poker_requests WHERE profile_id=$1 AND request_id=$2', [profileId, requestId])).rowCount) throw new EconomyError('request_conflict', 'This request was used for a poker buy-in');
+    return null;
+   }
    const wallet = await this.economy.snapshot(c, profileId);
    if (row.fingerprint !== fingerprint) throw new EconomyError('request_conflict', 'This request was used for another casino action', 409, wallet);
    return { wager: wager(row), wallet, replayed: true };
@@ -43,6 +56,7 @@ export class CasinoRepository {
     if (prior.fingerprint !== input.fingerprint) throw new EconomyError('request_conflict', 'This request was used for another casino action', 409, wallet);
     return { wager: wager(prior), wallet, replayed: true };
    }
+   if ((await c.query('SELECT 1 FROM poker_requests WHERE profile_id=$1 AND request_id=$2', [input.profileId, input.requestId])).rowCount) throw new EconomyError('request_conflict', 'This request was used for a poker buy-in', 409, wallet);
    validate(); // Recheck live ownership, proximity, round and deadline after the shared wallet lock.
    if (wallet.balance < input.stake) throw new EconomyError('insufficient_funds', 'You need more credits for this wager', 409, wallet);
    const id = randomUUID();
@@ -82,6 +96,8 @@ export class CasinoRepository {
  }
  async recoverPending(roomId?: string): Promise<Map<string, WalletState>> {
   const rows = (await this.economy.pool.query('SELECT id,stake FROM casino_wagers WHERE status=\'pending\' AND ($1::text IS NULL OR room_id=$1) ORDER BY id', [roomId ?? null])).rows;
-  return this.settle(rows.map(r => ({ id: r.id, returned: r.stake })), true);
+  const wallets = await this.settle(rows.map(r => ({ id: r.id, returned: r.stake })), true);
+  for (const [id, wallet] of await this.poker.recover(roomId)) wallets.set(id, wallet);
+  return wallets;
  }
 }

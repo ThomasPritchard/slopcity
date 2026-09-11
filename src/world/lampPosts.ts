@@ -20,11 +20,11 @@ export class LampPostLighting {
   private opal = new Map<PBRMaterial, Color3>();
 
   constructor(scene: Scene, posts: TransformNode[]) {
-    // Sky + sun + four posts. The venue fill is restricted to its own excluded interior.
+    // Sky + sun + four posts + two marquee lights. Venue fills only affect the excluded interior.
     // Apply this to newly cloned citizen materials too, so every pole can light visitors.
     const configureMaterial = (material: Material) => {
       if ('maxSimultaneousLights' in material && typeof material.maxSimultaneousLights === 'number') {
-        material.maxSimultaneousLights = Math.max(material.maxSimultaneousLights, 6);
+        material.maxSimultaneousLights = Math.max(material.maxSimultaneousLights, 8);
       }
     };
     scene.materials.forEach(configureMaterial);
@@ -32,7 +32,7 @@ export class LampPostLighting {
       // Material construction registers with the scene before subclass defaults are assigned.
       queueMicrotask(() => { if (!scene.isDisposed) configureMaterial(material); });
     });
-    const interior = scene.meshes.filter(mesh => /^(casino-kit\/|clothing-shop\/|changing-room\/)/.test(mesh.name) || mesh.name === 'casino floor');
+    const interior = scene.meshes.filter(mesh => /^(meridian-.*\/|roulette-.*\/|blackjack-table\/|slot-machine\/|casino-chair\/|craps-(?:table|live)\/|poker-(?:table|live)\/|clothing-shop\/|form-thread-(?:shell|roof)\/|shop-mannequin-\d+\/|changing-room\/)/.test(mesh.name) || mesh.name === 'casino floor' || mesh.name.startsWith('Ivory roulette ball '));
     this.glow = new GlowLayer('Lantern glass glow', scene, { mainTextureRatio: .25, blurKernelSize: 16 });
     this.glow.intensity = .25;
     posts.forEach((root, index) => {

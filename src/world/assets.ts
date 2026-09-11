@@ -8,6 +8,8 @@ import type { Material } from '@babylonjs/core/Materials/material';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { AssetContainer, InstantiatedEntries } from '@babylonjs/core/assetContainer';
 import { SHIRTS, SKINS } from '../../shared/world';
+import { EMOTE_POSES } from '../../shared/emotePoses';
+import { HOP_DURATION_MS } from '../../shared/mobility';
 import { clothingItem, STARTER_OUTFIT, type Appearance } from '../../shared/catalog';
 
 export class CitizenModel {
@@ -62,14 +64,22 @@ export class CitizenModel {
     }
   }
   wave() { this.waving = true; }
-  animate(moving: boolean, seated = false) {
+  animate(moving: boolean, seated = false, motion?: { sprinting?: boolean; jumpAt?: number; emoteKind?: string; emoteRole?: number; emoteAt?: number; now: number }) {
     // Walking cancels the greeting; its completion follows the clip, not a frame-rate-dependent timer.
-    if (moving || seated) this.waving = false;
-    const next = seated ? 'Sit' : this.waving ? 'Wave' : moving ? 'Walk' : 'Idle';
+    const pair = motion?.emoteKind === 'handshake' || motion?.emoteKind === 'hug' ? EMOTE_POSES[motion.emoteKind] : null;
+    const synced = !!pair || !!motion?.jumpAt;
+    if (moving || seated || synced) this.waving = false;
+    const next = seated ? 'Sit' : pair ? (motion?.emoteRole === 1 ? pair.clipB : pair.clipA) : motion?.jumpAt ? 'Jump' : this.waving ? 'Wave' : moving ? motion?.sprinting ? 'Run' : 'Walk' : 'Idle';
     if (next !== this.animation) {
       this.animation = next;
       const incoming = this.entries.animationGroups.find(group => group.name.endsWith(`/${next}`) || group.name === next);
-      if (incoming) { incoming.start(next !== 'Wave', 1); incoming.setWeightForAllAnimatables(this.weights.get(incoming.name) ?? 0); if (!this.animationsActive) incoming.pause(); }
+      if (incoming) { incoming.start(next !== 'Wave', synced ? 0 : 1); incoming.setWeightForAllAnimatables(this.weights.get(incoming.name) ?? 0); if (!this.animationsActive) incoming.pause(); }
+    }
+    if (synced && motion) {
+      const group = this.entries.animationGroups.find(group => group.name.endsWith(`/${next}`) || group.name === next);
+      const duration = pair?.durationMs ?? HOP_DURATION_MS, start = pair ? motion.emoteAt ?? 0 : motion.jumpAt ?? 0;
+      const phase = Math.max(0, Math.min(1, (motion.now - start) / duration));
+      group?.goToFrame(group.from + (group.to - group.from) * phase);
     }
     const blend = Math.min(1, this.root.getScene().getEngine().getDeltaTime()/180);
     for (const group of this.entries.animationGroups) {
@@ -101,7 +111,7 @@ export class AuthoredAssets {
   private containers = new Map<string, AssetContainer>();
   constructor(private scene: Scene) {}
   async load() {
-    await Promise.all(['citizen', 'citizen-lod', 'town-ground', 'changing-room', 'fountain', 'bench', 'tree', 'planter', 'entrance-planter', 'lamp', 'clothing-shop', 'casino-kit', 'roulette-wheel', 'signpost', 'shop-sign', 'shop-tagline', 'casino-sign', 'casino-entry-sign', 'casino-tagline'].map(async name => {
+    await Promise.all(['citizen', 'citizen-lod', 'town-ground', 'changing-room', 'fountain', 'bench', 'tree', 'planter', 'entrance-planter', 'lamp', 'clothing-shop', 'form-thread-shell', 'form-thread-roof', 'meridian-shell', 'meridian-roof', 'meridian-ceiling', 'meridian-chandelier', 'meridian-interior', 'roulette-table', 'blackjack-table', 'slot-machine', 'casino-chair', 'roulette-wheel', 'craps-table', 'poker-table', 'signpost', 'shop-sign', 'shop-tagline', 'casino-sign', 'casino-entry-sign', 'casino-tagline'].map(async name => {
       this.containers.set(name, await LoadAssetContainerAsync(`/models/${name}.glb`, this.scene));
     }));
   }
@@ -109,7 +119,7 @@ export class AuthoredAssets {
   place(name: string, x: number, y: number, z: number, rotation = 0, scale = 1): TransformNode {
     const root = new TransformNode(`${name}-instance`, this.scene);
     // Unique focal props use copies to keep their PBR rendering stable across quality changes.
-    const entries = this.containers.get(name)!.instantiateModelsToScene(original => `${name}/${original}`, false, { doNotInstantiate: ['town-ground', 'tree', 'planter', 'entrance-planter', 'lamp', 'fountain', 'changing-room', 'clothing-shop', 'signpost', 'shop-sign', 'shop-tagline', 'casino-sign', 'casino-entry-sign', 'casino-tagline'].includes(name) });
+    const entries = this.containers.get(name)!.instantiateModelsToScene(original => `${name}/${original}`, false, { doNotInstantiate: ['meridian-shell', 'meridian-roof', 'meridian-ceiling', 'meridian-chandelier', 'meridian-interior', 'town-ground', 'tree', 'planter', 'entrance-planter', 'lamp', 'fountain', 'changing-room', 'clothing-shop', 'form-thread-shell', 'form-thread-roof', 'signpost', 'shop-sign', 'shop-tagline', 'casino-sign', 'casino-entry-sign', 'casino-tagline'].includes(name) });
     for (const node of entries.rootNodes) node.parent = root;
     root.position.set(x, y, z); root.rotation.y = rotation; root.scaling.setAll(scale);
     return root;

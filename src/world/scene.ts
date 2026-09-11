@@ -4,7 +4,6 @@ import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
-import { PointLight } from '@babylonjs/core/Lights/pointLight';
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
 import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
@@ -12,12 +11,23 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import { InstancedMesh } from '@babylonjs/core/Meshes/instancedMesh';
 import { Ray } from '@babylonjs/core/Culling/ray';
+import { hopHeight, isHopping, OVERHEAD_SOLIDS } from '../../shared/mobility';
 import { WALLS, PLANTING_BEDS, SHIRTS, district, move, type Position, type Profile } from '../../shared/world';
 
 import { type Appearance, type Outfit } from '../../shared/catalog';
-import { CASINO_ANCHORS, type CasinoAnchor, type CasinoState, type CasinoPrivateState, type SlotSymbol } from '../../shared/casino';
+import { CASINO_ANCHORS, BLACKJACK_SEAT_OFFSETS, type CasinoAnchor, type CasinoState, type CasinoPrivateState, type SlotSymbol } from '../../shared/casino';
+import { CASINO_LAYOUT, floorHeight } from '../../shared/casinoLayout';
+import { CasinoLighting } from './casinoLighting';
+import { ShopLighting, isShopMesh } from './shopLighting';
+import { SHOP_LAYOUT, SHOP_FURNITURE, SHOP_PREVIEW, SHOP_SIGNS, shopPoint, inShop } from '../../shared/shopLayout';
+import { PokerTableArt } from './pokerArt';
+import { POKER_SEAT_OFFSETS } from '../../shared/pokerLayout';
+import { CrapsTableArt } from './crapsArt';
+import type { CrapsView } from '../../shared/craps';
+import { sampleRouletteMotion, ROULETTE_GEOMETRY } from '../../shared/rouletteMotion';
 import { BENCHES } from '../../shared/social';
 import { AuthoredAssets, CitizenModel } from './assets';
 import { CasinoTableArt, drawSlotSymbol } from './casinoArt';
@@ -32,9 +42,9 @@ import { Plane } from '@babylonjs/core/Maths/math.plane';
 import { Viewport } from '@babylonjs/core/Maths/math.viewport';
 import '@babylonjs/core/Rendering/boundingBoxRenderer';
 
-export type PlayerView = Position & Profile & Outfit & { profileId: string; seatId: string; heading: number; moving: boolean; wave: number };
+export type PlayerView = Position & Profile & Outfit & { profileId: string; seatId: string; heading: number; moving: boolean; wave: number; sprinting?: boolean; jumpAt?: number; emoteId?: string; emoteKind?: string; emoteRole?: number; emoteAt?: number };
 export type SceneStats = { fps: number; district: string; x: number; z: number };
-type Avatar = { root: TransformNode; model: CitizenModel; label: Mesh; wave: number; seatId: string; lowDetail: boolean };
+type Avatar = { root: TransformNode; model: CitizenModel; label: Mesh; wave: number; seatId: string; lowDetail: boolean; hit: Mesh; emoteId: string };
 
 export class TownScene {
   readonly engine: Engine;
@@ -56,6 +66,7 @@ export class TownScene {
   private resizeFrame = 0;
   private requestedRadius = 7.5;
   private appliedRadius = 7.5;
+  private focusRadius = 7;
   private savedView: { alpha: number; beta: number; radius: number } | null = null;
   private interactionMarker: Mesh | null = null;
   private motionClock = 0;
@@ -63,7 +74,14 @@ export class TownScene {
   onMotion?: (x: number, z: number, moving: boolean) => void;
   private clock = 0;
   onStats?: (stats: SceneStats) => void;
-  onInput?: (x: number, z: number) => void;
+  onInput?: (x: number, z: number, sprint: boolean) => void;
+  onJump?: () => void;
+  onSelectPlayer?: (profileId: string) => void;
+  onSprintChange?: (enabled: boolean) => void;
+  private sprintToggle = false;
+  private pointerStarts = new Map<number, { x: number; y: number; cancelled: boolean }>();
+  private selectedProfile: string | null = null;
+  private selectionRing: Mesh | null = null;
   private inputClock = 0;
   private paused = false;
   readonly ready: Promise<void>;
@@ -75,6 +93,9 @@ export class TownScene {
   private previewRotation = Math.PI;
   private mode: 'welcome' | 'customise' | 'wardrobe' | 'playing' = 'welcome';
   private mirror!: MirrorTexture;
+  private shopMirror!: MirrorTexture;
+  private shopMirrorMeshes: AbstractMesh[] = [];
+  private shopReflectionKey = '';
   private water!: WaterMaterial;
   private fountain?: FountainWater;
   private lampPosts: TransformNode[] = [];
@@ -82,13 +103,15 @@ export class TownScene {
   private vegetation?: Vegetation;
   private dayCycle?: DayCycle;
   private casinoFocus: CasinoAnchor | null = null;
-  private rouletteWheel!: TransformNode;
-  private rouletteBall!: Mesh;
+  private casinoRoof?: TransformNode;
+  private casinoLighting?: CasinoLighting;
+  private shopLighting?: ShopLighting;
+  private pokerArt?: PokerTableArt;
+  private crapsArt?: CrapsTableArt;
+  private casinoPrivate: CasinoPrivateState = { rouletteBets: [] };
+  private rouletteModels = new Map<string, { anchor: CasinoAnchor; wheel: TransformNode; ball: Mesh }>();
   private casinoState: CasinoState | null = null;
   private casinoTimeOffset = 0;
-  private wheelVelocity = 0;
-  private ballAngle = 0;
-  private ballRadius = .64;
   private reelTextures = new Map<string, DynamicTexture>();
   private reelKeys = new Map<string, string>();
   private slotSpins = new Map<string,{spinning:boolean;p0:number;settle:number}>();
@@ -145,6 +168,10 @@ export class TownScene {
     this.ready = this.initialise();
     this.scene.onBeforeRenderObservable.add(() => this.update());
     window.addEventListener('keydown', this.keyDown);
+    canvas.addEventListener('pointerdown', this.playerPointerDown);
+    canvas.addEventListener('pointermove', this.playerPointerMove);
+    canvas.addEventListener('pointerup', this.playerPointerUp);
+    canvas.addEventListener('pointercancel', this.playerPointerCancel);
     window.addEventListener('keyup', this.keyUp);
     window.addEventListener('blur', this.blur);
     document.addEventListener('visibilitychange', this.visibility);
@@ -205,60 +232,77 @@ export class TownScene {
     const ground = this.assets.place('town-ground', 0, 0, 0);
     for (const mesh of ground.getChildMeshes()) mesh.receiveShadows = true;
     for (const wall of WALLS) {
-      const mesh = this.box(wall.kind, wall.x, wall.h / 2, wall.z, wall.w, wall.h, wall.d, '#e6dcc8', wall.kind !== 'planter');
+      const mesh = this.box(wall.kind, wall.x, wall.h / 2, wall.z, wall.w, wall.h, wall.d, '#e6dcc8', wall.kind === 'wall');
       // Invisible bounds retain camera avoidance; the authored masonry supplies the visible shadow.
-      if (wall.kind === 'planter') mesh.visibility = 0;
+      if (wall.kind !== 'wall') mesh.visibility = 0;
       this.walls.push(mesh);
     }
     for (const bed of PLANTING_BEDS) {
       this.placeAsset(bed.asset, bed.x, 0, bed.z);
       this.placeAsset('tree', bed.x, .52, bed.z, bed.rotation, bed.treeScale);
     }
-    // Casino facade, arcade and open doorway.
-    this.box('casino floor', 0, .045, 20, 31.5, .04, 11.4, '#72756b', false);
-    this.box('casino lintel', 0, 4.8, 13.9, 32.8, 2.4, .9, '#e4dac5');
-    for(const z of [13.7,26.3])this.box('casino parapet',0,6.15,z,33.2,.4,.5,'#bfb49a');
-    for(const x of [-16.3,16.3])this.box('casino parapet',x,6.15,20,.5,.4,13,'#bfb49a');
-    // The high-level roof is open for this first movement study.
-    for (const x of [-14, -10, -6, 6, 10, 14]) {
-      this.box('casino panel', x, 2.6, 13.69, 2.8, 3.8, .1, '#46615a', false);
-      for (const offset of [-1.45, 1.45]) this.box('brass trim', x + offset, 2.6, 13.56, .055, 3.85, .08, '#b7a57a', false);
+    // Authored venue geometry uses the shared collision and surface dimensions.
+    this.placeAsset('meridian-shell', 0, 0, 0, Math.PI);
+    this.casinoRoof = this.placeAsset('meridian-roof', 0, 0, 0, Math.PI);
+    this.placeAsset('meridian-ceiling', 0, 0, 0, Math.PI);
+    this.placeAsset('meridian-chandelier', 0, 0, 0, Math.PI);
+    this.placeAsset('meridian-interior', 0, 0, 0, Math.PI);
+    // Shared ceiling bounds keep the camera and hopping body clear of overhead geometry.
+    for (const bound of OVERHEAD_SOLIDS) {
+      const mesh = this.box(`Overhead camera ${bound.name}`, bound.x, (bound.bottom + bound.top) / 2, bound.z, bound.w, bound.top - bound.bottom, bound.d, '#e6dcc8', false);
+      mesh.visibility = 0; this.walls.push(mesh);
     }
-    for (const x of [-16, -2.3, 2.3, 16]) this.box('entry column', x, 2.2, 12.4, .35, 4.4, .4, '#d2c5a8');
-    this.box('entry canopy', 0, 4.4, 12.4, 33, .2, 3.5, '#40534a');
-    this.placeAsset('casino-sign', 0, 5.4, 13.36, Math.PI);
-    this.placeAsset('casino-entry-sign', 0, 3.77, 11.98, Math.PI);
-    this.placeAsset('casino-tagline', 0, 4.35, 25.68, Math.PI);
-    this.placeAsset('casino-kit', 0, 0, 0, Math.PI);
-    const venueLight = new PointLight('Casino soft fill', new Vector3(0,4,20), this.scene);
-    venueLight.diffuse = new Color3(1,.96,.89); venueLight.intensity = .22; venueLight.range = 13;
-    // Restrict the venue fill to casino meshes so clothing previews remain neutral.
-    venueLight.includedOnlyMeshes = this.scene.meshes.filter(mesh => mesh.name.startsWith('casino-kit/') || mesh.name === 'casino floor');
-    this.rouletteWheel=this.placeAsset('roulette-wheel',-9.37,1.32,20,Math.PI);
-    this.rouletteBall=MeshBuilder.CreateSphere('Ivory roulette ball',{diameter:.06,segments:12},this.scene);
-    this.rouletteBall.material=this.mat('#f4edda',.4);
-    this.rouletteBall.position.set(-8.72,1.365,20);
-    for(const anchor of CASINO_ANCHORS.filter(anchor=>anchor.game==='slots')) {
-      const texture=new DynamicTexture(`reels-${anchor.id}`,{width:768,height:256},this.scene,false);
-      const material=new StandardMaterial(`reels-${anchor.id}`,this.scene);material.diffuseTexture=texture;material.emissiveColor=new Color3(.65,.65,.65);material.specularColor=Color3.Black();
-      const screen=MeshBuilder.CreatePlane(`screen-${anchor.id}`,{width:1.05,height:.45},this.scene);screen.position.set(anchor.x,1.49,23.45);screen.material=material;
-      this.reelTextures.set(anchor.id,texture);
-      // Neutral idle frame: no winning combination before the server publishes a result.
-      const context=texture.getContext() as CanvasRenderingContext2D;context.fillStyle='#eee3bf';context.fillRect(0,0,768,256);
-      context.fillStyle='#b9a780';for(const x of [128,384,640]){context.beginPath();context.arc(x,128,15,0,Math.PI*2);context.fill();}
+    this.placeAsset('casino-sign', 0, 5.4, 13.75, Math.PI);
+    this.placeAsset('casino-entry-sign', 0, 3.77, 11.12, Math.PI);
+    this.placeAsset('casino-tagline', 0, 4.35, 55.68, Math.PI);
+    for (const anchor of CASINO_ANCHORS) {
+      const y = floorHeight(anchor.x, anchor.z);
+      this.placeAsset(anchor.game === 'roulette' ? 'roulette-table' : anchor.game === 'blackjack' ? 'blackjack-table' : anchor.game === 'craps' ? 'craps-table' : anchor.game === 'poker' ? 'poker-table' : 'slot-machine', anchor.x, y, anchor.z, Math.PI);
+      if (anchor.game === 'poker') {
+        this.pokerArt = new PokerTableArt(this.scene, anchor);
+        for (const seat of POKER_SEAT_OFFSETS) this.placeAsset('casino-chair', anchor.x + seat.x, y, anchor.z + seat.z, Math.PI + seat.heading);
+      }
+      if (anchor.game === 'craps') this.crapsArt = new CrapsTableArt(this.scene, anchor);
+      if (anchor.game === 'blackjack') for (const seat of BLACKJACK_SEAT_OFFSETS) {
+        this.placeAsset('casino-chair', anchor.x + seat.x, y, anchor.z + seat.z, Math.PI + seat.heading);
+      }
+      if (anchor.game === 'slots') this.placeAsset('casino-chair', anchor.x, y, anchor.z - 1.25, Math.PI);
+      if (anchor.game === 'roulette') {
+        const wheel = this.placeAsset('roulette-wheel', anchor.x - 1.37, y + 1.32, anchor.z, Math.PI);
+        const ball = MeshBuilder.CreateSphere(`Ivory roulette ball ${anchor.id}`, { diameter: ROULETTE_GEOMETRY.ballRadius * 2, segments: 16 }, this.scene);
+        ball.material = this.mat('#f4edda', .4);
+        ball.position.set(anchor.x - .73, y + 1.365, anchor.z);
+        this.rouletteModels.set(anchor.id, { anchor, wheel, ball });
+      }
+      if (anchor.game !== 'slots') continue;
+      const texture = new DynamicTexture(`reels-${anchor.id}`, { width: 768, height: 256 }, this.scene, false);
+      const material = new StandardMaterial(`reels-${anchor.id}`, this.scene);
+      material.diffuseTexture = texture; material.emissiveColor = new Color3(.65, .65, .65); material.specularColor = Color3.Black();
+      const screen = MeshBuilder.CreatePlane(`screen-${anchor.id}`, { width: 1.05, height: .45 }, this.scene);
+      screen.position.set(anchor.x, y + 1.49, anchor.z - .55); screen.material = material;
+      this.reelTextures.set(anchor.id, texture);
+      const context = texture.getContext() as CanvasRenderingContext2D;
+      context.fillStyle = '#eee3bf'; context.fillRect(0, 0, 768, 256);
+      context.fillStyle = '#b9a780';
+      for (const x of [128, 384, 640]) { context.beginPath(); context.arc(x, 128, 15, 0, Math.PI * 2); context.fill(); }
       texture.update();
     }
-    // Clothing store: window bays and open centre doorway.
-    this.box('shop floor', 22, .05, -2, 7.5, .05, 19.5, '#dfd3bc', false);
-    for (const z of [-8, 4]) {
-      this.box('shop window', 17.7, 2.35, z, .08, 3.2, 5.8, '#66827a', false);
-      for (const zz of [z - 3, z, z + 3]) this.box('window mullion', 17.57, 2.35, zz, .1, 3.6, .07, '#48594d', false);
-      this.box('shop awning', 17.4, 4.4, z, 2, .17, 6.5, '#697961');
+    // Form & Thread: maintained assets and movement share the same local layout.
+    for (const asset of ['form-thread-shell', 'form-thread-roof', 'clothing-shop']) this.placeAsset(asset, SHOP_LAYOUT.origin.x, 0, SHOP_LAYOUT.origin.z, -Math.PI / 2);
+    for (const [name, point] of [['shop-sign', SHOP_SIGNS.fascia], ['shop-tagline', SHOP_SIGNS.tagline]] as const) this.placeAsset(name, point.x, point.y, point.z, -Math.PI / 2);
+    for (const bound of SHOP_FURNITURE) {
+      const mesh = this.box(`Shop camera ${bound.name}`, bound.x, bound.h / 2, bound.z, bound.w, bound.h, bound.d, '#e6dcc8', false);
+      mesh.visibility = 0; this.walls.push(mesh);
     }
-    this.box('shop lintel', 18, 4.45, -2, .6, 1.1, 4, '#d9cdb5');
-    this.placeAsset('shop-sign', 17.5, 4.48, -2, -Math.PI / 2);
-    this.placeAsset('shop-tagline', 25.68, 3, -2, -Math.PI / 2);
-    this.placeAsset('clothing-shop', 22, 0, -2, Math.PI);
+    // Window looks use the current clothing catalogue and the character's established identity.
+    for (const [index, look] of SHOP_LAYOUT.mannequins.entries()) {
+      const model = this.assets.citizen(`shop-mannequin-${index + 1}`, { name: '', shirt: index, skin: index % 3, top: look.top, bottoms: look.bottoms, shoes: look.shoes }, true);
+      const p = shopPoint(look.x, look.y, look.height);
+      model.root.position.set(p.x, p.y, p.z); model.root.rotation.y = -Math.PI / 2;
+      for (const group of model.entries.animationGroups) if (group.name.endsWith('/Idle')) { group.setWeightForAllAnimatables(1); group.goToFrame(group.from); }
+      model.setAnimationsActive(false);
+      for (const mesh of model.meshes) { mesh.receiveShadows = true; this.shadows.addShadowCaster(mesh); }
+    }
     // Western streetscape and distant skyline. These buildings are outside the walkable area.
     for (let i = 0; i < 7; i++) {
       const x = -36, z = -24 + i * 8, h = 8 + (i % 3) * 2.4;
@@ -268,8 +312,8 @@ export class TownScene {
     }
     for (let i = 0; i < 9; i++) {
       const h = 12 + (i * 7 % 16);
-      this.box('skyline', -50 + i * 13, h / 2, 50 + (i % 3) * 7, 9, h, 12, ['#a2b1ae', '#b3b9af', '#c3c4b7'][i % 3], false);
-      for (let floor = 3; floor < h; floor += 3) this.box('skyline band', -50 + i * 13, floor, 43.95 + (i % 3) * 7, 8, .65, .04, '#90a5a3', false);
+      this.box('skyline', -50 + i * 13, h / 2, 80 + (i % 3) * 7, 9, h, 12, ['#a2b1ae', '#b3b9af', '#c3c4b7'][i % 3], false);
+      for (let floor = 3; floor < h; floor += 3) this.box('skyline band', -50 + i * 13, floor, 73.95 + (i % 3) * 7, 8, .65, .04, '#90a5a3', false);
     }
     this.lampPosts = LAMP_POSTS.map(({ x, z }) => this.placeAsset('lamp', x, 0, z));
     for (const bench of BENCHES) this.bench(bench.x, bench.z, bench.heading);
@@ -295,15 +339,23 @@ export class TownScene {
       const material = new StandardMaterial('Changing room mirror', this.scene);
       material.diffuseColor = Color3.Black(); material.reflectionTexture = this.mirror; mesh.material = material;
     }
+    this.shopMirror = new MirrorTexture('Form & Thread reflection', 512, this.scene, true);
+    this.shopMirror.mirrorPlane = new Plane(1, 0, 0, -SHOP_LAYOUT.origin.x - SHOP_LAYOUT.preview.mirrorY);
+    this.shopMirror.level = .8;
     for (const mesh of this.scene.meshes) if (mesh.name.startsWith('clothing-shop/') && mesh.material?.name === 'Shop mirror') {
       const material = new StandardMaterial('Fitting room mirror', this.scene);
-      material.diffuseColor = Color3.Black(); material.reflectionTexture = this.mirror; mesh.material = material;
+      material.diffuseColor = Color3.Black(); material.reflectionTexture = this.shopMirror; mesh.material = material;
     }
+    this.shopMirrorMeshes = this.scene.meshes.filter(mesh => isShopMesh(mesh.name) && mesh.material?.name !== 'Fitting room mirror');
+    this.shopMirror.renderList = this.shopMirrorMeshes;
     this.studio.setEnabled(false);
     this.vegetation = new Vegetation(this.scene);
     this.vegetation.setQuality(this.low);
     this.vegetation.setReducedMotion(this.reducedMotion);
     this.lampLighting = new LampPostLighting(this.scene, this.lampPosts);
+    this.casinoLighting = new CasinoLighting(this.scene, this.lampLighting.glow);
+    this.casinoLighting.setReducedMotion(this.reducedMotion);
+    this.shopLighting = new ShopLighting(this.scene, this.lampLighting.glow);
     this.lampLighting.setQuality(this.low);
     this.dayCycle = new DayCycle(this.scene, this.scene.getLightByName('sun') as DirectionalLight, this.scene.getLightByName('sky') as HemisphericLight, this.lampLighting);
     if (this.casinoState) this.dayCycle.synchronise(Date.now() + this.casinoTimeOffset);
@@ -313,20 +365,22 @@ export class TownScene {
   customise(profile: Appearance, shop = false, wardrobe = false) {
     if (this.mode === 'playing') this.saveView();
     this.framing = null;
-    this.previewOrigin.set(shop ? 23.3 : 80, shop ? .13 : .04, shop ? -8.6 : 0);
+    this.previewOrigin.set(shop ? SHOP_PREVIEW.x : 80, shop ? SHOP_PREVIEW.y : .04, shop ? SHOP_PREVIEW.z : 0);
     this.previewAlpha = shop ? Math.PI : -Math.PI/2; this.previewRotation = shop ? -Math.PI/2 : Math.PI;
     this.mode = wardrobe ? 'wardrobe' : 'customise'; this.scene.shadowsEnabled = false; this.updateWaterQuality(); this.blur(); this.studio.setEnabled(!shop);
     if (this.localId) this.avatars.get(this.localId)?.root.setEnabled(false);
     this.preview?.dispose(); this.preview = this.assets.citizen('preview', profile);
     this.preview.root.position.copyFrom(this.previewOrigin);
     this.preview.root.rotation.y = this.previewRotation;
-    this.mirror.mirrorPlane = shop ? new Plane(1, 0, 0, -25.28) : new Plane(0, 0, 1, -2.105);
-    const roomMeshes = shop ? this.scene.meshes.filter(mesh => mesh.name.startsWith('clothing-shop/')) : this.studio.getChildMeshes();
-    this.mirror.renderList = [...this.preview.meshes, ...roomMeshes.filter(mesh => !['Changing room mirror','Fitting room mirror'].includes(mesh.material?.name ?? ''))];
+    if (!shop) this.mirror.renderList = [...this.preview.meshes, ...this.studio.getChildMeshes().filter(mesh => mesh.material?.name !== 'Changing room mirror')];
     this.camera.setTarget(this.previewOrigin.add(new Vector3(0,.98,0)), false, true, true);
     this.camera.alpha = this.previewAlpha; this.camera.beta = 1.46; this.camera.radius = 3.65;
     this.camera.lowerRadiusLimit = .6; this.camera.upperRadiusLimit = 4.3;
-    this.camera.lowerAlphaLimit = this.previewAlpha - .75; this.camera.upperAlphaLimit = this.previewAlpha + .75;
+    // The fitting view looks through the department aisle; its right-hand rail limits orbit.
+    // Turn controls rotate the character independently for a complete outfit inspection.
+    this.camera.lowerAlphaLimit = this.previewAlpha - (shop ? .2 : .75);
+    this.camera.upperAlphaLimit = this.previewAlpha + (shop ? .04 : .75);
+    this.camera.lowerBetaLimit = shop ? .9 : .45;
     this.camera.upperBetaLimit = 1.65;
     this.camera.attachControl(this.canvas, true); this.resize();
   }
@@ -344,7 +398,9 @@ export class TownScene {
     for (const mesh of model.meshes) { mesh.receiveShadows = true; this.shadows.addShadowCaster(mesh); }
     const label = this.sign(profile.name, 0, 2.15, 0, 1.35, .25, '#fff9e9', '#30483e', 0, 256);
     label.parent = root; label.billboardMode = Mesh.BILLBOARDMODE_ALL; label.isPickable = false;
-    return { root, model, label, wave: 0, seatId: '', lowDetail: false };
+    const hit = MeshBuilder.CreateCapsule(`player-hit:${id}`, { height: 2.1, radius: .42, tessellation: 8, subdivisions: 1 }, this.scene);
+    hit.parent = root; hit.position.y = 1.05; hit.visibility = 0; hit.isPickable = true;
+    return { root, model, label, hit, wave: 0, seatId: '', lowDetail: false, emoteId: '' };
   }
   enter(id: string) {
     this.avatars.get(id)?.root.setEnabled(true);
@@ -352,7 +408,7 @@ export class TownScene {
     this.mode = 'playing'; this.scene.shadowsEnabled = true; this.updateWaterQuality(); this.preview?.dispose(); this.preview = null;
     this.studio.setEnabled(false); this.mirror.renderList = [];
     this.camera.viewport = new Viewport(0, 0, 1, 1);
-    this.camera.lowerRadiusLimit = .65; this.camera.upperBetaLimit = 1.43;
+    this.camera.lowerRadiusLimit = .65; this.camera.lowerBetaLimit = .45; this.camera.upperBetaLimit = 1.43;
     this.camera.lowerAlphaLimit = null; this.camera.upperAlphaLimit = null;
     this.localId = id; this.restoreView();
     this.camera.upperRadiusLimit = 13;
@@ -365,17 +421,21 @@ export class TownScene {
       const created = !this.avatars.has(id);
       if (created) {
         const avatar = this.avatar(id, player);
-        avatar.root.position.set(player.x, 0, player.z); avatar.root.rotation.y = player.heading;
+        avatar.root.position.set(player.x, floorHeight(player.x, player.z), player.z); avatar.root.rotation.y = player.heading;
         this.avatars.set(id, avatar);
       }
       const avatar = this.avatars.get(id)!;
       avatar.model.apply(player);
-      if (avatar.seatId !== player.seatId) { avatar.seatId = player.seatId; avatar.root.position.set(player.x, 0, player.z); avatar.root.rotation.y = player.heading; }
+      if (avatar.emoteId !== (player.emoteId ?? '')) {
+        avatar.emoteId = player.emoteId ?? '';
+        if (id === this.localId && avatar.emoteId) this.blur();
+      }
+      if (avatar.seatId !== player.seatId) { avatar.seatId = player.seatId; avatar.root.position.set(player.x, floorHeight(player.x, player.z), player.z); avatar.root.rotation.y = player.heading; }
       if (id === this.localId) {
         const error = Math.hypot(avatar.root.position.x - player.x, avatar.root.position.z - player.z);
-        if (error > 2) avatar.root.position.set(player.x, 0, player.z);
+        if (error > 2) avatar.root.position.set(player.x, floorHeight(player.x, player.z), player.z);
         if (created) {
-          this.camera.setTarget(new Vector3(player.x, 1.35, player.z), false, true, true);
+          this.camera.setTarget(new Vector3(player.x, floorHeight(player.x, player.z) + 1.35, player.z), false, true, true);
           this.camera.radius = this.appliedRadius = this.requestedRadius;
         }
         this.desired = { x: player.x, z: player.z };
@@ -385,37 +445,30 @@ export class TownScene {
     }
     for (const [id, avatar] of this.avatars) if (!players.has(id)) { avatar.label.material?.dispose(false, true); avatar.model.dispose(); this.avatars.delete(id); }
   }
-  syncCasino(state: CasinoState) { this.casinoState=state; this.casinoTimeOffset=state.serverTime-Date.now(); this.tableCards.sync(state); this.dayCycle?.synchronise(state.serverTime); }
-  syncCasinoPrivate(value:CasinoPrivateState){this.tableCards.syncPrivate(value);}
+  syncCasino(state: CasinoState) { this.casinoState=state; this.casinoTimeOffset=state.serverTime-Date.now(); this.tableCards.sync(state); this.pokerArt?.sync(state.tables.find(t=>t.game==='poker') ?? null,this.casinoPrivate); this.dayCycle?.synchronise(state.serverTime); }
+  syncCasinoPrivate(value:CasinoPrivateState){this.casinoPrivate=value;this.tableCards.syncPrivate(value);this.pokerArt?.sync(this.casinoState?.tables.find(t=>t.game==='poker') ?? null,value);}
   focusCasino(anchor: CasinoAnchor | null) {
     if (anchor && !this.casinoFocus) this.saveView();
     this.casinoFocus=anchor;this.blur();
     this.updateWaterQuality();
     if(anchor) {
-      this.frameCamera(new Vector3(anchor.x,1.1,anchor.z), -Math.PI/2, anchor.game==='roulette'?.64:anchor.game==='slots'?1.3:.9, anchor.game==='roulette'?7:anchor.game==='slots'?4.2:5.3);
-      this.camera.lowerRadiusLimit=2.5;this.camera.upperRadiusLimit=8;
+      this.frameCamera(new Vector3(anchor.x,floorHeight(anchor.x,anchor.z)+1.1,anchor.z), -Math.PI/2, anchor.game==='roulette'||anchor.game==='craps'||anchor.game==='poker'?.64:anchor.game==='slots'?1.3:.9, anchor.game==='craps'||anchor.game==='poker'?6.4:anchor.game==='roulette'?7:anchor.game==='slots'?4.2:5.3);
+      this.camera.lowerRadiusLimit=.65;this.camera.upperRadiusLimit=8;
     } else {this.camera.lowerRadiusLimit=.65;this.camera.upperRadiusLimit=13;this.restoreView(true);}
     this.resize();
   }
   private animateCasino() {
-    if(!this.casinoState || !this.rouletteWheel)return;
-    const now=Date.now()+this.casinoTimeOffset;
-    const dt=Math.min(.1,this.engine.getDeltaTime()/1000);
-    const roulette=this.casinoState.tables.find(table=>table.game==='roulette');
-    const order=[0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
-    if(roulette?.game==='roulette') {
-      if(roulette.phase==='spinning' && !this.reducedMotion) {
-        this.wheelVelocity=2.2;this.rouletteWheel.rotation.y+=this.wheelVelocity*dt;
-        this.ballAngle-=4.5*dt;this.ballRadius+=(.82-this.ballRadius)*Math.min(1,dt*8);
-      } else {
-        this.wheelVelocity=this.reducedMotion?0:this.wheelVelocity*Math.exp(-dt*4);this.rouletteWheel.rotation.y+=this.wheelVelocity*dt;
-        const index=order.indexOf(roulette.result??roulette.history[0]??0);
-        // GLB pockets face local (cos t,0,-sin t), so the world ball angle for pocket i is -(R+t_i).
-        const target=-(index+.5)/37*Math.PI*2-this.rouletteWheel.rotation.y;
-        const difference=Math.atan2(Math.sin(target-this.ballAngle),Math.cos(target-this.ballAngle));
-        this.ballAngle+=difference*(this.reducedMotion?1:Math.min(1,dt*7));this.ballRadius+=(.64-this.ballRadius)*(this.reducedMotion?1:Math.min(1,dt*6));
-      }
-      this.rouletteBall.position.set(-9.37+Math.cos(this.ballAngle)*this.ballRadius,1.358+(this.ballRadius-.64)*.36,20+Math.sin(this.ballAngle)*this.ballRadius);
+    if(!this.casinoState)return;
+    const now=this.dayCycle?.clock.now() ?? Date.now()+this.casinoTimeOffset;
+    this.crapsArt?.update(this.casinoState.tables.find(table=>table.game==='craps') as CrapsView|undefined ?? null,this.casinoPrivate,now,this.reducedMotion);
+    for (const roulette of this.casinoState.tables) if (roulette.game === 'roulette') {
+      const model = this.rouletteModels.get(roulette.id); if (!model) continue;
+      const previous = roulette.history[0] ?? 0;
+      const pose = this.reducedMotion
+        ? sampleRouletteMotion(null, now, roulette.phase === 'result' ? roulette.result ?? previous : previous)
+        : sampleRouletteMotion(roulette.motion, now, roulette.result ?? previous);
+      model.wheel.rotation.y = pose.wheelAngle;
+      model.ball.position.set(model.anchor.x-1.37+Math.cos(pose.ballAngle)*pose.radius,CASINO_LAYOUT.floor+1.32+pose.height,model.anchor.z+Math.sin(pose.ballAngle)*pose.radius);
     }
     const cycle:readonly SlotSymbol[]=['cherry','lemon','bar','seven'];
     for(const table of this.casinoState.tables) if(table.game==='slots') {
@@ -443,6 +496,42 @@ export class TownScene {
       texture.update();
     }
   }
+  syncInteractionTime(serverTime: number) { if (Number.isFinite(serverTime)) this.casinoTimeOffset = serverTime - Date.now(); }
+  setSprint(enabled: boolean) { this.sprintToggle = enabled && !this.paused; this.onSprintChange?.(this.sprintToggle); }
+  stopMovement() { this.blur(); }
+  jump() {
+    const player = this.remote.get(this.localId ?? '');
+    if (this.mode === 'playing' && !this.paused && player && !player.seatId && !player.emoteId && !isHopping(player.jumpAt ?? 0, Date.now() + this.casinoTimeOffset)) this.onJump?.();
+  }
+  selectPlayer(profileId: string | null) {
+    this.selectedProfile = profileId;
+    if (profileId && !this.selectionRing) {
+      this.selectionRing = MeshBuilder.CreateTorus('selected-neighbour', { diameter: .95, thickness: .025, tessellation: 40 }, this.scene);
+      const mat = new StandardMaterial('selected-neighbour-colour', this.scene); mat.diffuseColor = Color3.FromHexString('#e3ebbb'); mat.emissiveColor = mat.diffuseColor.scale(.5); mat.disableLighting = true;
+      this.selectionRing.material = mat; this.selectionRing.isPickable = false;
+    }
+    this.selectionRing?.setEnabled(false);
+  }
+  private playerPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0) return;
+    this.pointerStarts.set(event.pointerId, { x: event.clientX, y: event.clientY, cancelled: this.pointerStarts.size > 0 });
+    if (this.pointerStarts.size > 1) for (const start of this.pointerStarts.values()) start.cancelled = true;
+  };
+  private playerPointerMove = (event: PointerEvent) => {
+    const start = this.pointerStarts.get(event.pointerId);
+    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) start.cancelled = true;
+  };
+  private playerPointerCancel = (event: PointerEvent) => { this.pointerStarts.delete(event.pointerId); };
+  private playerPointerUp = (event: PointerEvent) => {
+    const start = this.pointerStarts.get(event.pointerId); this.pointerStarts.delete(event.pointerId);
+    if (!start || start.cancelled || this.paused || this.mode !== 'playing' || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const proxies = new Map([...this.avatars.entries()].filter(([id]) => id !== this.localId).map(([id, avatar]) => [avatar.hit, id]));
+    const citizenMeshes = new Set([...this.avatars.values()].flatMap(avatar => avatar.model.meshes));
+    const hit = this.scene.pick(event.clientX - rect.left, event.clientY - rect.top, mesh => proxies.has(mesh as Mesh) || this.walls.includes(mesh as Mesh) || mesh.isPickable && mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && !citizenMeshes.has(mesh) && !mesh.name.startsWith('player-hit:'));
+    const id = hit?.pickedMesh && proxies.get(hit.pickedMesh as Mesh), player = id && this.remote.get(id);
+    if (player) { this.blur(); this.onSelectPlayer?.(player.profileId); }
+  };
   setTouch(x: number, z: number) { this.touch = { x, z }; }
   setPaused(paused: boolean) { this.paused = paused; if (paused) this.blur(); }
   setQuality(low: boolean) {
@@ -470,6 +559,7 @@ export class TownScene {
     this.tableCards?.setReducedMotion(reduced);
     this.fountain?.setReducedMotion(reduced);
     this.vegetation?.setReducedMotion(reduced);
+    this.casinoLighting?.setReducedMotion(reduced);
   }
   setInteractionFocus(anchor: CasinoAnchor | null) {
     if (!this.interactionMarker && anchor) {
@@ -477,7 +567,7 @@ export class TownScene {
       const material = this.mat('#d4bd83', 0); material.emissiveColor = new Color3(.16,.13,.07);
       this.interactionMarker.material = material; this.interactionMarker.isPickable = false;
     }
-    if (this.interactionMarker) { this.interactionMarker.setEnabled(!!anchor); if (anchor) this.interactionMarker.position.set(anchor.x,.09,anchor.z - (anchor.game === 'slots' ? 1 : anchor.game === 'blackjack' ? 2.1 : 1.6)); }
+    if (this.interactionMarker) { this.interactionMarker.setEnabled(!!anchor); if (anchor) this.interactionMarker.position.set(anchor.x,floorHeight(anchor.x,anchor.z)+.09,anchor.z - (anchor.game === 'slots' ? 1 : anchor.game === 'blackjack' ? 2.1 : 1.6)); }
   }
   private saveView() { this.camera.inertialRadiusOffset = 0; this.savedView = { alpha: this.camera.alpha, beta: this.camera.beta, radius: this.requestedRadius }; }
   private restoreView(smooth = false) {
@@ -496,15 +586,17 @@ export class TownScene {
     this.savedView = null;
   }
   private frameCamera(to: Vector3, alpha: number, beta: number, radius: number) {
+    if (this.casinoFocus) this.focusRadius = radius;
     this.framing = { from: this.camera.target.clone(), to, alpha, beta, radius, startAlpha: this.camera.alpha, startBeta: this.camera.beta, startRadius: this.camera.radius, age: this.reducedMotion ? .25 : 0 };
   }
   recenter() { this.savedView = null; this.restoreView(); }
   private keyDown = (event: KeyboardEvent) => {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLButtonElement) return;
-    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) { event.preventDefault(); this.keys.add(event.code); }
+    if (event.code === 'Space' && !event.repeat) { event.preventDefault(); this.jump(); return; }
+    if (['ShiftLeft', 'ShiftRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) { event.preventDefault(); this.keys.add(event.code); }
   };
   private keyUp = (event: KeyboardEvent) => { this.keys.delete(event.code); };
-  private blur = () => { this.keys.clear(); this.touch = { x: 0, z: 0 }; this.onInput?.(0, 0); };
+  private blur = () => { this.keys.clear(); this.touch = { x: 0, z: 0 }; this.pointerStarts.clear(); this.setSprint(false); this.onInput?.(0, 0, false); };
   private visibility = () => { if (document.hidden) this.blur(); };
   private resize = () => {
     this.engine.resize();
@@ -528,6 +620,14 @@ export class TownScene {
       if (t === 1) this.framing = null;
     }
     this.dayCycle?.update(this.mode === 'customise' || this.mode === 'wardrobe');
+    this.casinoLighting?.update(this.dayCycle?.clock.now() ?? Date.now(), this.dayCycle?.state.lamps ?? 0);
+    const shopCharacters = [...this.avatars.values()].map(avatar => avatar.root).concat(this.preview ? [this.preview.root] : []).filter(root => root.isEnabled() && inShop(root.position.x, root.position.z));
+    this.shopLighting?.setCharacters(shopCharacters);
+    const reflectionKey = shopCharacters.map(root => root.uniqueId).join(',');
+    if (reflectionKey !== this.shopReflectionKey && this.shopMirror) {
+      this.shopReflectionKey = reflectionKey;
+      this.shopMirror.renderList = [...this.shopMirrorMeshes, ...shopCharacters.flatMap(root => root.getChildMeshes())];
+    }
     this.vegetation?.update(dt, !document.hidden && this.mode !== 'customise' && this.mode !== 'wardrobe');
     this.fountain?.update(dt, this.camera);
     if (this.mode === 'customise' || this.mode === 'wardrobe') { this.preview?.animate(false); return; }
@@ -535,13 +635,16 @@ export class TownScene {
     const forward = Number(this.keys.has('KeyW') || this.keys.has('ArrowUp')) - Number(this.keys.has('KeyS') || this.keys.has('ArrowDown')) - this.touch.z;
     const strafe = Number(this.keys.has('KeyD') || this.keys.has('ArrowRight')) - Number(this.keys.has('KeyA') || this.keys.has('ArrowLeft')) + this.touch.x;
     const a = this.camera.alpha;
+    const now = Date.now() + this.casinoTimeOffset;
+    const sprint = !this.paused && (this.sprintToggle || this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
     let x = -Math.cos(a) * forward - Math.sin(a) * strafe;
     let z = -Math.sin(a) * forward + Math.cos(a) * strafe;
     if (this.paused || this.remote.get(this.localId)?.seatId) { x = 0; z = 0; }
     const len = Math.max(1, Math.hypot(x, z)); x /= len; z /= len;
     this.motionClock += dt;
     this.inputClock += dt;
-    if (this.inputClock >= .05) { this.inputClock = 0; this.onInput?.(x, z); }
+    if (this.inputClock >= .05) { this.inputClock = 0; this.onInput?.(x, z, sprint); }
+    this.selectionRing?.setEnabled(false);
     for (const [id, avatar] of this.avatars) {
       const state = this.remote.get(id); if (!state) continue;
       const detailDistance = Math.hypot(avatar.root.position.x-this.camera.target.x,avatar.root.position.z-this.camera.target.z);
@@ -552,15 +655,22 @@ export class TownScene {
         const model = this.assets.citizen(id,state,lowDetail);
         model.root.position.copyFrom(avatar.root.position); model.root.rotation.copyFrom(avatar.root.rotation);
         model.root.setEnabled(avatar.root.isEnabled()); model.copyAnimationFrom(previous);
-        avatar.label.parent = model.root;
+        avatar.label.parent = model.root; avatar.hit.parent = model.root;
         for (const mesh of previous.meshes) this.shadows.removeShadowCaster(mesh);
         avatar.model = model; avatar.root = model.root; avatar.lowDetail = lowDetail;
         previous.dispose();
         for (const mesh of model.meshes) { mesh.receiveShadows = true; this.shadows.addShadowCaster(mesh); }
       }
       let moving = state.moving;
-      if (id === this.localId) {
-        const next = move(avatar.root.position, { x, z }, dt);
+      const hopping = isHopping(state.jumpAt ?? 0, now);
+      if (state.emoteId) {
+        const blend = now >= (state.emoteAt ?? 0) ? 1 : 1 - Math.exp(-dt * 22);
+        avatar.root.position.x += (state.x - avatar.root.position.x) * blend;
+        avatar.root.position.z += (state.z - avatar.root.position.z) * blend;
+        const turn = Math.atan2(Math.sin(state.heading - avatar.root.rotation.y), Math.cos(state.heading - avatar.root.rotation.y));
+        avatar.root.rotation.y += turn * blend; moving = false;
+      } else if (id === this.localId) {
+        const next = move(avatar.root.position, { x, z, sprint }, dt, hopping);
         const displaced = Math.hypot(next.x-avatar.root.position.x, next.z-avatar.root.position.z) > dt * .08;
         avatar.root.position.x = next.x; avatar.root.position.z = next.z;
         const movingNow = Math.hypot(x, z) > .01;
@@ -573,6 +683,7 @@ export class TownScene {
         const heading = state.seatId ? state.heading : moving ? Math.atan2(x, z) : avatar.root.rotation.y;
         const turn = Math.atan2(Math.sin(heading-avatar.root.rotation.y),Math.cos(heading-avatar.root.rotation.y));
         avatar.root.rotation.y += turn * (1-Math.exp(-dt*14));
+        avatar.root.position.y = floorHeight(avatar.root.position.x, avatar.root.position.z);
         const target = avatar.root.position.add(new Vector3(0, 1.35, 0));
         if(!this.casinoFocus && !this.framing)this.camera.setTarget(Vector3.Lerp(this.camera.target, target, 1 - Math.exp(-dt * 15)), false, true, true);
       } else {
@@ -583,19 +694,27 @@ export class TownScene {
         const distance = Vector3.DistanceSquared(avatar.root.position, this.camera.target);
         avatar.label.setEnabled(distance < 225);
       }
-      avatar.model.animate(moving, !!state.seatId);
+      avatar.root.position.y = floorHeight(avatar.root.position.x, avatar.root.position.z) + hopHeight(state.jumpAt ?? 0, now);
+      avatar.label.setEnabled(id !== this.localId && Vector3.DistanceSquared(avatar.root.position, this.camera.target) < 225);
+      avatar.model.animate(moving, !!state.seatId, { sprinting: id === this.localId ? sprint : !!state.sprinting, jumpAt: hopping ? state.jumpAt : undefined, emoteKind: state.emoteKind, emoteRole: state.emoteRole, emoteAt: state.emoteAt, now });
+      if (this.selectionRing && state.profileId === this.selectedProfile) { this.selectionRing.setEnabled(true); this.selectionRing.position.set(avatar.root.position.x, floorHeight(avatar.root.position.x, avatar.root.position.z) + .035, avatar.root.position.z); }
       const animationRange = moving || avatar.model.isWaving ? (this.low ? 900 : 2025) : (this.low ? 36 : 144);
-      const animate = id === this.localId || avatar.model.isTransitioning || Vector3.DistanceSquared(avatar.root.position, this.camera.target) < animationRange;
+      const animate = id === this.localId || !!state.emoteId || hopping || avatar.model.isTransitioning || Vector3.DistanceSquared(avatar.root.position, this.camera.target) < animationRange;
       avatar.model.setAnimationsActive(animate);
     }
-    // User zoom remains independent of the temporary obstruction radius.
-    if (!this.casinoFocus && !this.framing) {
+    // Keep the camera within enclosed rooms, including table views and their transitions.
+    // Retain the user's desired zoom so the view opens back out after the stairs.
+    {
       const userDelta = this.camera.radius - this.appliedRadius;
-      this.requestedRadius = Math.max(3, Math.min(13, this.requestedRadius + userDelta));
+      if (!this.framing) {
+        if (this.casinoFocus) this.focusRadius = Math.max(2.5, Math.min(8, this.focusRadius + userDelta));
+        else this.requestedRadius = Math.max(3, Math.min(13, this.requestedRadius + userDelta));
+      }
+      const desired = this.framing ? this.camera.radius : this.casinoFocus ? this.focusRadius : this.requestedRadius;
       const direction = new Vector3(Math.cos(this.camera.alpha)*Math.sin(this.camera.beta), Math.cos(this.camera.beta), Math.sin(this.camera.alpha)*Math.sin(this.camera.beta));
-      const hit = this.scene.pickWithRay(new Ray(this.camera.target, direction, this.requestedRadius), mesh => this.walls.includes(mesh as Mesh));
-      const allowed = hit?.hit ? Math.max(.65, hit.distance-.3) : this.requestedRadius;
-      const radius = Math.min(this.requestedRadius, allowed);
+      const hit = this.scene.pickWithRay(new Ray(this.camera.target, direction, desired), mesh => this.walls.includes(mesh as Mesh));
+      const allowed = hit?.hit ? Math.max(.65, hit.distance-.3) : desired;
+      const radius = Math.min(desired, allowed);
       this.camera.radius = radius < this.camera.radius ? radius : this.camera.radius + (radius-this.camera.radius)*(1-Math.exp(-dt*6));
       this.appliedRadius = this.camera.radius;
     }
@@ -620,6 +739,8 @@ export class TownScene {
   dispose() {
     this.blur(); window.removeEventListener('keydown', this.keyDown); window.removeEventListener('keyup', this.keyUp);
     window.removeEventListener('blur', this.blur); document.removeEventListener('visibilitychange', this.visibility); window.removeEventListener('resize', this.resize);
+    this.canvas.removeEventListener('pointerdown', this.playerPointerDown); this.canvas.removeEventListener('pointermove', this.playerPointerMove);
+    this.canvas.removeEventListener('pointerup', this.playerPointerUp); this.canvas.removeEventListener('pointercancel', this.playerPointerCancel);
     this.resizeObserver.disconnect(); cancelAnimationFrame(this.resizeFrame); this.scene.dispose(); this.engine.dispose();
   }
 }

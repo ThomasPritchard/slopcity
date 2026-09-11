@@ -26,7 +26,7 @@ export class GuestRepository {
    await client.query('SELECT pg_advisory_xact_lock(782641092)');
    await client.query('CREATE TABLE IF NOT EXISTS guest_schema_migrations (version integer PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
    const versions = await client.query('SELECT version FROM guest_schema_migrations ORDER BY version');
-   if (versions.rows.some(row => row.version !== 1 && row.version !== 2 && row.version !== 3)) throw new Error('Unsupported guest schema version');
+   if (versions.rows.some(row => row.version !== 1 && row.version !== 2 && row.version !== 3 && row.version !== 4 && row.version !== 5 && row.version !== 6)) throw new Error('Unsupported guest schema version');
    if (!versions.rowCount) {
     await client.query(await readFile(new URL('./migrations/001_guests.sql', import.meta.url), 'utf8'));
     await client.query('INSERT INTO guest_schema_migrations(version) VALUES (1)');
@@ -59,7 +59,10 @@ export class GuestRepository {
  async blocks(id: string): Promise<string[]> { return (await this.pool.query('SELECT target_id FROM guest_blocks WHERE owner_id=$1 ORDER BY target_id', [id])).rows.map(row => row.target_id); }
  async setBlock(owner: string, target: string, blocked: boolean): Promise<boolean> {
   if (owner === target || !validProfileId(target)) return false;
-  if (blocked) return !!(await this.pool.query('INSERT INTO guest_blocks(owner_id,target_id) SELECT $1,id FROM guest_profiles WHERE id=$2 ON CONFLICT DO NOTHING RETURNING target_id', [owner,target])).rowCount || (await this.blocks(owner)).includes(target);
-  await this.pool.query('DELETE FROM guest_blocks WHERE owner_id=$1 AND target_id=$2', [owner,target]); return true;
+  return this.transaction(async client => {
+   await client.query('SELECT id FROM guest_profiles WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE', [[owner,target]]);
+   if (blocked) return !!(await client.query('INSERT INTO guest_blocks(owner_id,target_id) SELECT $1,id FROM guest_profiles WHERE id=$2 ON CONFLICT DO NOTHING RETURNING target_id', [owner,target])).rowCount || !!(await client.query('SELECT 1 FROM guest_blocks WHERE owner_id=$1 AND target_id=$2',[owner,target])).rowCount;
+   await client.query('DELETE FROM guest_blocks WHERE owner_id=$1 AND target_id=$2', [owner,target]); return true;
+  });
  }
 }

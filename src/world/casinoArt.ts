@@ -5,6 +5,7 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Vector4 } from '@babylonjs/core/Maths/math.vector';
+import { CASINO_LAYOUT } from '../../shared/casinoLayout';
 import { CASINO_ANCHORS, BLACKJACK_SEAT_OFFSETS, type Card, type CasinoState, type CasinoPrivateState, type SlotSymbol } from '../../shared/casino';
 
 /** Draw the same four recognisable symbols on the physical cabinet's reel texture. */
@@ -31,7 +32,7 @@ export class CasinoTableArt {
   private materials=new Map<string,StandardMaterial>();
   private targets=new Map<string,{x:number;z:number;startX:number;startZ:number;age:number}>();
   private chips=new Map<string,Mesh>();
-  private highlights=new Map<number,Mesh>();
+  private highlights=new Map<string,Mesh>();
   private privateState:CasinoPrivateState={rouletteBets:[]};
   private state:CasinoState|null=null;
   private chipMaterial:StandardMaterial;
@@ -54,7 +55,7 @@ export class CasinoTableArt {
   private chip(key:string,x:number,z:number,stake:number,active:Set<string>) {
     active.add(key);let mesh=this.chips.get(key);
     if(!mesh){mesh=MeshBuilder.CreateCylinder(`casino-chip-${key}`,{diameter:.14,height:.035,tessellation:24,faceUV:[new Vector4(0,0,1,1),new Vector4(0,.45,.015,.55),new Vector4(0,0,1,1)]},this.scene);mesh.material=this.chipMaterial;this.chips.set(key,mesh);}
-    mesh.scaling.y=Math.min(6,Math.max(1,stake/10));mesh.position.set(x,(key.startsWith('roulette')?1.225:1.155)+mesh.scaling.y*.0175,z);mesh.setEnabled(true);
+    mesh.scaling.y=Math.min(6,Math.max(1,stake/10));mesh.position.set(x,CASINO_LAYOUT.floor+(key.startsWith('roulette')?1.225:1.155)+mesh.scaling.y*.0175,z);mesh.setEnabled(true);
   }
   private material(card:Card|null) {
     const key=card?`${card.rank}-${card.suit}`:'back';const existing=this.materials.get(key);if(existing)return existing;
@@ -77,7 +78,7 @@ export class CasinoTableArt {
       const changed=!mesh.isEnabled()||mesh.material!==material;
       if(changed||!target||target.x!==x||target.z!==z){
         const startX=changed?dealX:mesh.position.x,startZ=changed?dealZ:mesh.position.z;
-        this.targets.set(key,{x,z,startX,startZ,age:this.reducedMotion?.35:0});mesh.position.set(this.reducedMotion?x:startX,1.17+order*.003,this.reducedMotion?z:startZ);
+        this.targets.set(key,{x,z,startX,startZ,age:this.reducedMotion?.35:0});mesh.position.set(this.reducedMotion?x:startX,CASINO_LAYOUT.floor+1.17+order*.003,this.reducedMotion?z:startZ);
       }
       mesh.material=material;mesh.setEnabled(true);
     };
@@ -89,19 +90,27 @@ export class CasinoTableArt {
         seat.hands.forEach((hand,hi)=>this.chip(`${table.id}-${seat.seat}-${hi}`,anchor.x+offset.x*.66+(hi-(seat.hands.length-1)/2)*.22,anchor.z+offset.z*.62,hand.stake,activeChips));
       }
     }
-    const roulette=state.tables.find(table=>table.game==='roulette');
-    const covered=new Set<number>();
-    if(roulette){
-      const bets=this.privateState.rouletteBets.filter(bet=>bet.roundId===roulette.roundId);
-      const point=(number:number)=>number===0?{x:-7.05,z:20.74}:{x:-8.05+(number-1)%6*.4,z:20.525-Math.floor((number-1)/6)*.15};
-      bets.forEach(({bet},index)=>{let x=0,z=0;for(const number of bet.numbers){covered.add(number);const p=point(number);x+=p.x;z+=p.z;}
-        this.chip(`roulette-own-${index}`,x/bet.numbers.length+(index%3-1)*.04,z/bet.numbers.length,bet.stake,activeChips);
+    const activeHighlights = new Set<string>();
+    for (const roulette of state.tables) if (roulette.game === 'roulette') {
+      const anchor = CASINO_ANCHORS.find(a => a.id === roulette.id)!;
+      const covered = new Set<number>();
+      const bets = this.privateState.rouletteBets.filter(bet => bet.tableId === roulette.id && bet.roundId === roulette.roundId);
+      const point = (number: number) => number === 0 ? { x: anchor.x + .95, z: anchor.z + .74 } : { x: anchor.x - .05 + (number - 1) % 6 * .4, z: anchor.z + .525 - Math.floor((number - 1) / 6) * .15 };
+      bets.forEach(({ bet }, index) => {
+        let x = 0, z = 0;
+        for (const number of bet.numbers) { covered.add(number); const p = point(number); x += p.x; z += p.z; }
+        this.chip(`${roulette.id}-own-${index}`, x / bet.numbers.length + (index % 3 - 1) * .04, z / bet.numbers.length, bet.stake, activeChips);
       });
-      if(roulette.game==='roulette'&&roulette.betCount>bets.length)this.chip('roulette-others',-5.70,19.24,(roulette.betCount-bets.length)*10,activeChips);
-      for(const number of covered){let mesh=this.highlights.get(number);if(!mesh){mesh=MeshBuilder.CreateGround(`roulette-coverage-${number}`,{width:number===0?2.36:.38,height:.13},this.scene);mesh.material=this.highlightMaterial;this.highlights.set(number,mesh);}const p=point(number);mesh.position.set(p.x,1.229,p.z);mesh.setEnabled(true);}
+      if (roulette.betCount > bets.length) this.chip(`${roulette.id}-others`, anchor.x + 2.30, anchor.z - .76, (roulette.betCount - bets.length) * 10, activeChips);
+      for (const number of covered) {
+        const key = `${roulette.id}-${number}`; activeHighlights.add(key);
+        let mesh = this.highlights.get(key);
+        if (!mesh) { mesh = MeshBuilder.CreateGround(`roulette-coverage-${key}`, { width: number === 0 ? 2.36 : .38, height: .13 }, this.scene); mesh.material = this.highlightMaterial; this.highlights.set(key, mesh); }
+        const p = point(number); mesh.position.set(p.x, CASINO_LAYOUT.floor + 1.229, p.z); mesh.setEnabled(true);
+      }
     }
     for(const[key,mesh]of this.chips)if(!activeChips.has(key))mesh.setEnabled(false);
-    for(const[number,mesh]of this.highlights)if(!covered.has(number))mesh.setEnabled(false);
+    for(const[key,mesh]of this.highlights)if(!activeHighlights.has(key))mesh.setEnabled(false);
     for(const [key,mesh]of this.cards)if(!active.has(key))mesh.setEnabled(false);
   }
 }

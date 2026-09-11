@@ -6,9 +6,9 @@ const endpoint = process.env.GAME_URL || 'http://localhost:5173';
 const output = 'output/playwright/casino-signage';
 await mkdir(output, { recursive: true });
 const definitions = [
-  { name: 'casino-sign', legacy: 'THE MERIDIAN', y: 5.4, z: 13.36, width: 10, height: 1.7, hangingDrop: 0 },
-  { name: 'casino-entry-sign', legacy: 'C A S I N O', y: 3.77, z: 11.98, width: 2.4, height: .5, hangingDrop: .28 },
-  { name: 'casino-tagline', legacy: 'A little luck. Good company.', y: 4.35, z: 25.68, width: 10, height: 2, hangingDrop: 0 },
+  { name: 'casino-sign', legacy: 'THE MERIDIAN', y: 5.4, z: 13.75, width: 10, height: 1.7, hangingDrop: 0 },
+  { name: 'casino-entry-sign', legacy: 'C A S I N O', y: 3.77, z: 11.12, width: 2.4, height: .5, hangingDrop: .28 },
+  { name: 'casino-tagline', legacy: 'A little luck. Good company.', y: 4.35, z: 55.68, width: 10, height: 2, hangingDrop: 0 },
 ];
 const exports = [];
 for (const { name } of definitions) {
@@ -56,7 +56,7 @@ try {
     assert.equal(asset.textureReady, true);
     assert.equal(asset.legacy, false);
     if (definition.name === 'casino-sign') assert.ok(asset.bottom > 4.5 && asset.top < 6.35, 'fascia clears canopy and parapet');
-    if (definition.hangingDrop) assert.ok(Math.abs(asset.top - 4.3) < .002, 'hangers meet canopy underside');
+    if (definition.hangingDrop) assert.ok(Math.abs(asset.top - 4.3) < .002, 'hangers embed in the marquee fascia');
     if (definition.name === 'casino-tagline') assert.ok(asset.bottom > 3.275, 'slogan clears timber panels and lights');
   }
 

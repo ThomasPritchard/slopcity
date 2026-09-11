@@ -1,4 +1,5 @@
 import type { Profile } from './world.ts';
+import { inShop } from './shopLayout.ts';
 export type ClothingSlot = 'top' | 'bottoms' | 'shoes';
 export type Outfit = Record<ClothingSlot, string>;
 export type Appearance = Profile & Partial<Outfit>;
@@ -24,4 +25,4 @@ export const CATALOGUE: readonly ClothingItem[] = [
 export const clothingItem = (id: string) => CATALOGUE.find(item => item.id === id);
 export type WalletState = { balance: number; salaryProgressMs: number; owned: string[]; outfit: Outfit; revision: number };
 export type EconomyView = WalletState & { accruing: boolean };
-export const isInShop = (x: number, z: number) => x > 18.35 && x < 25.65 && z > -11.65 && z < 7.65;
+export const isInShop = (x: number, z: number) => inShop(x, z, .35);

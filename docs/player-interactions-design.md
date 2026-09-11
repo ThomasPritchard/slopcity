@@ -1,0 +1,25 @@
+# Player interaction quality of life
+
+Approved 11 September 2026. Extend the current town without changing guest identity, casino rules or character identity. Implementation stays local until separately published.
+
+- Sprint: 1.5 times walking speed, Shift on desktop and a touch toggle, no stamina. Client and server use the same speed and collision function. Release held input on focus loss and modal entry.
+- Jump: a 0.6-second, 0.48-metre hop. The server admits each jump with a cooldown; horizontal obstacle and ledge restrictions stay active throughout. Check body/head clearance and prevent jumping from a seat or during another interaction. This does not introduce climbing, object-top landings or falling.
+- Player cards: click/tap a visible avatar, or select someone in Social. Distinguish taps from camera drags, respect occlusion, and support keyboard access through Social. Preserve mute/block. Cards show offline/departed state and never another player's wallet.
+- Shared emotes: handshake and hug, with explicit private invitations, decline/cancel, expiry and rate limits. Revalidate both players, proximity, blocks, standing state, swept alignment paths and clear space on acceptance. Server owns paired positions, headings and start time. New viewers sample the current clip phase. Movement, blocking, seating, busy menus or departure cancel the pair. Do not replay stale input after completion.
+- Friends: mutual saved requests, accept/decline/cancel/remove and in-town status, attached to existing browser-bound guest IDs. No account recovery or direct messages.
+- Gifts: sender confirms target and positive integer amount, at most 1,000 per gift. Both guests must be nearby in the same town and not blocked. Each future 100-credit salary payment unlocks 100 credits of outgoing gifting allowance; starting grants, incoming gifts and casino/poker returns add none. A gift consumes allowance and balance atomically; both wallet entries commit together. Request IDs make retries safe, including after a recipient departs. Existing earned credits receive no retroactive allowance.
+
+Persistent social data uses authenticated private `/api/social` routes and a new migration, with private change notifications. Emote state belongs to the live room; animation assets contain poses, while the server owns movement and timing. Blender edits retain source and both detail exports together.
+
+Verification covers movement/collision and cancellation rules, two-client invitation/replication, transactional gift concurrency/retries, saved friends and blocking, desktop picking/camera gestures, portrait and short landscape layouts, and actual rendered animation contact. Unit/build evidence does not establish physical-device or 64-player rendering capacity.
+
+## Local implementation evidence — 11 September 2026
+
+- Node 24.20.0: database-inclusive `tests/*.test.ts` passed 125/125 with no skips; client and server builds passed. The client retains its existing bundle-size warning.
+- `test:social-persistence`, `test:guests` and `test:economy` passed against disposable local schemas. Coverage includes salary allowance without backfill, concurrent gifts/purchases, reciprocal gifts, replay after departure or restart, blocked interactions, mutual friend transitions and rollback after a late ledger failure.
+- `test:interactions-network` passed with three real protocol clients: private recipient consent, shared timing and late observers, cancellation/expiry, bounded sprint, hop cooldown, seating and wall restrictions, private wallet notifications and gift retries.
+- `test:interactions-browser` passed in headless WebKit and Chromium at normal quality, using Node 24. Chromium uses the verified Metal backend on macOS; default SwiftShader saturated the graphics process and timed out during a second session's startup. Both successful runs cover actual avatar picking, camera drag separation, keyboard focus, rendered handshake/hug timing and spacing, sprint/jump, friendship, gift confirmation and recovery, and 390 × 844 / 844 × 390 touch layouts. Chromium additionally checks an actual emulated-screen joystick drag and release. No page errors, React update-depth errors or unexpected failed requests occurred in the successful runs.
+- Existing Social, Wave and Character browser checks passed. Their renderer inspection now resolves the active module and selects the waving citizen's rig independently of shop mannequins.
+- The editable citizen and both GLBs contain all ten clips. Geometry, materials and the original four clip payloads are unchanged; the new full/LOD clip payloads match. Authored renders and the 109-frame hug arm-clearance check supplement the actual browser captures.
+
+Screenshots and JSON reports are under ignored `output/playwright/player-interactions/`. Browser gifting uses one salary ledger fixture in its disposable schema; elapsed salary thresholds are exercised separately with simulated time. These are local checks, with no physical-phone, Windows, 64-avatar capacity or production-deployment claim.

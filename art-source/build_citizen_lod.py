@@ -32,6 +32,8 @@ def inspect_glb(path):
         'nodes': sorted(n['name'] for n in doc['nodes']),
         'animations': sorted(a['name'] for a in doc['animations']),
         'animation_channels': {a['name']: len(a['channels']) for a in doc['animations']},
+        'animation_durations': {a['name']: round(max(accessors[s['input']]['max'][0] for s in a['samplers'])
+            - min(accessors[s['input']]['min'][0] for s in a['samplers']), 6) for a in doc['animations']},
         'skins': [[doc['nodes'][index]['name'] for index in skin['joints']] for skin in doc['skins']],
         'all_primitives_skinned': all('JOINTS_0' in p['attributes'] and 'WEIGHTS_0' in p['attributes'] for mesh in meshes for p in mesh['primitives']),
     }
@@ -77,9 +79,11 @@ bpy.context.view_layer.objects.active = rig
 bpy.ops.export_scene.gltf(filepath=str(OUTPUT), export_format='GLB', use_selection=True,
     export_animations=True, export_yup=True, export_apply=False)
 original, lod = inspect_glb(ORIGINAL), inspect_glb(OUTPUT)
-for key in ('mesh_count', 'materials', 'nodes', 'animations', 'animation_channels', 'skins', 'all_primitives_skinned'):
+for key in ('mesh_count', 'materials', 'nodes', 'animations', 'animation_channels', 'animation_durations', 'skins', 'all_primitives_skinned'):
     assert original[key] == lod[key], f'LOD changed character contract: {key}'
-assert lod['animations'] == ['Idle', 'Sit', 'Walk', 'Wave']
+assert lod['animations'] == ['HandshakeA', 'HandshakeB', 'HugA', 'HugB', 'Idle', 'Jump', 'Run', 'Sit', 'Walk', 'Wave']
+assert lod['animation_durations'] == {'HandshakeA': 3.2, 'HandshakeB': 3.2, 'HugA': 3.6, 'HugB': 3.6,
+    'Idle': 2., 'Jump': .6, 'Run': .6, 'Sit': 2., 'Walk': 1., 'Wave': 2.8}
 assert lod['all_primitives_skinned']
 retained = lod['triangles'] / original['triangles']
 assert .20 <= retained <= .30, f'Unexpected triangle retention: {retained}'

@@ -19,7 +19,9 @@ try {
   await page.waitForTimeout(500);
   // Inspect the real development scene, keeping the greeting triggered by its public UI.
   await page.evaluate(async () => {
-    const modulePath = '/node_modules/.vite/deps/@babylonjs_core_Engines_engine.js';
+    const source = await (await fetch('/src/world/scene.ts')).text();
+    const modulePath = source.match(/import\s*\{\s*Engine\s*\}\s*from\s*["']([^"']+)/)?.[1];
+    if (!modulePath) throw new Error('Could not resolve the actual renderer Engine');
     const { Engine } = await import(modulePath);
     const scene = Engine.Instances[0].scenes[0];
     (window as any).waveTestScene = scene;
@@ -33,8 +35,11 @@ try {
   await page.waitForTimeout(900);
   const pose = await page.evaluate(() => {
     const scene = (window as any).waveTestScene;
-    const joints = ['upper_arm.R', 'forearm.R', 'hand.R'].map(name => scene.transformNodes.find((node: any) => node.name.endsWith(`/${name}`))?.getAbsolutePosition().asArray());
-    return { shoulder: joints[0], elbow: joints[1], wrist: joints[2], fps: scene.getEngine().getFps(), wavePlaying: scene.animationGroups.some((group: any) => group.name.endsWith('/Wave') && group.isPlaying) };
+    const wave = scene.animationGroups.find((group: any) => group.name.endsWith('/Wave') && group.isPlaying);
+    const prefix = wave?.name.slice(0, -'Wave'.length);
+    // Shop mannequins share this rig. Inspect the citizen actually waving.
+    const joints = ['upper_arm.R', 'forearm.R', 'hand.R'].map(name => scene.transformNodes.find((node: any) => prefix && node.name.startsWith(prefix) && node.name.endsWith(`/${name}`))?.getAbsolutePosition().asArray());
+    return { shoulder: joints[0], elbow: joints[1], wrist: joints[2], fps: scene.getEngine().getFps(), wavePlaying: !!wave };
   });
   assert.ok(pose.wavePlaying, 'wave continues through the greeting');
   assert.ok(pose.wrist && pose.elbow && pose.shoulder, 'exported arm joints are available');

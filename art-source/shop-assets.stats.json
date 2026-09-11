@@ -1,0 +1,301 @@
+{
+  "blenderVersion": "5.2.1 LTS",
+  "coordinates": "Metres: local x is viewer-right across the frontage, local y is depth into the shop, z is height. Town x = 18 + local y; town z = -2 - local x.",
+  "layoutSha256": "d5c399b48c3a4dc583980aa2d7de0ddbffd44a90bc772931e90d164610741b7b",
+  "assets": {
+    "form-thread-shell": {
+      "sourceMeshes": 136,
+      "runtimeMaterialMeshes": 9,
+      "triangles": 10748,
+      "bytes": 724752,
+      "blenderBounds": {
+        "min": [
+          -10.3,
+          -1.3075,
+          0.0
+        ],
+        "max": [
+          10.3,
+          16.21,
+          5.17
+        ]
+      },
+      "materials": [
+        "Shop ivory plaster",
+        "Shop honed limestone",
+        "Shop white oak",
+        "Shop brushed brass",
+        "Shop clear display glazing",
+        "Shop ivory curtain",
+        "Shop sage linen",
+        "Shop warm opal glow",
+        "Shop forest enamel"
+      ],
+      "markers": {
+        "shop-fascia-sign-anchor": [
+          0.0,
+          -0.52,
+          4.5
+        ],
+        "shop-origin": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "shop-axis-right": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "shop-axis-depth": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "shop-axis-up": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "sourceSha256": "6e66f4b070b43d3bb512d542c1fa4822808e98ceca2f17392a19dc5c224a992d",
+      "exportSha256": "fabb24ff86144a85833efe2e37b0d20a7ab02cc456dc7ea4e0f628664db7d7fc"
+    },
+    "form-thread-roof": {
+      "sourceMeshes": 54,
+      "runtimeMaterialMeshes": 6,
+      "triangles": 6804,
+      "bytes": 266732,
+      "blenderBounds": {
+        "min": [
+          -10.36,
+          -0.37,
+          3.475
+        ],
+        "max": [
+          10.36,
+          16.37,
+          5.32
+        ]
+      },
+      "materials": [
+        "Shop ivory plaster",
+        "Shop roof weathering",
+        "Shop honed limestone",
+        "Shop white oak",
+        "Shop brushed brass",
+        "Shop warm opal glow"
+      ],
+      "markers": {
+        "shop-pendant-1": [
+          0.0,
+          2.5,
+          3.72
+        ],
+        "shop-pendant-2": [
+          0.0,
+          6.8,
+          3.72
+        ],
+        "shop-pendant-3": [
+          0.0,
+          10.4,
+          3.72
+        ],
+        "shop-pendant-4": [
+          -6.1,
+          4.1,
+          3.82
+        ],
+        "shop-pendant-5": [
+          6.1,
+          4.1,
+          3.82
+        ],
+        "shop-pendant-6": [
+          -6.1,
+          9.3,
+          3.82
+        ],
+        "shop-pendant-7": [
+          6.1,
+          9.3,
+          3.82
+        ],
+        "shop-pendant-8": [
+          -6.4,
+          13.3,
+          3.82
+        ],
+        "shop-pendant-9": [
+          6.2,
+          13.6,
+          3.82
+        ],
+        "shop-origin": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "shop-axis-right": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "shop-axis-depth": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "shop-axis-up": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "sourceSha256": "409273c5d94342434d48d0f11bc569161b218e62a3616d4d14c0c715074c8ff5",
+      "exportSha256": "861c95f24863b31548dd632f296775fd435a44da27be6da105a5766422c25dd2"
+    },
+    "clothing-shop": {
+      "sourceMeshes": 3018,
+      "runtimeMaterialMeshes": 22,
+      "triangles": 89010,
+      "bytes": 4917340,
+      "blenderBounds": {
+        "min": [
+          -9.86,
+          0.01,
+          0.0
+        ],
+        "max": [
+          9.86,
+          15.915,
+          3.4147
+        ]
+      },
+      "materials": [
+        "Shop ivory plaster",
+        "Shop white oak",
+        "Shop sage linen",
+        "Shop brushed brass",
+        "Shop display ink knit",
+        "Shop display rust bomber",
+        "Shop oak end grain",
+        "Shop display moss cargo",
+        "Shop ivory curtain",
+        "Shop display oat knit",
+        "Shop honed limestone",
+        "Shop charcoal hardware",
+        "Shop forest enamel",
+        "Shop display brown leather",
+        "Shop warm opal glow",
+        "Shop mirror edge glow",
+        "Shop mirror",
+        "Shop herringbone oak 2",
+        "Shop herringbone oak 4",
+        "Shop herringbone oak 1",
+        "Shop herringbone oak 3",
+        "Shop herringbone oak 5"
+      ],
+      "markers": {
+        "shop-rail-1": [
+          -6.1,
+          4.4,
+          0.0
+        ],
+        "shop-rail-2": [
+          -6.1,
+          8.8,
+          0.0
+        ],
+        "shop-rail-3": [
+          -6.1,
+          10.8,
+          0.0
+        ],
+        "shop-rail-4": [
+          6.1,
+          4.4,
+          0.0
+        ],
+        "shop-rail-5": [
+          6.1,
+          8.8,
+          0.0
+        ],
+        "shop-rail-6": [
+          6.1,
+          10.8,
+          0.0
+        ],
+        "shop-mannequin-1": [
+          -7.37,
+          0.92,
+          0.735
+        ],
+        "shop-mannequin-2": [
+          -4.62,
+          0.92,
+          0.735
+        ],
+        "shop-mannequin-3": [
+          4.47,
+          0.92,
+          0.735
+        ],
+        "shop-mannequin-4": [
+          7.22,
+          0.92,
+          0.735
+        ],
+        "shop-tagline-sign-anchor": [
+          -6.4,
+          15.63,
+          3.55
+        ],
+        "shop-fitting-center-1": [
+          4.475,
+          14.1,
+          0.067
+        ],
+        "shop-mirror-center-1": [
+          4.475,
+          15.518,
+          1.76
+        ],
+        "shop-fitting-center-2": [
+          7.925,
+          14.1,
+          0.067
+        ],
+        "shop-mirror-center-2": [
+          7.925,
+          15.518,
+          1.76
+        ],
+        "shop-origin": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "shop-axis-right": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "shop-axis-depth": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "shop-axis-up": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "sourceSha256": "b19ecc1d8ea8584b4162a869fda9297f54a916cec0f3359ff1390ed4016c541b",
+      "exportSha256": "9c1f964641cb03ae8a66a43e01a6600ff697b10c6831d55f0875024657d88a85"
+    }
+  }
+}

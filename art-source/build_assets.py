@@ -380,6 +380,8 @@ def character():
     rig.animation_data.action=None
     for pb in rig.pose.bones:pb.rotation_euler=(0,0,0);pb.location=(0,0,0)
     bpy.context.scene.frame_set(1)
+    from add_citizen_interactions import add_interaction_actions
+    add_interaction_actions(rig)
     export('citizen', [rig]+joined)
     bpy.ops.wm.save_as_mainfile(filepath=str(ROOT/'art-source'/'citizen.blend'))
     print('CHARACTER',sum(len(obj.data.polygons) for obj in joined),'faces',flush=True)

@@ -6,10 +6,11 @@ import { loadEnvFile } from 'node:process';
 import { acquireRuntimeLock, runtimeConfig } from './runtime.ts';
 import { mountGuestRoutes } from './guest.ts';
 import { mountVoiceRoutes } from './voice.ts';
+import { mountPlayerSocialRoutes } from './playerSocial.ts';
 import { mountEconomyRoutes } from './economy.ts';
 if (existsSync('.env')) loadEnvFile('.env');
 const config = runtimeConfig();
-const { guests, sessions, voice, towns, economy, casinoRepository } = await import('./context.ts');
+const { guests, sessions, voice, towns, economy, casinoRepository, socialRepository } = await import('./context.ts');
 const { TownRoom } = await import('./town.ts');
 let stopping = false;
 const lock = await acquireRuntimeLock(process.env.DATABASE_URL!, () => {
@@ -20,6 +21,7 @@ try {
   await guests.initialise();
   await economy.initialise();
   await casinoRepository.initialise();
+  await socialRepository.initialise();
   await casinoRepository.recoverPending();
 } catch {
   await guests.close();
@@ -46,6 +48,11 @@ const server = new Server({
       onEquipped: (id,state) => { const active=sessions.get(id); if(active) towns.get(active.roomId)?.publishEconomy(id,active.sessionId,state); },
     });
     mountVoiceRoutes(app, guests, sessions, voice, (roomId, sessionId) => towns.get(roomId)?.hasSession(sessionId) ?? false);
+    mountPlayerSocialRoutes(app, guests, socialRepository, {
+      presence: id => { const active=sessions.get(id); if(!active)return; const presence=towns.get(active.roomId)?.socialPresence(id); return presence?.sessionId===active.sessionId?{...presence,roomId:active.roomId}:undefined; },
+      changed: ids => { for(const town of towns.values())town.socialChanged(ids); },
+      gifted: async ids => { for(const id of ids){const active=sessions.get(id);if(active){const wallet=await economy.ensure(id);towns.get(active.roomId)?.publishEconomy(id,active.sessionId,wallet);}} },
+    });
     mountGuestRoutes(app, guests, sessions);
   },
 });

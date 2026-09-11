@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import { SHOP_SIGNS } from '../shared/shopLayout.ts';
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 
@@ -6,8 +7,8 @@ const endpoint = process.env.GAME_URL || 'http://localhost:5173';
 const output = 'output/playwright/shop-signage';
 await mkdir(output, { recursive: true });
 const definitions = [
-  { name: 'shop-sign', legacy: 'FORM & THREAD', x: 17.5, y: 4.48, width: 5.5, height: .9 },
-  { name: 'shop-tagline', legacy: 'Find your everyday.', x: 25.68, y: 3, width: 6, height: 1.4 },
+  { name: 'shop-sign', legacy: 'FORM & THREAD', ...SHOP_SIGNS.fascia, width: 5.5, height: .9 },
+  { name: 'shop-tagline', legacy: 'Find your everyday.', ...SHOP_SIGNS.tagline, width: 6, height: 1.4 },
 ];
 const exports = [];
 for (const { name } of definitions) {
@@ -48,7 +49,7 @@ try {
         textureReady: meshes.find((m: any) => m.material.name === `${name} enamel lettering`).material.albedoTexture.isReady(),
         legacy: !!w.scene.getMeshByName(`sign-${legacy}`) };
     }, definition);
-    assert.deepEqual(asset.position, [definition.x, definition.y, -2]);
+    assert.deepEqual(asset.position, [definition.x, definition.y, definition.z]);
     assert.ok(Math.abs(asset.size[2] - definition.width) < .01 && Math.abs(asset.size[1] - definition.height) < .01);
     assert.equal(asset.meshes, 4);
     assert.equal(asset.copies, true);
@@ -70,7 +71,7 @@ try {
     await page.evaluate(({ frame, sign }) => {
       const w = (window as any).world;
       w.setQuality(frame.low);
-      w.camera.setTarget(new w.camera.target.constructor(sign.x, frame.targetY, -2));
+      w.camera.setTarget(new w.camera.target.constructor(sign.x, frame.targetY, sign.z));
       w.camera.alpha = frame.alpha; w.camera.beta = frame.beta; w.camera.radius = frame.radius;
     }, { frame, sign });
     await page.waitForFunction(() => (window as any).world.scene.isReady());
@@ -81,7 +82,7 @@ try {
       const viewport = w.camera.viewport.toGlobal(w.engine.getRenderWidth(), w.engine.getRenderHeight());
       return Promise.all([-.9, 0, .9].map(async z => {
         // Clear green strip below the lettering, above the inset keyline.
-        const point = V.Project(new V(sign.x - .058, sign.y - (sign.height - .14) * .27, -2 + z), identity, matrix, viewport);
+        const point = V.Project(new V(sign.x - .058, sign.y - (sign.height - .14) * .27, sign.z + z), identity, matrix, viewport);
         return Array.from(await w.engine.readPixels(Math.round(point.x), w.engine.getRenderHeight() - Math.round(point.y), 1, 1)) as number[];
       }));
     }, sign);

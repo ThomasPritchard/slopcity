@@ -60,7 +60,10 @@ try {
  await page.locator('#world').focus();await page.keyboard.down('w');await page.waitForTimeout(500);await page.keyboard.up('w');
  assert.deepEqual(await position(page),seated);assert.equal(await page.getByRole('button',{name:'Wave to neighbours'}).isDisabled(),true);
  await page.evaluate(async()=>{
-  const path='/node_modules/.vite/deps/@babylonjs_core_Engines_engine.js';const{Engine}=await import(path);const scene=Engine.Instances[0].scenes[0];
+  const source=await(await fetch('/src/world/scene.ts')).text();
+  const path=source.match(/import\s*\{\s*Engine\s*\}\s*from\s*["']([^"']+)/)?.[1];
+  if(!path)throw new Error('Could not resolve the actual renderer Engine');
+  const{Engine}=await import(path);const scene=Engine.Instances[0].scenes[0];
   scene.activeCamera.alpha=-Math.PI/2+.4;scene.activeCamera.beta=1.35;scene.activeCamera.radius=4;
  });
  await page.waitForTimeout(800);await page.screenshot({path:`${output}/22-seated.png`});

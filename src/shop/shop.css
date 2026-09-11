@@ -123,3 +123,11 @@
   .shop-catalogue { flex: none; min-height: 100px; max-height: 160px; }
   .shop-selection { flex: none; max-height: none; overflow: visible; }
 }
+
+/* The HUD is hidden while shopping; use that space to keep the action beside the preview. */
+@media (max-height: 420px) and (orientation: landscape) {
+  .shop-panel { top: 12px; overflow: hidden; }
+  .shop-header { position: static; }
+  .shop-catalogue { flex: 1; min-height: 44px; max-height: none; }
+  .shop-selection { flex: 0 0 auto; max-height: 48%; overflow-y: auto; }
+}

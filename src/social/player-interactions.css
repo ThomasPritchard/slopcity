@@ -1,0 +1,49 @@
+.player-card { width: 390px; }
+.player-card .social-header h2 { overflow-wrap: anywhere; max-width: 290px; }
+.player-card .social-close { font: 30px/1 Georgia, serif; }
+.player-presence { margin-top: 9px; color: #c5d0bc; font-size: 11px; line-height: 1.5; }
+.player-card-content { padding-bottom: 16px; }
+.player-action-section { border-top: 1px solid #d7e2b526; padding: 18px 0; }
+.player-action-section h3,.gift-form h3,.gift-pending h3 { font: 500 14px/1.5 'DM Sans', sans-serif; margin: 0 0 8px; }
+.player-action-section:first-child { border-top: 0; padding-top: 0; }
+.player-emotes { display: flex; gap: 9px; margin-top: 12px; }
+.player-emotes > button { flex: 1; }
+.player-emotes > button > span { font: 22px/1 Georgia, serif; }
+.gift-entry { width: 100%; justify-content: space-between; }
+.player-safety { display: flex; gap: 9px; border-top: 1px solid #d7e2b526; padding-top: 16px; }
+.player-safety > button { flex: 1; }
+.player-card button:disabled { cursor: not-allowed; opacity: .5; }
+.player-back { min-height: 44px; padding: 0; background: transparent; color: #c5d0bc; font-size: 11px; margin-bottom: 10px; }
+.gift-form { padding-bottom: 20px; }
+.gift-form > label { display: block; font-size: 12px; margin: 18px 0 10px; }
+.gift-form > input { display: block; width: 100%; min-height: 54px; border: 1px solid #e3ebbb77; border-radius: 6px; padding: 10px 14px; color: #f6f4e9; background: #152d23; font: 28px/1.2 'Instrument Serif', Georgia, serif; }
+.gift-form > .is-primary { width: 100%; margin-top: 20px; }
+.gift-form > p,.gift-pending > p { font-size: 13px; line-height: 1.7; }
+.gift-form .gift-confirm-amount { font: 48px/1.2 'Instrument Serif', Georgia, serif; margin: 16px 0 12px; }
+.gift-confirm-amount > span { font: 12px/1.5 'DM Sans', sans-serif; }
+.gift-pending { padding-bottom: 20px; }
+.gift-pending > button { margin-top: 14px; width: 100%; }
+.player-receipt { border-left: 2px solid #dce6b9; padding: 10px 12px; background: #dce6b90b; font-size: 12px; line-height: 1.6; margin-bottom: 18px; }
+.emote-prompt { padding: 16px; margin-bottom: 18px; border: 1px solid #dce6b950; border-radius: 8px; background: #1a3329; color: #edf1d7; }
+.emote-prompt p { font-size: 12px; line-height: 1.65; }
+.emote-prompt > span { display: block; font-size: 10px; line-height: 1.6; color: #becdb5; margin-top: 6px; }
+.emote-prompt > div { display: flex; gap: 8px; margin-top: 12px; }
+.emote-prompt > div > button { flex: 1; }
+.emote-prompt > button { margin-top: 12px; }
+.emote-world-prompt { position: absolute; z-index: 12; top: 100px; left: 50%; transform: translateX(-50%); width: min(355px,calc(100% - 32px)); }
+.emote-active { display: flex; align-items: center; justify-content: center; gap: 12px; border: 1px solid #dce6b950; border-radius: 10px; background: #1a3329ed; padding: 10px 14px; font-size: 12px; color: #edf1d7; }
+.friend-name { text-align: left; background: transparent; color: #edf1d7; padding: 5px 0; min-width: 0; flex: 1; min-height: 44px; }
+.friend-name strong { display: block; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.friend-name span { display: block; color: #b9c9af; font-size: 10px; line-height: 1.6; margin-top: 3px; }
+.friends-section h4 { margin: 17px 0 4px; font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #c5d0bc; }
+.friend-person .social-person-actions { padding-left: 0; }
+.pending-gift-link { margin-top: 10px; width: 100%; }
+.social-person-name > .friend-name { width: 100%; }
+.mobility-controls { position: absolute; right: 27px; bottom: 111px; display: flex; gap: 8px; z-index: 6; }
+.mobility-controls > button { display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 77px; min-height: 44px; padding: 10px 13px; border: 1px solid #edf2d033; border-radius: 9px; color: #f6f4e9; background: #263e33e8; font-size: 11px; touch-action: manipulation; }
+.mobility-controls kbd { font: 9px/1.3 inherit; color: #ccd7b7; border: 1px solid #ccd7b744; border-radius: 3px; padding: 2px 4px; }
+.mobility-controls > button[aria-pressed=true] { color: #253d33; background: #e3ebbb; }
+.mobility-controls > button:disabled { opacity: .5; }
+@media(pointer:coarse) { .mobility-controls kbd { display: none; } }
+@media(max-width:699px) { .mobility-controls { bottom: 150px; right: 16px; } .mobility-controls > button { min-width: 66px; min-height: 48px; } .emote-world-prompt { top: 76px; } }
+@media(max-height:500px) { .mobility-controls { bottom: 88px; right: 17px; } .emote-world-prompt { top: 55px; } .player-card .social-header { padding-top: 14px; padding-bottom: 12px; } .player-presence { margin-top: 5px; } .player-card .social-footer { display: none; } }

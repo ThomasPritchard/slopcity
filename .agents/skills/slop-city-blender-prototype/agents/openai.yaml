@@ -1,0 +1,4 @@
+interface:
+  display_name: "Slop City Blender Prototypes"
+  short_description: "Prototype and refine Slop City spaces in Blender"
+  default_prompt: "Use $slop-city-blender-prototype to create or refine a spatial prototype and show the relevant Blender renders."

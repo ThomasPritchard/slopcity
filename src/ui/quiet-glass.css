@@ -1,0 +1,325 @@
+/* Quiet Glass HUD — variant 3 of the 2025 HUD study (output/hud-variants/variant-3-quiet-glass.notes.md).
+   Presentation only: same elements, same behaviour, one frosted surface token, hairline borders, ~35% smaller.
+   Frost alpha .68 is a contrast decision: over the brightest pavement it keeps cream ≥5:1 and lime ≥4.8:1.
+
+   Refined against the approved prototype (output/hud-refinement/*.css + *.notes.md): masthead, right stack,
+   location announcement, bottom-left, toolbar/hints/contextual actions and the phone layouts. Tokens are
+   unchanged; --hud-lift exposes the prototype's shared .glass shadow and --hud-lime is the approved accent
+   (#e3ebbb; style.css's --lime is #e5ecb3 and is left alone so the casino/shop fills are untouched). */
+:root{
+  --hud-glass:rgba(30,52,43,.68);
+  --hud-glass-deep:rgba(21,39,33,.74);
+  --hud-hairline:rgba(255,255,240,.14);
+  --hud-hairline-strong:rgba(255,255,240,.26);
+  --hud-muted:rgba(246,244,233,.88);
+  --hud-quiet:rgba(246,244,233,.62);
+  --hud-lime-line:rgba(227,235,187,.34);
+  --hud-lime:#e3ebbb;
+  --hud-lift:0 5px 18px rgba(14,30,24,.22);
+  --hud-blur:blur(20px) saturate(1.12);
+  --hud-halo:0 1px 4px rgba(15,32,25,.75),0 2px 14px rgba(15,32,25,.9);
+}
+.brand-chip,.build-tag,.population,.wallet-hud,.voice-status,.chat-panel,.identity,.toolbar,.hud-minimap,.controls-hint{
+  background:var(--hud-glass);
+  border:1px solid var(--hud-hairline);
+  -webkit-backdrop-filter:var(--hud-blur);
+  backdrop-filter:var(--hud-blur);
+}
+button:focus-visible{outline-offset:3px}
+@media(pointer:coarse){
+  .game button:focus-visible,.game a:focus-visible,.game input:focus-visible,.game select:focus-visible{outline-offset:4px}
+  /* The prototype's live dot: 5px lime with a 3px bloom (population, chat title, map legend). */
+  .live-dot{width:5px;height:5px;background:var(--hud-lime);box-shadow:0 0 0 3px rgba(227,235,187,.14)}
+}
+
+/* ---------- masthead: brand capsule + live location crumb, Pre-Alpha version chips ---------- */
+.top-right{gap:6px;flex-shrink:0}                     /* prototype .top-chips: one 6px cluster (was 14px) */
+.playing .brand{display:inline-flex;align-items:center;gap:9px;padding:5px 11px 6px 8px;border-radius:9px;min-width:0;background:var(--hud-glass);border:1px solid var(--hud-hairline);-webkit-backdrop-filter:var(--hud-blur);backdrop-filter:var(--hud-blur);box-shadow:var(--hud-lift)}
+.playing .brand-mark{font-size:22px;width:19px;margin-top:-3px;text-transform:uppercase;letter-spacing:-4px;line-height:1}
+/* style.css keeps .brand at 14px/2px for the lock-up; the prototype wordmark is 9.5px/600/1.9. */
+.playing .brand>span:last-child{display:block;min-width:0;white-space:nowrap;line-height:1.1;font-size:9.5px;font-weight:600;letter-spacing:1.9px}
+/* The crumb is the live location (a user addition; the prototype shows the tagline). It truncates
+   with an ellipsis rather than wrapping the capsule onto a second line. */
+.playing .brand small{display:block;margin-top:4px;font-size:6px;letter-spacing:1.35px;opacity:1;color:var(--hud-muted);text-transform:uppercase;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.build-tag{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;font-size:8px;letter-spacing:1.15px;font-weight:400;color:var(--hud-muted);box-shadow:var(--hud-lift)}
+/* style.css still paints the version half (#e8e8bd22) and pads it; the prototype's <i> is bare text behind a hairline. */
+.build-tag i{font-style:normal;color:var(--hud-lime);border-left:1px solid var(--hud-hairline);padding:0 0 0 6px;margin-left:0;background:none;font-weight:400}
+.population{display:flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;font-size:9.5px;letter-spacing:.4px;color:var(--hud-muted)}
+.population .live-dot{width:5px;height:5px;background:var(--hud-lime);box-shadow:0 0 0 3px rgba(227,235,187,.14)}
+.population svg{width:11px;height:11px}
+/* style.css .muted{opacity:.55} multiplied on top of --hud-quiet left "/ 64" at ~.34 effective alpha. */
+.population .muted{opacity:1;color:var(--hud-quiet)}
+/* Desktop chrome anchors at the prototype's 22/20 column (the rail, stack and .bottom-left follow). */
+@media(pointer:fine) and (min-width:801px){.playing .masthead{top:20px;left:22px;right:22px}}
+/* Phones anchor the whole top row at 14px so the chips and the wallet/minimap stack share one right edge. */
+@media(pointer:coarse){.masthead{left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right))}}
+@media(pointer:coarse) and (orientation:portrait){.masthead{top:max(14px,env(safe-area-inset-top))}}
+@media(pointer:coarse) and (orientation:landscape) and (max-height:500px){.masthead{top:max(12px,env(safe-area-inset-top))}}
+@media(max-width:699px){
+  .playing .brand{gap:7px;padding:5px 9px 5px 7px;border-radius:10px}
+  .playing .brand-mark{font-size:18px;width:15px;margin-top:-2px;letter-spacing:-3px}
+  .playing .brand>span:last-child{font-size:8.5px;letter-spacing:1.5px}
+  /* 5.5px/1px is the largest the crumb can be while the approved build chip keeps its place at 390px. */
+  .playing .brand small{font-size:5.5px;letter-spacing:1px}
+  .build-tag{height:22px;padding:0 7px;font-size:7px;letter-spacing:1px}
+  .population{height:24px;padding:0 8px;font-size:10px}
+}
+@media(max-width:430px){.build-tag{letter-spacing:.7px}}
+@media(pointer:coarse){
+  .playing .brand{gap:7px;padding:5px 9px 5px 7px;border-radius:10px;max-width:min(190px,calc(100vw - 222px))}
+  .playing .brand>span:not(.brand-mark){min-width:0;font-size:8.5px;letter-spacing:1.5px;font-weight:600}
+  .playing .brand>span:not(.brand-mark)>small{display:block;margin-top:3px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:5.5px;letter-spacing:.7px;color:var(--hud-muted)}
+  .playing .brand-mark{font-size:18px;width:15px;letter-spacing:-3px;margin-top:-2px}
+}
+@media(pointer:coarse) and (orientation:portrait){
+  .build-tag,.population{height:24px}
+  .population{font-size:10px}
+  /* style.css hides the people glyph below 430px; the prototype phone chip keeps it. */
+  .population svg{display:block;width:12px;height:12px}
+}
+@media(pointer:coarse) and (max-height:520px){
+  .playing .brand{gap:7px;padding:4px 9px 4px 7px;border-radius:9px}
+  .playing .brand-mark{font-size:17px;width:14px;margin-top:-3px;letter-spacing:-3px}
+  .playing .brand>span:not(.brand-mark){font-size:8px;letter-spacing:1.4px}
+  .build-tag,.population{height:22px}
+  .population{font-size:9.5px}
+}
+
+/* ---------- right stack: wallet, voice, minimap ---------- */
+/* Desktop chrome anchors at the prototype's 22px column; top = masthead top 20 + capsule/2 (17) + chip/2 (11) + 7 gap. */
+.hud-right-stack{position:absolute;z-index:4;right:22px;top:55px;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.hud-right-stack .wallet-hud{position:static;top:auto;right:auto}
+.hud-right-stack .voice-status{position:static;top:auto}
+@media(max-width:800px) and (pointer:fine){.hud-right-stack{top:57px}}
+
+/* wallet: the prototype's fixed height (style.css's min-height + 6px padding rendered 40px/50px). */
+.wallet-hud{gap:9px;height:36px;min-height:36px;padding:0 5px 0 9px;border-radius:9px;box-shadow:var(--hud-lift)}
+.wallet-coin{width:20px;height:20px;border-color:var(--hud-lime-line);color:var(--hud-lime);font-family:'Instrument Serif',Georgia,serif;font-size:12.5px;line-height:1}
+.wallet-hud strong{font-size:13px;line-height:1.15;letter-spacing:-.1px}
+.wallet-hud strong small{font-size:7.5px;letter-spacing:.4px;color:var(--hud-muted);margin-left:3px}
+.salary-countdown{margin-top:1px;line-height:1.15;letter-spacing:.3px;font-size:7.5px;color:var(--hud-muted)}
+.wallet-link{display:grid;place-items:center;width:26px;height:26px;margin-left:2px;border-left:1px solid var(--hud-hairline);color:var(--hud-lime);font-size:13px;flex-shrink:0}
+
+/* voice: the prototype's 22px capsule with its pulsing 5px dot (drawn with ::before, no markup change). */
+.hud-right-stack .voice-status{display:inline-flex;align-items:center;gap:7px;height:22px;padding:0 10px;border-radius:999px;font-size:8px;letter-spacing:1.15px;text-transform:uppercase;color:var(--hud-lime);box-shadow:var(--hud-lift)}
+.hud-right-stack .voice-status::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--hud-lime);flex:0 0 auto;animation:voice-pulse 2.4s ease-in-out infinite}
+@keyframes voice-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media(prefers-reduced-motion:reduce){.hud-right-stack .voice-status::before{animation:none}}
+
+/* minimap: the approved live addition, drawn as a circular compass dial. The frosted card is the
+   bezel; the dial inside it carries the plan, the rim with its ticks, the lime north chevron and the
+   N badge. Only this HUD card is circular — the full map modal keeps the shared pale plan. */
+.hud-minimap{display:block;position:relative;width:140px;height:140px;padding:0;border-radius:50%;color:var(--hud-muted);box-shadow:var(--hud-lift)}
+.hud-minimap .minimap-dial{display:block;width:100%;height:100%;background:transparent}
+/* The plan is shared with the pale map modal; on the dark disc its ground needs a defined edge and its
+   roads more separation (the modal's 1.29:1 was a ghost crossroads at dial size), and the disc corners
+   read as the town's edge rather than as glass showing through. */
+.hud-minimap .minimap-outskirts{fill:#6f7f60}
+.hud-minimap .minimap-plan>rect:first-of-type{fill:#d2cab0}
+.hud-minimap .minimap-plan>rect:nth-of-type(2){fill:#63796a}
+.hud-minimap .minimap-plan>rect:nth-of-type(3){fill:#a58f70}
+.hud-minimap .minimap-plan>path{fill:#fbf8ec}
+.hud-minimap .minimap-plan>circle[fill='#83aca5']{fill:#79a49c}
+/* disc bezel, rim and compass marks: the dark band is what lets the ticks and the lime chevron read
+   over whatever the town is lit by; it stays translucent so the frosted card still shows through. */
+.hud-minimap .minimap-bezel{fill:none;stroke:rgba(19,36,29,.52)}
+.hud-minimap .minimap-rim{fill:none;stroke:var(--hud-hairline-strong);stroke-width:.7}
+.hud-minimap .minimap-tick{stroke:rgba(246,244,233,.34);stroke-width:.6;stroke-linecap:round}
+.hud-minimap .minimap-tick--cardinal{stroke:rgba(246,244,233,.5);stroke-width:1}
+.hud-minimap .minimap-north{fill:var(--hud-lime)}
+/* neighbours: 4.5px/3.6px at 140px, 3.6px/2.9px at 112px, at ~3.4:1 against the pavement. */
+.hud-minimap .minimap-neighbour{fill:#4d6f52;stroke:rgba(246,244,233,.9);stroke-width:.35}
+/* "you": a heading-rotated arrow, the strongest mark on the dial — dark fill with a cream edge so it
+   reads on the pale pavement and on the casino's green alike. */
+.hud-minimap .minimap-you{fill:#253d33;stroke:rgba(246,244,233,.92);stroke-width:.45;stroke-linejoin:round}
+/* the north badge sits on the top rim under the lime chevron; its own dark surface keeps lime ≥7:1
+   whatever the plan under it. */
+.hud-minimap-n{position:absolute;left:50%;top:8.5%;transform:translateX(-50%);display:grid;place-items:center;width:15px;height:15px;border-radius:50%;background:var(--hud-glass-deep);border:1px solid var(--hud-lime-line);color:var(--hud-lime);font-size:7px;font-weight:600;letter-spacing:.4px;line-height:1}
+
+/* hover / focus / pressed: the prototype's .glass-btn states, which were never ported to this cluster. */
+.hud-right-stack .wallet-hud,
+.hud-right-stack .voice-status,
+.hud-minimap{transition:background .18s ease,border-color .18s ease,color .18s ease}
+.hud-right-stack .wallet-hud:hover,
+.hud-right-stack .voice-status:hover,
+.hud-minimap:hover{background:rgba(246,244,233,.10);border-color:var(--hud-hairline-strong);color:var(--hud-lime)}
+.hud-minimap[aria-pressed='true']{background:rgba(227,235,187,.14);border-color:var(--hud-lime-line);color:var(--hud-lime)}
+/* The dial covers the card behind it, so hover/pressed also brighten the bezel marks. */
+.hud-minimap:hover .minimap-rim,.hud-minimap[aria-pressed='true'] .minimap-rim{stroke:var(--hud-lime-line)}
+.hud-minimap:hover .minimap-tick,.hud-minimap[aria-pressed='true'] .minimap-tick{stroke:rgba(246,244,233,.6)}
+.hud-minimap:hover .minimap-tick--cardinal,.hud-minimap[aria-pressed='true'] .minimap-tick--cardinal{stroke:rgba(246,244,233,.8)}
+.hud-right-stack .wallet-hud:focus-visible,
+.hud-right-stack .voice-status:focus-visible,
+.hud-minimap:focus-visible{outline:2px solid var(--hud-lime);outline-offset:4px}
+
+@media(pointer:coarse){
+  .hud-right-stack{right:max(14px,env(safe-area-inset-right));top:calc(max(21px,env(safe-area-inset-top)) + 36px);align-items:flex-end;gap:8px}
+  .hud-right-stack .wallet-hud{height:44px;min-height:44px;padding:0 5px 0 11px;gap:10px;border-radius:12px}
+  .wallet-coin{width:22px;height:22px;font-size:13.5px}
+  .wallet-hud strong{font-size:12.5px}
+  .wallet-hud strong small{font-size:7.5px}
+  .salary-countdown{font-size:7.5px}
+  .wallet-link{width:36px;height:36px;font-size:13px}
+  /* 22px is under the touch minimum; the prototype collapses to a 44x44 icon button. The live button
+     has no icon child, so it stays a 44px text pill until the markup adds one (see integration notes). */
+  .hud-right-stack .voice-status{height:44px;min-height:44px;padding:0 12px;justify-content:center;font-size:8px;border-radius:14px}
+  .hud-right-stack .voice-status:has(svg){position:relative;display:grid;place-items:center;width:44px;padding:0;font-size:0;border-radius:13px;color:var(--hud-lime)}
+  .hud-right-stack .voice-status:has(svg)::after{content:'';position:absolute;top:9px;right:9px;width:5px;height:5px;border-radius:50%;background:var(--hud-lime)}
+  .hud-minimap{width:112px;height:112px;touch-action:manipulation}
+  .hud-minimap-n{top:9%;width:14px;height:14px;font-size:6.5px}
+}
+@media(pointer:coarse) and (orientation:portrait){
+  .hud-right-stack{top:calc(max(14px,env(safe-area-inset-top)) + 36px)}
+}
+@media(max-height:500px){.hud-minimap{display:none}}   /* landscape phones run short; the toolbar Map button opens the full map */
+@media(pointer:coarse) and (orientation:landscape) and (max-height:500px){
+  .hud-right-stack{top:calc(max(12px,env(safe-area-inset-top)) + 34px);gap:7px}
+}
+
+/* ---------- location announcement: panel-free, centred, lifted slightly ---------- */
+/* The box width is the fix the bloom needed: the same .46 token stretched to 560px washed the whole
+   frame instead of the pavement around the name. Vertical position stays at the approved top:45%. */
+.location{top:45%;width:min(400px,calc(100% - 40px));padding:14px 20px 16px;background:radial-gradient(62% 74% at 50% 52%,rgba(19,37,30,.46),rgba(19,37,30,0) 72%);text-shadow:var(--hud-halo);pointer-events:none;animation:qg-loc-arrival 4s cubic-bezier(.22,.61,.36,1) both}
+/* style.css's .eyebrow is a second, non-token lime at 8px/550/1.5; the prototype is cream 7px/400/2.6. */
+.location .eyebrow{color:inherit;font-size:7px;font-weight:400;letter-spacing:2.6px;line-height:normal;text-transform:uppercase;display:inline-flex;align-items:center;gap:9px;text-shadow:var(--hud-halo)}
+.location .eyebrow::before,.location .eyebrow::after{content:'';width:16px;height:1px;background:rgba(246,244,233,.55)}
+.location h1{font:400 30px/1.06 'Instrument Serif',Georgia,serif;margin-top:8px;text-shadow:var(--hud-halo),0 0 4px rgba(15,32,25,.6)}
+.location-rule{display:block;height:1px;width:26px;margin:9px auto 0;background:rgba(246,244,233,.55)}
+/* The centring translate lives in ui/location.css, so every keyframe has to repeat it. */
+@keyframes qg-loc-arrival{0%{opacity:0;transform:translate(-50%,-50%) translateY(6px)}11%,72%{opacity:1;transform:translate(-50%,-50%)}100%{opacity:0;transform:translate(-50%,-50%) translateY(-3px)}}
+@keyframes qg-loc-arrival-reduced{0%,88%{opacity:1}100%{opacity:0}}
+@media(prefers-reduced-motion:reduce){.location{animation:qg-loc-arrival-reduced 4s linear both}}
+/* The in-app Settings > Motion: "Reduced" switch keeps the fade too: style.css's blanket
+   `animation:none !important` would otherwise hard-cut the announcement in and out. */
+:root[data-reduced-motion='true'] .game .location{animation:qg-loc-arrival-reduced 4s linear both !important}
+@media(max-width:699px){.location{width:calc(100% - 28px);padding:16px 14px 18px}.location h1{font-size:27px}}
+@media(max-height:500px){.location{width:min(230px,calc(100% - 40px))}.location h1{font-size:21px}.location .eyebrow::before,.location .eyebrow::after{width:11px}}
+
+/* ---------- bottom-left: identity + chat ---------- */
+.bottom-left{width:250px;gap:7px}
+.identity{gap:7px;height:28px;padding:0 7px 0 6px;border-radius:8px;box-shadow:var(--hud-lift)}
+/* style.css stacks small{display:block;margin-top:4px} under a 12px name; the prototype is one 9.5px/550 row. */
+.identity>span:not(.identity-dot):not(.identity-status){display:flex;align-items:center;gap:7px;min-width:0;overflow:hidden;font-size:9.5px;font-weight:550}
+.identity small{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:0;font-size:6px;letter-spacing:1.3px;color:var(--hud-muted)}
+.identity-dot{width:15px;height:15px;border:0;box-shadow:0 0 0 1px rgba(227,235,187,.55)}
+.identity-status{margin-left:auto;font-size:6.5px;letter-spacing:1px;color:var(--hud-lime);border-color:var(--hud-lime-line);border-radius:4px;padding:2px 5px;white-space:nowrap}
+.chat-panel{border-radius:10px;box-shadow:var(--hud-lift)}
+.chat-title{padding:8px 10px;font-size:7px;letter-spacing:1.4px;gap:6px;border-bottom-color:var(--hud-hairline)}
+.chat-title .live-dot{width:5px;height:5px;background:var(--hud-lime);box-shadow:0 0 0 3px rgba(227,235,187,.14)}
+.chat-title>span:last-child{font-size:7.5px;letter-spacing:.2px;color:var(--hud-muted)}
+.chat-title i{font-size:7.5px;letter-spacing:.2px}
+/* The phone header swaps the label for the identity row (prototype .frame-phone .chat-identity). */
+.chat-identity{display:none}
+/* style.css's 11px/1.8 rows, amber italic system lines and 62px floor inflated the panel to 130px. */
+.chat-history{padding:8px 10px;min-height:0;max-height:58px;scrollbar-color:rgba(246,244,233,.22) transparent}
+.chat-history p{font-size:9.5px;line-height:1.6}
+.chat-history p+p{margin-top:6px}
+.chat-history strong{font-weight:550;color:var(--hud-lime)}
+.chat-history .chat-system{font-size:8.5px;line-height:1.6;font-style:normal;color:var(--hud-muted)}
+.chat-history .chat-empty{font-size:8.5px;line-height:1.6;color:var(--hud-muted);padding:0}
+.chat-panel form{border-top-color:var(--hud-hairline);background:rgba(11,28,21,.24)}
+.chat-panel input{flex:1 1 0;min-width:0;padding:9px 10px;font-size:9.5px}
+.chat-panel input::placeholder{color:var(--hud-quiet)}
+/* style.css's 10px button padding + 18px icon stretched the row to 39px. */
+.chat-panel form button{padding:0;display:grid;place-items:center;justify-content:center;width:32px;color:var(--hud-lime)}
+.chat-panel form button svg{width:14px;height:14px}
+/* `.chat-panel input{outline:none}` in style.css beat the global focus ring: restore it inside the panel. */
+.chat-panel input:focus-visible{outline:2px solid var(--hud-lime);outline-offset:-2px;border-radius:4px}
+.chat-panel form button:focus-visible{outline:2px solid var(--hud-lime);outline-offset:-2px;border-radius:4px}
+/* Desktop chrome shares the prototype's 22/22 corner with the masthead and toolbar. */
+@media(pointer:fine) and (min-width:801px){.bottom-left{left:22px;bottom:22px}}
+@media(pointer:coarse),(max-width:699px){
+  .bottom-left{gap:0}
+  .chat-title{padding:11px 12px;font-size:7.5px}
+  /* The count is already on the population chip, so the phone header drops its duplicate. */
+  .chat-title>span:last-child{display:none}
+  .chat-title .live-dot,.chat-title .chat-title-label{display:none}
+  .chat-history{padding:9px 12px}
+  .chat-history p{font-size:10px}
+  /* quiet-glass's unconditional 9.5px beat style.css's coarse 16px guard; restore it (iOS auto-zoom). */
+  .chat-panel input{min-height:44px;padding:11px 12px;font-size:16px}
+  .chat-panel form button{width:44px;min-width:44px;min-height:44px}
+  .chat-panel form button svg{width:15px;height:15px}
+  /* Identity folded into the header on phones, because the standalone .identity chip is display:none there
+     (style.css hides it at max-width:800px even with a fine pointer, so the fold must match by width too). */
+  .chat-identity{display:flex;flex:1 1 auto;align-items:center;gap:7px;min-width:0;overflow:hidden;text-transform:none;letter-spacing:0}
+  .chat-identity .identity-dot{flex-shrink:0}
+  .chat-identity b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;font-weight:550}
+  .chat-identity small{display:inline;margin-top:0;font-size:6.5px;letter-spacing:1.2px;color:var(--hud-muted)}
+  .chat-identity .identity-status{margin-left:auto}
+}
+@media(pointer:coarse) and (orientation:portrait),(max-width:699px) and (orientation:portrait){
+  /* The prototype's phone frame spans 14/14; the column is full width above the joystick. */
+  .bottom-left{left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right));width:auto}
+  .chat-history{max-height:40px}
+}
+@media(pointer:coarse) and (orientation:landscape) and (max-height:620px){
+  /* Height is the scarce resource: the panel keeps its header and 16px input and folds the history away. */
+  .bottom-left{width:232px}
+  .chat-history{display:none}
+}
+
+/* ---------- toolbar: icons only; names survive as title/aria ---------- */
+.toolbar{gap:8px;padding:5px;border-radius:11px;font-size:0;box-shadow:var(--hud-lift)}
+.toolbar button{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:0;width:34px;min-width:34px;height:34px;padding:0;border-radius:9px;border:1px solid transparent;color:#f6f4e9;transition:background .18s ease,border-color .18s ease,color .18s ease,transform .18s ease}
+.toolbar button span{display:none}
+.toolbar button svg{width:15px;height:15px}
+/* The prototype separates hover from the "this tool is on" lime pressed state (quiet-glass merged them). */
+.toolbar button:hover{background:rgba(246,244,233,.10);border-color:var(--hud-hairline-strong);color:var(--hud-lime)}
+.toolbar button[aria-pressed=true]{background:rgba(227,235,187,.14);border-color:var(--hud-lime-line);color:var(--hud-lime)}
+@media(prefers-reduced-motion:reduce){.toolbar button{transition:none}}
+@media(min-width:801px) and (pointer:fine){.toolbar{right:22px;bottom:22px}}
+/* quiet-glass gated 44px on max-width:699px, so an 844-wide landscape phone kept 34px-wide targets. */
+@media(pointer:coarse),(max-width:699px){
+  .toolbar{gap:4px;padding:4px;border-radius:14px}
+  .toolbar button{width:44px;min-width:44px;height:44px;min-height:44px;border-radius:11px}
+  .toolbar button svg{width:18px;height:18px}
+}
+@media(pointer:coarse){.toolbar{right:max(12px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom))}}
+
+/* ---------- controls hint: the softest thing on screen ---------- */
+.controls-hint{bottom:26px;padding:5px 11px;border-radius:999px;background:rgba(18,36,29,.5);border:0;font-size:8px;letter-spacing:.4px;color:var(--hud-muted);text-shadow:none;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.controls-hint .divider{margin:0 3px;background:var(--hud-hairline-strong)}
+.controls-hint kbd{width:14px;height:15px;font-size:7px;background:rgba(246,244,233,.10);border-color:var(--hud-hairline);color:#f6f4e9}
+
+/* ---------- contextual prompts stay the only filled objects ---------- */
+.seat-action,.shop-entry{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:0 19px;border-radius:999px;background:#e3ebbb;color:var(--ink);font-size:11.5px;font-weight:600;letter-spacing:.1px;box-shadow:0 6px 20px rgba(14,30,24,.3),0 0 0 1px rgba(227,235,187,.55)}
+.seat-action:hover,.shop-entry:hover{background:#eef3ce}
+/* Both prompts share the prototype's single contextual slot above the controls hint. */
+@media(min-width:700px) and (pointer:fine){.seat-action{bottom:96px}.shop-entry{bottom:96px}.casino-entry{bottom:92px}}
+@media(pointer:coarse),(max-width:699px){.seat-action,.shop-entry{min-height:46px;padding:0 22px;font-size:12px}}
+
+/* ---------- casino entry tray: frosted capsule, one filled pill, outlines for the rest ---------- */
+.casino-entry{align-items:center;gap:8px;padding:6px;border-radius:999px;background:var(--hud-glass);border:1px solid var(--hud-hairline);-webkit-backdrop-filter:var(--hud-blur);backdrop-filter:var(--hud-blur);box-shadow:var(--hud-lift)}
+.casino-entry button{min-height:38px;padding:0 17px;border-radius:999px;background:transparent;color:var(--hud-lime);border:1px solid var(--hud-lime-line);font-size:11px;font-weight:600;box-shadow:none}
+.casino-entry button:hover{background:rgba(227,235,187,.14)}
+.casino-entry button[aria-current='true'],.casino-entry button[aria-current=true]{background:#e3ebbb;border-color:transparent;color:var(--ink);font-weight:600;box-shadow:none}
+.casino-entry .entry-eyebrow{padding:0 3px 0 9px;font-size:6.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--hud-muted)}
+@media(min-width:700px) and (pointer:fine){.casino-entry{width:auto;max-width:600px;flex-wrap:nowrap}}
+/* Capsule hugs its pills (style.css forces width:calc(100% - 40px) + wrap). */
+@media(pointer:coarse),(max-width:699px){
+  .casino-entry{width:auto;max-width:calc(100% - 32px);flex-wrap:nowrap;padding:5px;gap:7px}
+  .casino-entry button{min-height:46px;padding:0 15px;font-size:11.5px}
+  .casino-entry .entry-eyebrow{display:none}
+}
+/* style.css stretches the landscape tray from the joystick to the right edge; restate that width. */
+@media(pointer:coarse) and (orientation:landscape) and (max-height:620px){.casino-entry{width:calc(100% - var(--touch-left) - var(--touch-right) - var(--stick-size) - 16px)}}
+
+/* ---------- when panels own the screen, the whole HUD hides ---------- */
+.shopping .hud-right-stack{visibility:hidden}
+.at-table .hud-right-stack{visibility:hidden}
+/* The 186px minimap card covers the welcome hint's close button; the transient hint takes the higher layer. */
+.game .welcome-hint{z-index:5}
+
+/* ---------- touch extras the study flagged ---------- */
+/* The joystick joins the frost family: the prototype's smaller ring, token surfaces.
+   Shrinking --stick-size also lifts the chat column and casino tray that offset from it. */
+@media(pointer:coarse){
+  .game{--stick-size:76px}
+  .joystick{border:1px solid var(--hud-hairline-strong);background:rgba(30,52,43,.34);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+  .joystick .stick{width:30px;height:30px;border:1px solid rgba(246,244,233,.5);background:rgba(246,244,233,.16);box-shadow:0 2px 15px rgba(17,43,37,.2)}
+  .joystick .stick-guide{inset:15px;border-color:var(--hud-hairline)}
+  /* The map/settings modal close is 28px from style.css; every touch close needs 44px. */
+  .modal>.close{min-width:44px;min-height:44px;align-items:center;justify-content:center;right:8px;top:8px;border-radius:8px}
+}
+@media(pointer:coarse) and (orientation:landscape) and (max-height:620px){.game{--stick-size:72px}}

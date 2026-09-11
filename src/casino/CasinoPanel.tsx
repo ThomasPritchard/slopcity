@@ -9,6 +9,8 @@ import {
   type SlotsView, type SlotSymbol,
 } from '../../shared/casino';
 import { isRed, rouletteChoices, rouletteCoverageLabel, rouletteKinds } from './rouletteChoices';
+import { PokerGame } from './PokerGame';
+import { CrapsGame } from './CrapsGame';
 import './casino.css';
 
 export interface CasinoPanelProps {
@@ -92,21 +94,22 @@ function Roulette({ table, now, balance, privateState, busy, send, actionHost }:
   const kindId = useId(), coverageId = useId();
   const choices = rouletteChoices(kind);
   const selectedNumbers = choices[choiceIndex] ?? choices[0];
-  const acceptedBets = privateState.rouletteBets.filter(bet => bet.roundId === table.roundId);
+  const acceptedBets = privateState.rouletteBets.filter(bet => bet.tableId === table.id && bet.roundId === table.roundId);
   const acceptedTotal = acceptedBets.reduce((sum, item) => sum + item.bet.stake, 0);
   const returned = table.phase === 'result' && table.result !== null ? acceptedBets.reduce((sum, item) => sum + (item.bet.numbers.includes(table.result!) ? item.bet.stake * (ROULETTE_PROFIT_MULTIPLIER[item.bet.kind] + 1) : 0), 0) : null;
   const betting = table.phase === 'betting' && now < table.deadline;
+  const moving = table.phase === 'spinning' || table.phase === 'landing';
   const grossReturn = stake * (ROULETTE_PROFIT_MULTIPLIER[kind] + 1);
 
   function chooseKind(next: RouletteBetKind) { setKind(next); setChoiceIndex(0); }
   function chooseNumber(number: number) { setKind('straight'); setChoiceIndex(number); }
 
   return <>
-    <RoundStatus label={table.phase === 'betting' ? 'Place your bets' : table.phase === 'spinning' ? 'No more bets' : table.phase === 'result' ? 'The result is in' : 'Table paused'} deadline={table.deadline} now={now} waiting={table.phase === 'paused'} />
-    <div className={`roulette-outcome ${table.phase === 'spinning' ? 'is-spinning' : ''}`}>
+    <RoundStatus label={table.phase === 'betting' ? 'Place your bets' : table.phase === 'spinning' ? 'No more bets' : table.phase === 'landing' ? 'Ball settling' : table.phase === 'result' ? 'The result is in' : 'Table paused'} deadline={table.deadline} now={now} waiting={table.phase === 'paused'} />
+    <div className={`roulette-outcome ${moving ? 'is-spinning' : ''}`}>
       <div className="roulette-wheel-mark" aria-hidden="true"><span />✦</div>
-      <div><span className="casino-label">{table.phase === 'result' ? 'WINNING NUMBER' : table.phase === 'spinning' ? 'THE WHEEL IS TURNING' : 'EUROPEAN · SINGLE ZERO'}</span>
-        <strong>{table.phase === 'result' && table.result !== null ? <><span className={`roulette-winning-number ${table.result === 0 ? 'is-zero' : isRed(table.result) ? 'is-red' : 'is-black'}`}>{table.result}</span> {table.result === 0 ? 'Zero' : isRed(table.result) ? 'Red' : 'Black'}</> : table.phase === 'spinning' ? 'A little suspense.' : 'Make your choice.'}</strong>
+      <div><span className="casino-label">{table.phase === 'result' ? 'WINNING NUMBER' : table.phase === 'landing' ? 'THE BALL IS SETTLING' : table.phase === 'spinning' ? 'THE WHEEL IS TURNING' : 'EUROPEAN · SINGLE ZERO'}</span>
+        <strong>{table.phase === 'result' && table.result !== null ? <><span className={`roulette-winning-number ${table.result === 0 ? 'is-zero' : isRed(table.result) ? 'is-red' : 'is-black'}`}>{table.result}</span> {table.result === 0 ? 'Zero' : isRed(table.result) ? 'Red' : 'Black'}</> : table.phase === 'landing' ? 'Watch the ball.' : table.phase === 'spinning' ? 'A little suspense.' : 'Make your choice.'}</strong>
         <p>{returned !== null && acceptedBets.length ? `${credits(returned)} credits returned · ${credits(acceptedTotal)} staked` : `${table.betCount} ${table.betCount === 1 ? 'bet' : 'bets'} on the table`}</p>
       </div>
     </div>
@@ -286,7 +289,7 @@ export function CasinoPanel({ open, table, serverTime, profileId, balance, priva
   const name = table ? CASINO_ANCHORS.find(anchor => anchor.id === table.id)?.name ?? 'Meridian Casino' : 'Meridian Casino';
   return <div className="casino-overlay"><section ref={panel} className="casino-panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>
     <header className="casino-header"><div><span className="eyebrow">THE MERIDIAN CASINO</span><h2 id={titleId}>{name}</h2></div><button ref={closeButton} type="button" className="casino-close" aria-label="Close casino table" onClick={onClose}><CloseIcon /></button><div className="casino-wallet"><span>Your credits</span><strong aria-label="Casino credit balance">{credits(balance)}</strong><span className="casino-fictional">FICTIONAL CURRENCY</span></div></header>
-    <div className="casino-body" key={table?.id ?? 'loading'}>{!table ? <p className="casino-muted" role="status">Connecting to the table…</p> : table.game === 'roulette' ? <Roulette table={table} now={now} balance={balance} privateState={privateState} busy={busy} send={send} actionHost={actionHost} /> : table.game === 'blackjack' ? <Blackjack table={table} now={now} profileId={profileId} balance={balance} busy={busy} send={send} actionHost={actionHost} /> : <Slots table={table} now={now} profileId={profileId} balance={balance} busy={busy} send={send} actionHost={actionHost} />}</div>
+    <div className="casino-body" key={table?.id ?? 'loading'}>{!table ? <p className="casino-muted" role="status">Connecting to the table…</p> : table.game === 'roulette' ? <Roulette table={table} now={now} balance={balance} privateState={privateState} busy={busy} send={send} actionHost={actionHost} /> : table.game === 'blackjack' ? <Blackjack table={table} now={now} profileId={profileId} balance={balance} busy={busy} send={send} actionHost={actionHost} /> : table.game === 'craps' ? <CrapsGame table={table} now={now} profileId={profileId} balance={balance} privateState={privateState} busy={busy} send={send} actionHost={actionHost} /> : table.game === 'poker' ? <PokerGame table={table} now={now} profileId={profileId} balance={balance} privateState={privateState} busy={busy} send={send} actionHost={actionHost} /> : <Slots table={table} now={now} profileId={profileId} balance={balance} busy={busy} send={send} actionHost={actionHost} />}</div>
     <div ref={setActionContainer} className="casino-mobile-actions" />
     {(error || notice || busy) && <footer className="casino-feedback">{error ? <p className="casino-error" role="alert">{error}</p> : <p role="status">{busy ? 'Waiting for the table…' : notice}</p>}</footer>}
   </section><p className="casino-world-note" aria-hidden="true">THE MERIDIAN<span>Stay a while.</span></p></div>;

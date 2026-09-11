@@ -1,0 +1,271 @@
+{
+  "meridian-shell": {
+    "sourceMeshes": 303,
+    "runtimeMaterialMeshes": 16,
+    "triangles": 45180,
+    "bytes": 1856108,
+    "blenderBounds": {
+      "min": [
+        -20.125,
+        11.157,
+        -0.28
+      ],
+      "max": [
+        20.125,
+        56.085,
+        8.21
+      ]
+    },
+    "markers": {
+      "meridian-fascia-sign-anchor": [
+        0.0,
+        13.75,
+        5.400000095367432
+      ]
+    }
+  },
+  "meridian-roof": {
+    "sourceMeshes": 22,
+    "runtimeMaterialMeshes": 4,
+    "triangles": 4136,
+    "bytes": 295348,
+    "blenderBounds": {
+      "min": [
+        -20.15,
+        13.85,
+        4.24
+      ],
+      "max": [
+        20.15,
+        56.2,
+        8.66
+      ]
+    },
+    "markers": {}
+  },
+  "meridian-interior": {
+    "sourceMeshes": 205,
+    "runtimeMaterialMeshes": 9,
+    "triangles": 38832,
+    "bytes": 2581512,
+    "blenderBounds": {
+      "min": [
+        -19.785,
+        14.0,
+        0.0
+      ],
+      "max": [
+        19.6675,
+        55.94,
+        4.7
+      ]
+    },
+    "markers": {
+      "meridian-ramp-doorway": [
+        7.0,
+        21.5,
+        0.0
+      ],
+      "meridian-atm-placeholder": [
+        -6.050000190734863,
+        18.25,
+        0.0
+      ]
+    }
+  },
+  "roulette-table": {
+    "sourceMeshes": 138,
+    "runtimeMaterialMeshes": 7,
+    "triangles": 23018,
+    "bytes": 896812,
+    "blenderBounds": {
+      "min": [
+        -2.571,
+        -1.171,
+        0.0
+      ],
+      "max": [
+        2.571,
+        1.171,
+        1.437
+      ]
+    },
+    "markers": {
+      "roulette-wheel-anchor": [
+        -1.3700000047683716,
+        0.0,
+        1.3200000524520874
+      ],
+      "roulette-chip-height": [
+        0.0,
+        0.0,
+        1.225000023841858
+      ]
+    }
+  },
+  "blackjack-table": {
+    "sourceMeshes": 32,
+    "runtimeMaterialMeshes": 7,
+    "triangles": 11144,
+    "bytes": 448996,
+    "blenderBounds": {
+      "min": [
+        -2.363,
+        -1.302,
+        0.0
+      ],
+      "max": [
+        2.363,
+        0.433,
+        1.212
+      ]
+    },
+    "markers": {
+      "blackjack-card-height": [
+        0.0,
+        0.0,
+        1.1699999570846558
+      ]
+    }
+  },
+  "slot-machine": {
+    "sourceMeshes": 20,
+    "runtimeMaterialMeshes": 6,
+    "triangles": 5904,
+    "bytes": 370960,
+    "blenderBounds": {
+      "min": [
+        -0.65,
+        -0.71,
+        0.0
+      ],
+      "max": [
+        0.65,
+        0.455,
+        2.35
+      ]
+    },
+    "markers": {
+      "slot-live-display-anchor": [
+        0.0,
+        -0.550000011920929,
+        1.4900000095367432
+      ],
+      "slot-player-seat-anchor": [
+        0.0,
+        -1.25,
+        0.0
+      ]
+    }
+  },
+  "casino-chair": {
+    "sourceMeshes": 8,
+    "runtimeMaterialMeshes": 3,
+    "triangles": 3910,
+    "bytes": 91848,
+    "blenderBounds": {
+      "min": [
+        -0.33,
+        -0.389,
+        0.0
+      ],
+      "max": [
+        0.33,
+        0.32,
+        1.015
+      ]
+    },
+    "markers": {
+      "chair-seat-contact": [
+        0.0,
+        0.0,
+        0.5425000190734863
+      ]
+    }
+  },
+  "roulette-wheel": {
+    "sourceMeshes": 156,
+    "runtimeMaterialMeshes": 6,
+    "triangles": 24608,
+    "bytes": 1067236,
+    "blenderBounds": {
+      "min": [
+        -0.79,
+        -0.79,
+        -0.03
+      ],
+      "max": [
+        0.79,
+        0.79,
+        0.19
+      ]
+    },
+    "markers": {
+      "roulette-rotor-origin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ball-pocket-0": [
+        0.5828925371170044,
+        0.04961146414279938,
+        0.03400000184774399
+      ],
+      "ball-track": [
+        0.8799999952316284,
+        0.0,
+        0.10000000149011612
+      ]
+    }
+  },
+  "meridian-ceiling": {
+    "sourceMeshes": 214,
+    "runtimeMaterialMeshes": 3,
+    "triangles": 53244,
+    "bytes": 2002592,
+    "blenderBounds": {
+      "min": [
+        -19.7,
+        14.0,
+        3.986
+      ],
+      "max": [
+        19.7,
+        56.0,
+        8.2
+      ]
+    },
+    "markers": {
+      "meridian-ceiling-medallion": [
+        0.0,
+        38.0,
+        8.029999732971191
+      ]
+    }
+  },
+  "meridian-chandelier": {
+    "sourceMeshes": 280,
+    "runtimeMaterialMeshes": 3,
+    "triangles": 21364,
+    "bytes": 402460,
+    "blenderBounds": {
+      "min": [
+        -2.5494,
+        35.461,
+        5.15
+      ],
+      "max": [
+        2.5494,
+        40.539,
+        8.04
+      ]
+    },
+    "markers": {
+      "meridian-chandelier-light-anchor": [
+        0.0,
+        38.0,
+        6.099999904632568
+      ]
+    }
+  }
+}
