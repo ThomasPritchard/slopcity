@@ -140,7 +140,7 @@ async function mobile(player: typeof players[number]) {
     await page.setViewportSize(viewport);
     await page.waitForTimeout(200);
     await page.locator('.casino-body').evaluate(body => { body.scrollTop = 0; });
-    const controls = page.locator('.poker-action-dock button');
+    const controls = page.locator('.poker-action-dock button, .casino-header .casino-leave');
     assert.ok(await controls.count() >= 3, `${orientation}: active poker controls rendered`);
     const boxes = [];
     for (const control of await controls.all()) {
@@ -172,7 +172,7 @@ try {
   for (const player of players) {
     await player.page.getByRole('button', { name: `Select seat ${player.seat + 1}`, exact: true }).click();
     await player.page.getByRole('button', { name: `Join seat ${player.seat + 1}`, exact: true }).click();
-    await player.page.getByRole('button', { name: 'Leave table', exact: true }).waitFor();
+    await player.page.getByRole('button', { name: 'Leave seat', exact: true }).waitFor();
     player.afterBuyIn = (await wallet(player.page)).balance;
     assert.equal(player.afterBuyIn, player.before - POKER_DEFAULT_BUY_IN, `${player.name}: wallet buy-in debit`);
   }
@@ -227,14 +227,13 @@ try {
   for (const player of players) assert.equal((await wallet(player.page)).balance, player.afterBuyIn, 'Hand winnings remain in table chips until cash-out');
   await a.page.locator('.poker-results').scrollIntoViewIfNeeded();
   await screenshot(a.page, 'desktop-showdown');
-  await Promise.all(players.map(player => player.page.getByRole('button', { name: 'Leave table', exact: true }).click()));
+  await Promise.all(players.map(player => player.page.getByRole('button', { name: 'Leave seat', exact: true }).click()));
   const finalBalances = [];
   for (const [index, player] of players.entries()) {
-    await player.page.waitForFunction(() => !document.querySelector('.poker-seat.is-yours'));
+    await player.page.locator('.casino-panel').waitFor({ state: 'detached' });
     const balance = (await wallet(player.page)).balance;
     assert.equal(balance, player.afterBuyIn + stacks[index], `${player.name}: table stack returned to wallet`);
     finalBalances.push(balance);
-    await player.page.getByRole('button', { name: 'Close casino table', exact: true }).click();
     await player.page.waitForTimeout(250);
     const value = await avatar(player.page, player.name), offset = POKER_SEAT_OFFSETS[player.seat];
     assert.ok(value && Math.abs(value.position[0] - (11.5 + offset.exitX)) < .02 && Math.abs(value.position[2] - (51.4 + offset.exitZ)) < .02, 'Avatar released to the outside of its chair');
@@ -256,7 +255,7 @@ try {
   throw error;
 } finally {
   for (const player of players) {
-    const leave = player.page.getByRole('button', { name: 'Leave table', exact: true });
+    const leave = player.page.getByRole('button', { name: 'Leave seat', exact: true });
     if (await leave.isVisible().catch(() => false) && await leave.isEnabled().catch(() => false)) await leave.click({ timeout: 2000 }).catch(() => {});
   }
   await browser.close();

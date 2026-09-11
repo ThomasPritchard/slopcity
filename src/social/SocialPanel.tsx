@@ -94,7 +94,7 @@ export function SocialPanel({
   const voiceLabel = connecting ? 'Joining voice…' : connected ? 'Voice connected' : voice.status === 'error' ? 'Voice unavailable' : 'Voice off';
   const voiceError = voice.error || (voice.status === 'error' ? 'Voice could not connect. Please try again.' : '');
 
-  return <div className="social-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
+  return <div className="social-backdrop">
     <section ref={panel} className="social-panel" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onKeyDown={handleKeyDown}>
       <header className="social-header">
         <div><span className="eyebrow">LIFE IN THE SQUARE</span><h2 id={titleId}>Your neighbours.</h2></div>

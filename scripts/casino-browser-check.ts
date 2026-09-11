@@ -55,7 +55,7 @@ try{
 
  const stand=page.getByRole('button',{name:'Stand',exact:true});if(await stand.isVisible() && await stand.isEnabled())await stand.click();
  await page.locator('.casino-round-status', {hasText:'Round complete'}).first().waitFor();const outcome=page.locator('.blackjack-hand-outcome').first();const returned=await outcome.locator('strong').count()?Number((await outcome.locator('strong').innerText()).replace(/[^0-9]/g,'')):0;assert.equal((await wallet()).balance,before.balance-10+returned);
- await(await enabled('Leave seat')).click();await page.getByRole('button',{name:'Take seat 3',exact:true}).waitFor();await page.getByRole('button',{name:'Close casino table'}).click();
+ await(await enabled('Leave seat')).click();await page.locator('.casino-panel').waitFor({state:'detached'});
  console.log('Blackjack seated, dealt, action/result settled and seat released.');
  await walk('z',26.7);await walk('x',-14.6);
  await page.getByRole('button',{name:'Open Meridian reels · 1',exact:true}).click();const slotBefore=(await wallet()).balance;

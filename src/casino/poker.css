@@ -7,7 +7,6 @@
 .poker-table-limits { margin-top: 10px; color: var(--casino-muted); font-size: 9px; line-height: 1.6; text-align: center; }
 .poker-your-place { padding-top: 14px; }
 .poker-your-place .casino-section-heading { min-height: 30px; }
-.poker-leave { margin: -7px 0; }
 .poker-own-hand { display: flex; align-items: center; gap: 21px; margin-top: 12px; }
 .poker-own-hand dl { display: flex; flex-direction: column; gap: 9px; min-width: 0; margin: 0; }
 .poker-own-hand dl > div { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }

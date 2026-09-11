@@ -58,8 +58,8 @@ export class TownRoom extends Room<{ state: TownState }> {
           const occupied=table.seats.find(seat=>seat.player.profileId===citizen.profileId && seat.player.connected);
           if(occupied) {const offset=BLACKJACK_SEAT_OFFSETS[occupied.seat];if(offset)seat={id:`casino:${table.id}:${occupied.seat}`,x:anchor.x+offset.x,z:anchor.z+offset.z,heading:offset.heading};}
         } else if(table.game==='poker') {
-          // An authenticated reconnect returns to its reserved chair; rejoin still gates actions.
-          const occupied=table.seats.find(seat=>seat.player.profileId===citizen.profileId);
+          // Reconnects return to their reserved chair; departing players can walk away while chips settle.
+          const occupied=table.seats.find(seat=>seat.player.profileId===citizen.profileId && !seat.leaving);
           if(occupied) {const offset=POKER_SEAT_OFFSETS[occupied.seat];if(offset)seat={id:`casino:${table.id}:${occupied.seat}`,x:anchor.x+offset.x,z:anchor.z+offset.z,heading:offset.heading};}
         } else if(table.game==='slots' && table.player?.profileId===citizen.profileId && table.player.connected) seat={id:`casino:${table.id}:0`,x:anchor.x,z:anchor.z-1.25,heading:0};
       }

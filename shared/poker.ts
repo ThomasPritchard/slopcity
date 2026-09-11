@@ -2,10 +2,10 @@ import type { Card, CasinoOccupant } from './casino.ts';
 
 export const POKER_SMALL_BLIND = 5;
 export const POKER_BIG_BLIND = 10;
-export const POKER_MIN_BUY_IN = 200;
+export const POKER_MIN_BUY_IN = 100;
 export const POKER_MAX_BUY_IN = 1000;
 export const POKER_BUY_IN_STEP = 100;
-export const POKER_DEFAULT_BUY_IN = 500;
+export const POKER_DEFAULT_BUY_IN = 100;
 export const POKER_TURN_MS = 20_000;
 export const POKER_BREAK_MS = 8000;
 export const POKER_RUNOUT_MS = 1200;

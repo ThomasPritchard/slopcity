@@ -75,7 +75,7 @@ export class PokerService {
   if (!originSession || this.hooks.actor(profileId)?.sessionId !== originSession) fail('session_ended', 'This poker session has ended');
   const accepted = (extra: Partial<CasinoReceipt> = {}) => this.remember(key, fingerprint, { requestId: command.requestId, ok: true, message: 'Accepted', ...extra });
   if (command.action === 'poker-join') {
-   if (!Number.isInteger(command.seat) || command.seat < 0 || command.seat > 5 || !Number.isSafeInteger(command.buyIn) || command.buyIn < POKER_MIN_BUY_IN || command.buyIn > POKER_MAX_BUY_IN || command.buyIn % POKER_BUY_IN_STEP) fail('invalid_buy_in', 'Choose a seat and 200–1,000 credits in steps of 100');
+   if (!Number.isInteger(command.seat) || command.seat < 0 || command.seat > 5 || !Number.isSafeInteger(command.buyIn) || command.buyIn < POKER_MIN_BUY_IN || command.buyIn > POKER_MAX_BUY_IN || command.buyIn % POKER_BUY_IN_STEP) fail('invalid_buy_in', 'Choose a seat and 100–1,000 credits in steps of 100');
    const validate = () => { this.hooks.canJoin(profileId, originSession!); if (!['waiting', 'result'].includes(this.view.phase)) fail('hand_in_progress', 'Join between poker hands'); if (this.own(profileId)) fail('already_seated', 'Rejoin your existing poker seat'); if (this.seats.has(command.seat)) fail('seat_taken', 'That poker seat is occupied'); };
    validate(); const name = this.hooks.actor(profileId)!.name;
    const input = { profileId, requestId: command.requestId, fingerprint, roomId: this.roomId, tableId: 'poker-1' as const, seat: command.seat, amount: command.buyIn };

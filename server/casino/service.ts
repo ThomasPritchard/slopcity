@@ -1,5 +1,5 @@
 import { PokerService } from './poker.ts';
-import type { PokerCommand } from '../../shared/poker.ts';
+import { POKER_MIN_BUY_IN, POKER_MAX_BUY_IN, POKER_BUY_IN_STEP, type PokerCommand } from '../../shared/poker.ts';
 import { resolveCraps, crapsReturn, CRAPS_BETTING_MS, CRAPS_AWAITING_ROLL_MS, type CrapsView, type CrapsBet, type CrapsResult } from '../../shared/craps.ts';
 import { CRAPS_ROLL_LEAD_MS, CRAPS_ROLL_MS } from '../../shared/crapsMotion.ts';
 import { createHash, randomUUID } from 'node:crypto';
@@ -126,7 +126,7 @@ export class CasinoService {
   if (typeof v.action === 'string' && v.action.startsWith('poker-')) {
    if (tableId !== 'poker-1') fail('invalid_table', 'Choose the poker table');
    if (v.action === 'poker-join') {
-    if (!Number.isInteger(v.seat) || Number(v.seat) < 0 || Number(v.seat) > 5 || !Number.isSafeInteger(v.buyIn) || Number(v.buyIn) < 200 || Number(v.buyIn) > 1000 || Number(v.buyIn) % 100) fail('invalid_buy_in', 'Choose a seat and 200–1,000 credits in steps of 100');
+    if (!Number.isInteger(v.seat) || Number(v.seat) < 0 || Number(v.seat) > 5 || !Number.isSafeInteger(v.buyIn) || Number(v.buyIn) < POKER_MIN_BUY_IN || Number(v.buyIn) > POKER_MAX_BUY_IN || Number(v.buyIn) % POKER_BUY_IN_STEP) fail('invalid_buy_in', 'Choose a seat and 100–1,000 credits in steps of 100');
     return { action: 'poker-join', tableId: 'poker-1', requestId, seat: v.seat as number, buyIn: v.buyIn as number };
    }
    if (v.action === 'poker-rejoin' || v.action === 'poker-leave') {
@@ -313,8 +313,11 @@ export class CasinoService {
  private unoccupied(profileId: string, except?: CasinoTableId) {
   if (except !== 'poker-1' && this.poker?.hasSeat(profileId)) fail('already_seated', 'Leave your poker seat first');
   if ([...this.pending.values()].some(p => p.profileId === profileId && p.tableId !== except && !this.roulette.has(p.tableId) && p.tableId !== 'craps-1')) fail('already_seated', 'Wait for your current casino action to finish saving');
-  for (const [id, table] of this.blackjack) if (id !== except && this.findSeat(table, profileId)) fail('already_seated', 'Leave your current casino station first');
-  for (const [id, table] of this.slots) if (id !== except && table.player?.profileId === profileId) fail('already_seated', 'Wait for your current spin to finish');
+  for (const [id, table] of this.blackjack) {
+   const seat = this.findSeat(table, profileId)?.[1];
+   if (id !== except && seat && (!seat.player.departed || seat.hands.some(hand => hand.state !== 'settled'))) fail('already_seated', 'Leave your current casino station first');
+  }
+  for (const [id, table] of this.slots) if (id !== except && table.player?.profileId === profileId && (!table.player.departed || table.view.phase !== 'result')) fail('already_seated', 'Wait for your current spin to finish');
  }
  private join(profileId: string, id: CasinoTableId, index: number) {
   const table = this.blackjack.get(id)!; this.unoccupied(profileId, id);

@@ -212,3 +212,14 @@ test('Unequal heads-up all-ins display only the contested pot after durable sett
  assert.deepEqual(t.repo.finishes[0], t.repo.finishes[1]);
  assert.equal([...t.repo.escrows.values()].reduce((sum, e) => sum + e.stack, 0), 600);
 });
+
+ test('Poker accepts a 100-credit buy-in and rejects smaller or off-step amounts', async () => {
+  const t = setup();
+  for (const amount of [0, 99, 150, 1100]) await assert.rejects(t.join(0, amount), (e: EconomyError) => e.code === 'invalid_buy_in');
+  await t.join(0, 100);
+  assert.equal(t.service.state().seats[0].stack, 100);
+  assert.equal(t.repo.wallet('p0').balance, 1900);
+  const own = t.service.privateState('p0')!;
+  await t.command('p0', { action: 'poker-leave', escrowId: own.escrowId });
+  assert.equal(t.repo.wallet('p0').balance, 2000);
+ });

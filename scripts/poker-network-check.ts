@@ -160,9 +160,25 @@ try {
  assert.equal((await database.query("SELECT count(*)::integer AS n FROM poker_seats WHERE status='open'")).rows[0].n, 0);
  const ledger = (await database.query('SELECT w.balance,sum(l.amount)::integer AS ledger FROM economy_wallets w JOIN economy_ledger l ON l.profile_id=w.profile_id GROUP BY w.profile_id,w.balance')).rows;
  assert.ok(ledger.every(r => r.balance === r.ledger));
+ // A departing player leaves the physical chair before their live hand settles.
+ for (const [c, seat] of [[a, 0], [b, 3]] as const) assert.equal((await command(c, { action: 'poker-join', tableId: 'poker-1', seat, buyIn: 100 })).ok, true);
+ await until(() => poker(a).phase === 'preflop', '100-credit hand starts', 12000);
+ const departing = poker(a).activeSeat === 0 ? b : a, remaining = departing === a ? b : a;
+ const departingId = player(departing).profileId, escrow = departing.privateState!.poker!.escrowId;
+ assert.equal((await command(departing, { action: 'poker-leave', tableId: 'poker-1', escrowId: escrow })).ok, true);
+ await until(() => player(departing).seatId === '', 'live-hand departure releases physical chair');
+ assert.ok(poker(departing).seats.some(s => s.player.profileId === departingId && s.leaving), 'Table escrow remains while departure is pending');
+ const start = { x: player(departing).x, z: player(departing).z };
+ await walk(departing, start.x, start.z + (departing === a ? -1 : 1));
+ const turn = remaining.privateState!.poker!;
+ assert.equal((await command(remaining, { action: 'poker-action', tableId: 'poker-1', handId: turn.handId!, turnId: turn.actions!.turnId, move: turn.actions!.canCheck ? 'check' : 'call' })).ok, true);
+ await until(() => departing.privateState?.poker === null, 'departing escrow settles and cashes out', 12000);
+ assert.equal((await database.query('SELECT status FROM poker_seats WHERE id=$1', [escrow])).rows[0].status, 'closed');
+ await command(remaining, { action: 'poker-leave', tableId: 'poker-1', escrowId: remaining.privateState!.poker!.escrowId });
+ await log('PASS: 100-credit buy-ins and walking away during a live hand without early escrow payout.');
  await log('PASS: legal raise/call/check through showdown, wrong-turn and duplicate protection, identical results on three clients, conserved escrow settlement and one cashout per player.');
 } catch (error) {
- await log(`FAIL: ${error instanceof assert.AssertionError ? error.message : error instanceof Error && error.message.startsWith('Timed out:') ? error.message : 'Network check failed (details suppressed to protect connection configuration)'}`);
+ await log(`FAIL: ${error instanceof assert.AssertionError ? error.stack : error instanceof Error && error.message.startsWith('Timed out:') ? error.message : 'Network check failed (details suppressed to protect connection configuration)'}`);
  process.exitCode = 1;
 } finally {
  await Promise.allSettled(connections.filter(c => c.room.connection?.isOpen).map(c => c.room.leave()));

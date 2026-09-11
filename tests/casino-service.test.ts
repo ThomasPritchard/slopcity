@@ -284,3 +284,15 @@ test('Craps seven-out preserves the departure replacement, including a second de
   await t.service.dispose();
  }
 });
+
+test('Leaving a settled casino seat allows the next station during the result display', async () => {
+ const t = setup(); await t.begin(); await t.tick(BLACKJACK_ACTION_MS);
+ assert.equal(t.table().phase, 'result');
+ await t.command({ action: 'leave', tableId: 'blackjack-1' });
+ Object.assign(t.actors.get('alice')!, { x: -14.6, z: 27.55 });
+ assert.equal((await t.command({ action: 'slots-spin', tableId: 'slots-1', stake: 10 })).ok, true);
+ await t.tick(SLOTS_SPIN_MS); await t.command({ action: 'leave', tableId: 'slots-1' });
+ Object.assign(t.actors.get('alice')!, { x: -8, z: 28.1 });
+ assert.equal((await t.command({ action: 'blackjack-join', tableId: 'blackjack-1', seat: 0 })).ok, true);
+ await t.service.dispose();
+});

@@ -46,7 +46,7 @@ House-game base stakes are integer multiples of 10 from 10–100. Blackjack doub
 - **Blackjack:** 20 seconds betting, 30 seconds per hand action, six seconds result. Fresh shuffled six-deck shoe each round; server crypto Fisher–Yates. Dealer peeks for a natural, stands on soft 17; natural pays 3:2 profit, ordinary win 1:1, push returns stake. One split, only identical ranks (10/J is invalid), at most two hands. Split aces receive one card each and stand; split 21 is ordinary 21. Double allowed on the first two cards, including non-ace split hands, draws once and stands. No insurance or surrender. Natural/bust hands finish automatically. Timeout, disconnect or walking away stands active hands; accepted bets finish normally. A reconnected guest can reclaim its still-active seat. Only one initial bet per seat per round. No automatic stake for the next round.
 - **Slots:** each of three independent reels has 16 equally likely stops: seven cherry, four lemon, three bar, two seven. Three matches pay gross 3×/8×/20×/50× respectively; exactly two cherries anywhere returns 1×; otherwise zero. Resolve and persist before a 2.5-second visual spin, then reveal and hold six seconds. No pending-credit animation is presented as a committed win. One occupant and one spin per machine; a profile may occupy only one blackjack/slot station at once.
 
-The [poker contract](poker-design.md) adds six-seat player-versus-player Texas Hold’em, 5/10 blinds and separately held table chips with a 200–1,000-credit buy-in.
+The [poker contract](poker-design.md) adds six-seat player-versus-player Texas Hold’em, 5/10 blinds and separately held table chips with a 100–1,000-credit buy-in.
 
 ## Persistence, failures and concurrency
 

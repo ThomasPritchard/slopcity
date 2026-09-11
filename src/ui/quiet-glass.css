@@ -323,3 +323,8 @@ button:focus-visible{outline-offset:3px}
   .modal>.close{min-width:44px;min-height:44px;align-items:center;justify-content:center;right:8px;top:8px;border-radius:8px}
 }
 @media(pointer:coarse) and (orientation:landscape) and (max-height:620px){.game{--stick-size:72px}}
+
+/* Keep the occupied-seat exit above the nearby-game tray. */
+.game .casino-seat-action { bottom: 164px; min-height: 44px; }
+@media(pointer:coarse),(max-width:699px) { .game .casino-seat-action { bottom: 218px; } }
+@media(pointer:coarse) and (orientation:landscape) and (max-height:620px) { .game .casino-seat-action { bottom: 116px; } }

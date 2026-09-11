@@ -95,6 +95,8 @@ async function screenPoint(p: Page, name: string) {
 }
 async function openCard(p: Page, name: string) {
   await p.getByRole('button', { name: 'Open neighbours', exact: true }).click();
+  await p.mouse.click(8, 8); await p.waitForTimeout(300);
+  assert.equal(await p.getByRole('dialog', { name: 'Your neighbours.' }).count(), 1, 'Social persists after a background click');
   await p.locator('.social-person-name').getByRole('button', { name: `View ${name}`, exact: true }).click();
   await p.getByRole('dialog', { name }).waitFor();
 }
@@ -122,6 +124,8 @@ try {
   assert.equal(await a.getByRole('dialog').count(), 0, 'camera drag must not select a player');
   await frame(a); const target = await screenPoint(a, 'Bea'); await a.mouse.click(target.x, target.y);
   await a.getByRole('dialog', { name: 'Bea' }).waitFor();
+  await a.mouse.click(8, 8); await a.waitForTimeout(300);
+  assert.equal(await a.getByRole('dialog', { name: 'Bea' }).count(), 1, 'Player card persists after a background click');
   assert.equal(await a.getByRole('button', { name: /Give credits/ }).isDisabled(), true, 'fresh grant cannot be gifted');
   await a.screenshot({ path: `${output}/player-card-desktop.png` });
   await a.keyboard.press('Tab'); assert.equal(await a.getByRole('dialog').evaluate(dialog => dialog.contains(document.activeElement)), true);

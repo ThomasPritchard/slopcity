@@ -130,7 +130,7 @@ export function PokerGame({ table, now, profileId, balance, privateState, busy, 
     </section>
 
     {hasPlace && <section className="poker-your-place" aria-label="Your poker hand and table chips">
-      <div className="casino-section-heading"><h3>{actionHost ? 'Your seat' : 'Your hand'}</h3>{player && <button type="button" className="casino-text-button poker-leave" disabled={busy || !!ownSeat?.leaving || table.phase === 'paused'} onClick={() => { if (!busy && !ownSeat?.leaving && table.phase !== 'paused') send({ action: 'poker-leave', tableId: table.id, escrowId: player.escrowId }); }}>{ownSeat?.leaving ? 'Leaving…' : 'Leave table'}</button>}</div>
+      <div className="casino-section-heading"><h3>{actionHost ? 'Your seat' : 'Your hand'}</h3></div>
       <div className="poker-own-hand"><div className="casino-cards" aria-label="Your two hole cards">{Array.from({ length: 2 }, (_, index) => <PokerCard key={index} card={holeCards[index] ?? null} empty={!holeCards[index]} />)}</div><dl><div><dt>Your table chips</dt><dd>{ownSeat ? chips(ownSeat.stack) : 'Waiting…'}</dd></div><div><dt>In the pot this hand</dt><dd>{chips(ownSeat?.committed ?? 0)}</dd></div></dl></div>
       <p className="casino-fine">{betweenHands ? 'Leave to return your remaining table chips to your wallet.' : 'Leaving folds on your next turn. All-in hands and hands with betting complete stay live; remaining chips return after the hand.'}</p>
     </section>}

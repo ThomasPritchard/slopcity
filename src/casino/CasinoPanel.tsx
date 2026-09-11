@@ -171,8 +171,7 @@ function Blackjack({ table, now, profileId, balance, busy, send, actionHost }: {
   useEffect(() => {
     if (actionHost && yourTurn) ownHands.current?.scrollIntoView({ block: 'nearest' });
   }, [actionHost, yourTurn, table.activeHand]);
-  const leaveButton = <button type="button" className="casino-text-button" disabled={busy || leavePending || !ownSeat?.player.connected} onClick={() => send({ action: 'leave', tableId: table.id })}>{leavePending ? 'Leaving…' : ownSeat?.player.connected ? 'Leave seat' : 'Seat inactive'}</button>;
-  const actionSummary = <><span>{yourTurn && activeHand ? `Your turn · ${activeHand.soft ? 'soft ' : ''}${activeHand.total}` : label}<small>{yourTurn && ownSeat && ownSeat.hands.length > 1 ? `Hand ${(table.activeHand ?? 0) + 1} · ` : ''}{table.deadline > now ? `${Math.ceil((table.deadline - now) / 1000)}s remaining` : 'Waiting for the table'}</small></span>{leaveButton}</>;
+  const actionSummary = <><span>{yourTurn && activeHand ? `Your turn · ${activeHand.soft ? 'soft ' : ''}${activeHand.total}` : label}<small>{yourTurn && ownSeat && ownSeat.hands.length > 1 ? `Hand ${(table.activeHand ?? 0) + 1} · ` : ''}{table.deadline > now ? `${Math.ceil((table.deadline - now) / 1000)}s remaining` : 'Waiting for the table'}</small></span></>;
   const wagerControls = <><StakeControl value={stake} onChange={setStake} disabled={busy} /><button type="button" className="casino-primary" disabled={busy || balance < stake} onClick={() => send({ action: 'blackjack-bet', tableId: table.id, roundId: table.roundId, stake })}>{busy ? 'Placing bet…' : balance < stake ? 'Not enough credits' : `Bet ${stake} credits`}</button></>;
   const handControls = activeHand && <div className="blackjack-actions" role="group" aria-label="Your available actions">{(['hit', 'stand', 'double', 'split'] as const).map(move => <button key={move} type="button" className={move === 'hit' ? 'casino-primary' : 'casino-secondary'} disabled={busy || !activeHand.actions.includes(move) || ((move === 'double' || move === 'split') && balance < activeHand.stake)} onClick={() => send({ action: 'blackjack-action', tableId: table.id, roundId: table.roundId, hand: table.activeHand!, move })}>{move === 'double' ? `Double · +${activeHand.stake}` : move === 'split' ? `Split · +${activeHand.stake}` : move[0].toUpperCase() + move.slice(1)}</button>)}</div>;
 
@@ -195,7 +194,7 @@ function Blackjack({ table, now, profileId, balance, busy, send, actionHost }: {
     </ActionDock>
 
     {ownSeat ? <section className="blackjack-player-controls" aria-label="Your blackjack controls">
-      <div className="casino-section-heading"><h3>Your place</h3>{!actionHost && leaveButton}</div>
+      <div className="casino-section-heading"><h3>Your place</h3></div>
       {leavePending && <p className="casino-muted" role="status">Leaving after this hand settles…</p>}
       {ownSeat.hands.length === 0 && betting && !actionHost ? wagerControls : null}
       {ownSeat.hands.length === 0 && !betting && <p className="casino-muted">You have a seat. Betting opens with the next round.</p>}
@@ -286,9 +285,19 @@ export function CasinoPanel({ open, table, serverTime, profileId, balance, priva
   }, [open]);
   if (!open) return null;
   const send: Send = command => { if (!busy) onCommand({ ...command, requestId: crypto.randomUUID() } as CasinoCommand); };
+  const ownSeat = table && (table.game === 'poker' || table.game === 'blackjack') ? table.seats.find(seat => seat.player.profileId === profileId) : undefined;
+  const pokerPlayer = table?.game === 'poker' && privateState.poker?.tableId === table.id ? privateState.poker : null;
+  const hasSeat = !!ownSeat || !!pokerPlayer || table?.game === 'slots' && table.player?.profileId === profileId && table.player.connected;
+  const leaving = ownSeat && ('leaving' in ownSeat ? ownSeat.leaving : !ownSeat.player.connected);
+  function leaveTable() {
+    if (!table || busy || leaving) return;
+    if (pokerPlayer) send({ action: 'poker-leave', tableId: 'poker-1', escrowId: pokerPlayer.escrowId });
+    else if (hasSeat) send({ action: 'leave', tableId: table.id });
+    else onClose();
+  }
   const name = table ? CASINO_ANCHORS.find(anchor => anchor.id === table.id)?.name ?? 'Meridian Casino' : 'Meridian Casino';
   return <div className="casino-overlay"><section ref={panel} className="casino-panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-    <header className="casino-header"><div><span className="eyebrow">THE MERIDIAN CASINO</span><h2 id={titleId}>{name}</h2></div><button ref={closeButton} type="button" className="casino-close" aria-label="Close casino table" onClick={onClose}><CloseIcon /></button><div className="casino-wallet"><span>Your credits</span><strong aria-label="Casino credit balance">{credits(balance)}</strong><span className="casino-fictional">FICTIONAL CURRENCY</span></div></header>
+    <header className="casino-header"><div><span className="eyebrow">THE MERIDIAN CASINO</span><h2 id={titleId}>{name}</h2></div><button type="button" className="casino-leave" disabled={busy || !!leaving || !table} onClick={leaveTable}>{leaving ? 'Leaving…' : hasSeat ? 'Leave seat' : 'Leave table'}</button><button ref={closeButton} type="button" className="casino-close" aria-label="Close casino table" onClick={onClose}><CloseIcon /></button><div className="casino-wallet"><span>Your credits</span><strong aria-label="Casino credit balance">{credits(balance)}</strong><span className="casino-fictional">FICTIONAL CURRENCY</span></div></header>
     <div className="casino-body" key={table?.id ?? 'loading'}>{!table ? <p className="casino-muted" role="status">Connecting to the table…</p> : table.game === 'roulette' ? <Roulette table={table} now={now} balance={balance} privateState={privateState} busy={busy} send={send} actionHost={actionHost} /> : table.game === 'blackjack' ? <Blackjack table={table} now={now} profileId={profileId} balance={balance} busy={busy} send={send} actionHost={actionHost} /> : table.game === 'craps' ? <CrapsGame table={table} now={now} profileId={profileId} balance={balance} privateState={privateState} busy={busy} send={send} actionHost={actionHost} /> : table.game === 'poker' ? <PokerGame table={table} now={now} profileId={profileId} balance={balance} privateState={privateState} busy={busy} send={send} actionHost={actionHost} /> : <Slots table={table} now={now} profileId={profileId} balance={balance} busy={busy} send={send} actionHost={actionHost} />}</div>
     <div ref={setActionContainer} className="casino-mobile-actions" />
     {(error || notice || busy) && <footer className="casino-feedback">{error ? <p className="casino-error" role="alert">{error}</p> : <p role="status">{busy ? 'Waiting for the table…' : notice}</p>}</footer>}

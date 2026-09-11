@@ -33,7 +33,7 @@ export class PokerRepository implements PokerRepositoryLike {
   return this.transaction(async c => { await this.economy.lock(c, profileId); return this.prior(c, profileId, requestId, expected); });
  }
  buyIn(input: PokerBuyIn, validate: () => void): Promise<PokerTransfer> {
-  if (!Number.isInteger(input.seat) || input.seat < 0 || input.seat > 5 || !Number.isSafeInteger(input.amount) || input.amount < POKER_MIN_BUY_IN || input.amount > POKER_MAX_BUY_IN || input.amount % POKER_BUY_IN_STEP) throw new EconomyError('invalid_buy_in', 'Choose a seat and 200–1,000 credits in steps of 100');
+  if (!Number.isInteger(input.seat) || input.seat < 0 || input.seat > 5 || !Number.isSafeInteger(input.amount) || input.amount < POKER_MIN_BUY_IN || input.amount > POKER_MAX_BUY_IN || input.amount % POKER_BUY_IN_STEP) throw new EconomyError('invalid_buy_in', 'Choose a seat and 100–1,000 credits in steps of 100');
   return this.transaction(async c => {
    await this.economy.lock(c, input.profileId);
    const prior = await this.prior(c, input.profileId, input.requestId, input.fingerprint);
