@@ -1,3 +1,8 @@
+import { useCreditLeaderboard } from './leaderboard/useCreditLeaderboard';
+import { CreditLeaderboardPanel } from './leaderboard/CreditLeaderboardPanel';
+import { nearCreditBoard } from '../shared/creditLeaderboard';
+import { nearMemoriesBoard } from '../shared/memories';
+import { CommunityNews, MemoryPostDialog } from './community/CommunityNews';
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Client, type Room } from '@colyseus/sdk';
@@ -101,12 +106,14 @@ function App() {
   const joining = useRef(false);
   const [profile, setProfile] = useState(savedProfile);
   const [phase, setPhase] = useState<'welcome' | 'customising' | 'joining' | 'playing' | 'disconnected'>('welcome');
+  const leaderboard = useCreditLeaderboard(phase === 'playing');
   const socialData = usePlayerSocial(phase === 'playing', guest?.id, acceptWallet);
   const [ready, setReady] = useState(false);
+  useEffect(() => { world.current?.syncCreditLeaderboard(leaderboard.snapshot, leaderboard.unavailable); }, [leaderboard.snapshot, leaderboard.unavailable, ready]);
   const [error, setError] = useState('');
   const [players, setPlayers] = useState(new Map<string, PlayerView>());
   const [stats, setStats] = useState<SceneStats>({ fps: 0, district: 'Town Square', x: 0, z: -17 });
-  const [panel, setPanel] = useState<'map' | 'settings' | null>(null);
+  const [panel, setPanel] = useState<'map' | 'settings' | 'leaderboard' | 'memory' | null>(null);
   const [chatOpen, setChatOpen] = useState(() => !matchMedia('(pointer: coarse)').matches);
   const [chatFocused, setChatFocused] = useState(false);
   const [messages, setMessages] = useState<ChatLine[]>([]);
@@ -151,6 +158,8 @@ function App() {
       scene.onInput = (x, z, sprint) => { if (room.current) room.current.send('input', { x, z, sprint, seq: sequence.current++ }); };
       scene.onJump = () => room.current?.send('jump');
       scene.onSprintChange = setSprintEnabled;
+      scene.onCreditLeaderboard = () => { setPanel('leaderboard'); setHint(false); releaseStick(); };
+      scene.onMemory = () => { setPanel('memory'); setHint(false); releaseStick(); };
       scene.onSelectPlayer = profileId => {
         const player = [...(room.current?.state.players.values() ?? [])].find(player => player.profileId === profileId);
         if (player) openNeighbour({ profileId, name: player.name });
@@ -397,7 +406,7 @@ function App() {
   const invitation = <EmotePrompt inbox={emoteInbox} onCommand={sendEmote}/>;
   const playing = phase === 'playing';
   const customising = phase === 'customising' || phase === 'joining';
-  return <main className={playing ? `game playing${shopMode?' shopping':''}${casinoTable?' at-table':''}${chatFocused?' typing-chat':''}` : customising ? 'game customising' : 'game'}>
+  return <main className={playing ? `game playing${shopMode?' shopping':''}${casinoTable?' at-table':''}${chatFocused?' typing-chat':''}` : customising ? 'game customising' : 'game welcome-menu'}>
     <canvas id="world" ref={canvas} tabIndex={0} aria-label="Slop City 3D world. Use W A S D or arrows to walk, Shift to sprint, Space to jump, and drag to look around. Select a neighbour to interact." />
     <div className="vignette" />
     <header className="masthead">
@@ -406,6 +415,7 @@ function App() {
     </header>
     {!playing && !customising && <>
       <div className="welcome-shade" />
+      <div className="welcome-layout">
       <section className="welcome">
         <div className="eyebrow"><span className="small-line"/> YOUR NEXT CHAPTER STARTS HERE</div>
         <h1>A little city.<br/>A lot of <em>possibility.</em></h1>
@@ -420,7 +430,8 @@ function App() {
         </form>
         <p className="development-note">A shared town with your own wardrobe, credits and neighbours.<br className="desktop-only"/> Earn a little. Find your next look. Try your luck at the Meridian.</p>
       </section>
-      <div className="scene-caption"><span className="coordinate">01 — THE NEIGHBOURHOOD</span><h2>Town Square</h2><span>A shared space. An open invitation.</span></div>
+      <CommunityNews onOpen={() => setPanel('memory')}/>
+      </div>
       <footer className="welcome-footer"><span>COME AS YOU ARE.</span><span>STAY A LITTLE WHILE.</span></footer>
     </>}
     {customising && <>
@@ -453,6 +464,9 @@ function App() {
       {nearbyGames.length > 0 && <div className="casino-entry" aria-label="Nearby casino games">{nearbyGames.map(anchor=><button key={anchor.id} aria-current={focusGame?.id===anchor.id ? 'true' : undefined} style={nearbyGames.length>1&&focusGame&&focusGame.id!==anchor.id?{opacity:.72}:undefined} onPointerEnter={()=>setHoveredGame(anchor.id)} onPointerLeave={()=>setHoveredGame(null)} onFocus={()=>setHoveredGame(anchor.id)} onBlur={()=>setHoveredGame(null)} onPointerDown={()=>{setPickedGame(anchor.id);setHoveredGame(anchor.id);world.current?.setInteractionFocus(anchor);}} onClick={()=>{setPickedGame(anchor.id);setHoveredGame(anchor.id);world.current?.setInteractionFocus(anchor);openCasino(anchor.id);}}>Open {anchor.name}</button>)}</div>}
       <CasinoPanel open={casinoTable!==null} table={casinoState.tables.find(table=>table.id===casinoTable)??null} serverTime={casinoState.serverTime} profileId={guest?.id??''} balance={wallet?.balance??0} privateState={casinoPrivate} busy={casinoBusy} error={casinoError} notice={casinoNotice} onCommand={command=>sendCasino(command)} onClose={closeCasino}/>
       {casinoRetry && <button className="casino-retry" onClick={()=>{if(casinoPending.current)sendCasino(casinoPending.current,true);}}>Retry last casino action</button>}
+      {localPlayer && nearCreditBoard(localPlayer.x, localPlayer.z) && !panel && !socialOpen && !selectedNeighbour && !casinoTable && !shopMode && !localPlayer.emoteId && <button className="shop-entry" onClick={() => { setPanel('leaderboard'); setHint(false); releaseStick(); }}>View credit leaderboard</button>}
+      {panel === 'leaderboard' && <CreditLeaderboardPanel snapshot={leaderboard.snapshot} unavailable={leaderboard.unavailable} onClose={() => setPanel(null)}/>}
+      {localPlayer && nearMemoriesBoard(localPlayer.x, localPlayer.z) && !panel && !socialOpen && !selectedNeighbour && !casinoTable && !shopMode && !localPlayer.emoteId && <button className="shop-entry" onClick={() => { setPanel('memory'); setHint(false); releaseStick(); }}>Read the memories board</button>}
       <LocationAnnouncement key={stats.district} name={stats.district}/>
       {hint && <aside className="welcome-hint"><button className="close" aria-label="Dismiss welcome" onClick={() => setHint(false)}><Icon kind="close" size={16}/></button><span className="eyebrow">GOOD TO SEE YOU, {profile.name.toUpperCase()}</span><h2>Make yourself at home.</h2><p>Take a walk. Meet a neighbour.<br/>There’s no rush to be anywhere.</p></aside>}
       <div className="bottom-left">
@@ -473,8 +487,9 @@ function App() {
       </nav>
       <div className="joystick" ref={joystick} role="group" aria-label="Touch movement control" onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); moveStick(event); }} onPointerMove={moveStick} onPointerUp={releaseStick} onPointerCancel={releaseStick} onLostPointerCapture={releaseStick}><div className="stick-guide"/><div className="stick" style={{ transform: `translate(${stick.x * 35}px, ${stick.z * 35}px)` }}/></div>
       {error && <div role="alert" className="connection-alert">{error}</div>}
-      {panel && <div className="modal-backdrop" onClick={() => setPanel(null)}><section className="modal" role="dialog" aria-modal="true" aria-label={panel === 'map' ? 'Town map' : 'Settings'} onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') setPanel(null); if (e.key === 'Tab') { const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input,select')]; const first = items[0], last = items[items.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } } }}><button autoFocus className="close" aria-label="Close panel" onClick={() => setPanel(null)}><Icon kind="close"/></button><span className="eyebrow">SLOP CITY</span><h2>{panel === 'map' ? 'Get your bearings.' : 'Make it comfortable.'}</h2>{panel === 'map' ? <><TownMapSvg players={players} sessionId={room.current?.sessionId} labeled ariaLabel="Map of the square: casino north, clothing shop east, fountain in the centre"/><p className="map-legend"><span className="live-dot"/> You are in {stats.district}.</p></> : <><div className="comfort-settings"><label className="setting"><span>Performance mode<small>Lighter water and shadows; a smaller render budget.</small></span><input type="checkbox" checked={low} onChange={e => updatePreferences({low:e.target.checked})}/></label><label className="setting"><span>Motion<small>Reduce decorative movement; keep game results visible.</small></span><select aria-label="Motion preference" value={preferences.motion} onChange={e=>updatePreferences({motion:e.target.value as Preferences['motion']})}><option value="system">Follow device</option><option value="reduced">Reduced</option><option value="full">Full</option></select></label><fieldset><legend>City sound</legend><label className="setting"><span>Sound effects <output>{Math.round(preferences.effects*100)}%</output></span><input aria-label="Sound effects volume" type="range" min="0" max="1" step="0.05" value={preferences.effects} onChange={e=>updatePreferences({effects:Number(e.target.value)})}/></label><label className="setting"><span>Fountain ambience <output>{Math.round(preferences.ambience*100)}%</output></span><input aria-label="Fountain ambience volume" type="range" min="0" max="1" step="0.05" value={preferences.ambience} onChange={e=>updatePreferences({ambience:Number(e.target.value)})}/></label><small>Slide to zero to mute. Saved for this browser.</small></fieldset></div><div className="setting"><span>Proximity voice<small>Join from Social. Your microphone starts muted.</small></span><Icon kind="mic"/></div><p className="diagnostics">Rendering at {stats.fps} fps · {players.size} connected<br/>Saved guest · Shared town</p><button className="secondary" onClick={() => { setPanel(null); void room.current?.leave(); }}>Leave the square</button></>}</section></div>}
+      {(panel === 'map' || panel === 'settings') && <div className="modal-backdrop" onClick={() => setPanel(null)}><section className="modal" role="dialog" aria-modal="true" aria-label={panel === 'map' ? 'Town map' : 'Settings'} onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') setPanel(null); if (e.key === 'Tab') { const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input,select')]; const first = items[0], last = items[items.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } } }}><button autoFocus className="close" aria-label="Close panel" onClick={() => setPanel(null)}><Icon kind="close"/></button><span className="eyebrow">SLOP CITY</span><h2>{panel === 'map' ? 'Get your bearings.' : 'Make it comfortable.'}</h2>{panel === 'map' ? <><TownMapSvg players={players} sessionId={room.current?.sessionId} labeled ariaLabel="Map of the square: casino north, clothing shop east, fountain in the centre"/><p className="map-legend"><span className="live-dot"/> You are in {stats.district}.</p></> : <><div className="comfort-settings"><label className="setting"><span>Performance mode<small>Lighter water and shadows; a smaller render budget.</small></span><input type="checkbox" checked={low} onChange={e => updatePreferences({low:e.target.checked})}/></label><label className="setting"><span>Motion<small>Reduce decorative movement; keep game results visible.</small></span><select aria-label="Motion preference" value={preferences.motion} onChange={e=>updatePreferences({motion:e.target.value as Preferences['motion']})}><option value="system">Follow device</option><option value="reduced">Reduced</option><option value="full">Full</option></select></label><fieldset><legend>City sound</legend><label className="setting"><span>Sound effects <output>{Math.round(preferences.effects*100)}%</output></span><input aria-label="Sound effects volume" type="range" min="0" max="1" step="0.05" value={preferences.effects} onChange={e=>updatePreferences({effects:Number(e.target.value)})}/></label><label className="setting"><span>Fountain ambience <output>{Math.round(preferences.ambience*100)}%</output></span><input aria-label="Fountain ambience volume" type="range" min="0" max="1" step="0.05" value={preferences.ambience} onChange={e=>updatePreferences({ambience:Number(e.target.value)})}/></label><small>Slide to zero to mute. Saved for this browser.</small></fieldset></div><div className="setting"><span>Proximity voice<small>Join from Social. Your microphone starts muted.</small></span><Icon kind="mic"/></div><p className="diagnostics">Rendering at {stats.fps} fps · {players.size} connected<br/>Saved guest · Shared town</p><button className="secondary" onClick={() => { setPanel(null); void room.current?.leave(); }}>Leave the square</button></>}</section></div>}
     </>}
+    {panel === 'memory' && <MemoryPostDialog onClose={() => setPanel(null)}/>}
   </main>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);

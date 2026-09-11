@@ -1,3 +1,4 @@
+import { CREDIT_LEADERBOARD_REFRESH_MS, type CreditLeaderboard } from '../shared/creditLeaderboard.ts';
 import express, { type Application, type Request, type Response, type NextFunction } from 'express';
 import { authenticateGuest,isAllowedOrigin } from './guest.ts';
 import type { GuestRepository } from './persistence/guests.ts';
@@ -9,6 +10,17 @@ export function mountEconomyRoutes(app:Application,guests:GuestRepository,econom
  router.use(express.json({limit:'2kb'}));
  router.use(async(req,res,next)=>{const guest=await authenticateGuest(req.headers.cookie,guests);if(!guest){res.status(401).json({code:'unauthenticated',error:'Restore your guest profile first'});return;}res.locals.profileId=guest.id;next();});
  router.get('/',async(_req,res)=>{res.json(await economy.ensure(res.locals.profileId));});
+ let leaderboard: CreditLeaderboard | null = null, loading: Promise<CreditLeaderboard> | null = null;
+ router.get('/leaderboard', async (_req, res) => {
+  try {
+   if (!leaderboard || Date.now() - leaderboard.updatedAt >= CREDIT_LEADERBOARD_REFRESH_MS) {
+    if (!loading) loading = economy.creditLeaderboard().then(value => { leaderboard = value; return value; }).finally(() => { loading = null; });
+    await loading;
+   }
+   res.json(leaderboard);
+  } catch { res.status(503).json({ code: 'unavailable', error: 'The leaderboard is unavailable. Please check again shortly.' }); }
+ });
+
  router.post('/purchase',async(req,res)=>{
   if(typeof req.body?.itemId!=='string'||typeof req.body?.requestId!=='string')throw new EconomyError('invalid_request','Choose an item and purchase request',400);
   res.json(await economy.purchase(res.locals.profileId,req.body.itemId,req.body.requestId,()=>hooks.canPurchase(res.locals.profileId)));

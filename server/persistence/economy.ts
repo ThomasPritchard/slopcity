@@ -1,3 +1,4 @@
+import { CREDIT_LEADERBOARD_LIMIT, type CreditLeaderboard } from '../../shared/creditLeaderboard.ts';
 import { readFile } from 'node:fs/promises';
 import type { Pool, PoolClient } from 'pg';
 import { clothingItem, STARTER_OUTFIT, STARTING_CREDITS, SALARY_CREDITS, SALARY_INTERVAL_MS, type WalletState, type Outfit } from '../../shared/catalog.ts';
@@ -6,6 +7,21 @@ export class EconomyError extends Error {
 }
 export class EconomyRepository {
  constructor(readonly pool: Pool) {}
+ async creditLeaderboard(): Promise<CreditLeaderboard> {
+  // One SQL snapshot sees wallet debits and poker escrow transfers atomically.
+  // During an active hand, durable escrow retains its opening stack until settlement.
+  const result = await this.pool.query(`
+   WITH fortunes AS (
+    SELECT g.id, g.name, g.created_at, w.balance::bigint + coalesce(p.stack, 0) AS credits
+    FROM economy_wallets w JOIN guest_profiles g ON g.id=w.profile_id
+    LEFT JOIN poker_seats p ON p.profile_id=w.profile_id AND p.status='open'
+   )
+   SELECT name, credits, rank() OVER (ORDER BY credits DESC) AS rank
+   FROM fortunes ORDER BY credits DESC, created_at ASC, id ASC LIMIT $1
+  `, [CREDIT_LEADERBOARD_LIMIT]);
+  return { updatedAt: Date.now(), entries: result.rows.map(row => ({ rank: Number(row.rank), name: row.name, credits: Number(row.credits) })) };
+ }
+
  async transaction<T>(work:(client:PoolClient)=>Promise<T>):Promise<T> {
   const client=await this.pool.connect();
   try { await client.query('BEGIN');await client.query("SET LOCAL lock_timeout='3s'");const result=await work(client);await client.query('COMMIT');return result; }

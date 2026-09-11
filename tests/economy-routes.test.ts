@@ -23,3 +23,21 @@ test('economy mutations enforce origin, guest authentication, shop eligibility a
   allowed=true;const conflict=await fetch(url,{method:'POST',headers,body});assert.equal(conflict.status,409);assert.deepEqual(await conflict.json(),{code:'insufficient_funds',error:'More credits needed',snapshot:{balance:0}});assert.equal(purchases,1);
  }finally{server.close();await once(server,'close');}
 });
+
+test('Credit leaderboard requires a guest and shares one cached read across simultaneous requests', async () => {
+ let reads = 0;
+ const snapshot = { updatedAt: Date.now(), entries: [{ rank: 1, name: 'Rich neighbour', credits: 2100 }] };
+ const economy = { async creditLeaderboard() { reads++; await new Promise(resolve => setTimeout(resolve, 25)); return snapshot; } } as unknown as EconomyRepository;
+ const guests = { async resolve() { return { id: 'profile' }; } } as unknown as GuestRepository;
+ const app = express(); mountEconomyRoutes(app, guests, economy, { canPurchase: () => false, onEquipped() {} });
+ const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
+ const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/economy/leaderboard`;
+ const headers = { Cookie: `slop_guest=${randomBytes(32).toString('base64url')}` };
+ try {
+  assert.equal((await fetch(url)).status, 401); assert.equal(reads, 0);
+  const responses = await Promise.all([fetch(url, { headers }), fetch(url, { headers })]);
+  for (const response of responses) { assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store'); assert.deepEqual(await response.json(), snapshot); }
+  assert.equal(reads, 1);
+  assert.deepEqual(await (await fetch(url, { headers })).json(), snapshot); assert.equal(reads, 1);
+ } finally { server.close(); await once(server, 'close'); }
+});

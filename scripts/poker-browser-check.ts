@@ -227,7 +227,17 @@ try {
   for (const player of players) assert.equal((await wallet(player.page)).balance, player.afterBuyIn, 'Hand winnings remain in table chips until cash-out');
   await a.page.locator('.poker-results').scrollIntoViewIfNeeded();
   await screenshot(a.page, 'desktop-showdown');
-  await Promise.all(players.map(player => player.page.getByRole('button', { name: 'Leave seat', exact: true }).click()));
+  await a.page.getByRole('button', { name: 'Leave seat', exact: true }).click();
+  // The world exit must remain usable with a full-width portrait chat panel open.
+  await b.page.getByRole('button', { name: 'Close casino table', exact: true }).click();
+  const chat = b.page.getByRole('button', { name: 'Toggle town chat', exact: true });
+  if (await chat.getAttribute('aria-pressed') !== 'true') await chat.click();
+  await b.page.setViewportSize({ width: 390, height: 844 });
+  await b.page.waitForTimeout(200);
+  await b.page.screenshot({ path: `${output}/world-exit-portrait-chat.png` });
+  await b.page.getByRole('button', { name: 'Leave seat', exact: true }).click();
+  await b.page.locator('.casino-seat-action').waitFor({ state: 'detached' });
+  await b.page.setViewportSize({ width: 1440, height: 960 });
   const finalBalances = [];
   for (const [index, player] of players.entries()) {
     await player.page.locator('.casino-panel').waitFor({ state: 'detached' });

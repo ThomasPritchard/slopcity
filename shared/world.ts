@@ -5,6 +5,7 @@ import { CASINO_WALLS, CASINO_FURNITURE, floorHeight, inCasino } from './casinoL
 import { HOP_HEIGHT, PLAYER_HEIGHT, OVERHEAD_SOLIDS, SPRINT_MULTIPLIER } from './mobility.ts';
 import { BENCHES } from './social.ts';
 import { SHOP_WALLS, SHOP_FURNITURE, inShop } from './shopLayout.ts';
+import { MEMORIES_BOARD } from './memories.ts';
 export const CAPACITY = 64;
 export const SPEED = 4.2;
 export const TICK_MS = 50;
@@ -13,7 +14,7 @@ export const SKINS = ['#f0c4a0', '#d5a079', '#ae7450', '#754a34', '#4e3228'];
 export type Profile = { name: string; shirt: number; skin: number };
 export type Position = { x: number; z: number };
 export type Input = { x: number; z: number; seq: number; sprint?: boolean };
-export type Wall = { x: number; z: number; w: number; d: number; h: number; kind: 'wall' | 'planter' | 'casino' | 'shop' };
+export type Wall = { x: number; z: number; w: number; d: number; h: number; kind: 'wall' | 'planter' | 'casino' | 'shop' | 'noticeboard' };
 // Visual beds and authoritative movement use the same footprints, including the arrival trees.
 export const PLANTING_BEDS = [
   { x: -10, z: 4, w: 4, d: 3, h: .6, asset: 'planter', treeScale: .9, rotation: .15 },
@@ -24,6 +25,7 @@ export const PLANTING_BEDS = [
 ] as const;
 // World coordinates in metres. Shared collision data is also used to build visible geometry.
 export const WALLS: Wall[] = [
+  { x: MEMORIES_BOARD.x, z: MEMORIES_BOARD.z, w: MEMORIES_BOARD.width, d: MEMORIES_BOARD.depth, h: MEMORIES_BOARD.height, kind: 'noticeboard' },
   { x: -23.5, z: 27, w: 7, d: 1, h: 1, kind: 'wall' },
   { x: 23.5, z: 27, w: 7, d: 1, h: 1, kind: 'wall' },
   { x: 0, z: -27, w: 54, d: 1, h: 1, kind: 'wall' },

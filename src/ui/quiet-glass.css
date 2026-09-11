@@ -328,3 +328,7 @@ button:focus-visible{outline-offset:3px}
 .game .casino-seat-action { bottom: 164px; min-height: 44px; }
 @media(pointer:coarse),(max-width:699px) { .game .casino-seat-action { bottom: 218px; } }
 @media(pointer:coarse) and (orientation:landscape) and (max-height:620px) { .game .casino-seat-action { bottom: 116px; } }
+/* An open portrait chat spans the screen; keep the exit above that column. */
+@media(orientation:portrait) and (max-width:699px) {
+  .game:has(.chat-panel) .casino-seat-action { top: 144px; bottom: auto; }
+}

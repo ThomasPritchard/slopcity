@@ -1,3 +1,7 @@
+import { CreditBoard } from './creditBoard';
+import { createMemoriesBoard } from './memoriesBoard';
+import { nearMemoriesBoard } from '../../shared/memories';
+import { nearCreditBoard, type CreditLeaderboard } from '../../shared/creditLeaderboard';
 import { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
 import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera';
@@ -77,6 +81,8 @@ export class TownScene {
   onInput?: (x: number, z: number, sprint: boolean) => void;
   onJump?: () => void;
   onSelectPlayer?: (profileId: string) => void;
+  onCreditLeaderboard?: () => void;
+  onMemory?: () => void;
   onSprintChange?: (enabled: boolean) => void;
   private sprintToggle = false;
   private pointerStarts = new Map<number, { x: number; y: number; cancelled: boolean }>();
@@ -122,6 +128,8 @@ export class TownScene {
     hash = Math.imul(hash ^ hash >>> 16, 0x45d9f3b);
     return ((hash ^ hash >>> 16) >>> 0) % 1000;
   }
+  private creditBoard!: CreditBoard;
+  private memoriesBoard!: TransformNode;
   private tableCards!: CasinoTableArt;
 
   constructor(readonly canvas: HTMLCanvasElement, low = false) {
@@ -247,6 +255,7 @@ export class TownScene {
     this.placeAsset('meridian-ceiling', 0, 0, 0, Math.PI);
     this.placeAsset('meridian-chandelier', 0, 0, 0, Math.PI);
     this.placeAsset('meridian-interior', 0, 0, 0, Math.PI);
+    this.creditBoard = new CreditBoard(this.scene);
     // Shared ceiling bounds keep the camera and hopping body clear of overhead geometry.
     for (const bound of OVERHEAD_SOLIDS) {
       const mesh = this.box(`Overhead camera ${bound.name}`, bound.x, (bound.bottom + bound.top) / 2, bound.z, bound.w, bound.top - bound.bottom, bound.d, '#e6dcc8', false);
@@ -317,6 +326,8 @@ export class TownScene {
     }
     this.lampPosts = LAMP_POSTS.map(({ x, z }) => this.placeAsset('lamp', x, 0, z));
     for (const bench of BENCHES) this.bench(bench.x, bench.z, bench.heading);
+    this.memoriesBoard = createMemoriesBoard(this.scene);
+    for (const mesh of this.memoriesBoard.getChildMeshes()) this.shadows.addShadowCaster(mesh);
     this.placeAsset('fountain', 0, 0, 1);
     this.fountain = new FountainWater(this.scene);
     this.water = this.fountain.water;
@@ -445,6 +456,7 @@ export class TownScene {
     }
     for (const [id, avatar] of this.avatars) if (!players.has(id)) { avatar.label.material?.dispose(false, true); avatar.model.dispose(); this.avatars.delete(id); }
   }
+  syncCreditLeaderboard(snapshot: CreditLeaderboard | null, unavailable: boolean) { this.creditBoard?.sync(snapshot, unavailable); }
   syncCasino(state: CasinoState) { this.casinoState=state; this.casinoTimeOffset=state.serverTime-Date.now(); this.tableCards.sync(state); this.pokerArt?.sync(state.tables.find(t=>t.game==='poker') ?? null,this.casinoPrivate); this.dayCycle?.synchronise(state.serverTime); }
   syncCasinoPrivate(value:CasinoPrivateState){this.casinoPrivate=value;this.tableCards.syncPrivate(value);this.pokerArt?.sync(this.casinoState?.tables.find(t=>t.game==='poker') ?? null,value);}
   focusCasino(anchor: CasinoAnchor | null) {
@@ -529,6 +541,13 @@ export class TownScene {
     const proxies = new Map([...this.avatars.entries()].filter(([id]) => id !== this.localId).map(([id, avatar]) => [avatar.hit, id]));
     const citizenMeshes = new Set([...this.avatars.values()].flatMap(avatar => avatar.model.meshes));
     const hit = this.scene.pick(event.clientX - rect.left, event.clientY - rect.top, mesh => proxies.has(mesh as Mesh) || this.walls.includes(mesh as Mesh) || mesh.isPickable && mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && !citizenMeshes.has(mesh) && !mesh.name.startsWith('player-hit:'));
+    const local = this.remote.get(this.localId ?? '');
+    if (local && nearMemoriesBoard(local.x, local.z) && hit?.pickedMesh && this.memoriesBoard?.getChildMeshes().includes(hit.pickedMesh)) {
+      this.blur(); this.onMemory?.(); return;
+    }
+    if (local && nearCreditBoard(local.x, local.z) && hit?.pickedMesh && this.creditBoard?.root.getChildMeshes().includes(hit.pickedMesh)) {
+      this.blur(); this.onCreditLeaderboard?.(); return;
+    }
     const id = hit?.pickedMesh && proxies.get(hit.pickedMesh as Mesh), player = id && this.remote.get(id);
     if (player) { this.blur(); this.onSelectPlayer?.(player.profileId); }
   };
@@ -556,6 +575,7 @@ export class TownScene {
   }
   setReducedMotion(reduced: boolean) {
     this.reducedMotion = reduced;
+    this.creditBoard?.setReducedMotion(reduced);
     this.tableCards?.setReducedMotion(reduced);
     this.fountain?.setReducedMotion(reduced);
     this.vegetation?.setReducedMotion(reduced);
@@ -609,6 +629,8 @@ export class TownScene {
     this.tableCards.update(Math.min(.1,this.engine.getDeltaTime()/1000));
     this.animateCasino();
     const dt = Math.min(.05, this.engine.getDeltaTime() / 1000); this.clock += dt;
+    const boardViewer = this.remote.get(this.localId ?? '');
+    this.creditBoard?.update(dt * 1000, !document.hidden && !!boardViewer && nearCreditBoard(boardViewer.x, boardViewer.z));
     if (this.framing) {
       const frame = this.framing; frame.age = Math.min(.25,frame.age+dt);
       const t = frame.age/.25, ease = t*t*(3-2*t);

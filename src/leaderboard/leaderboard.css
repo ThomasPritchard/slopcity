@@ -1,0 +1,18 @@
+.credit-leaderboard { width: 490px; border-color: #dcc38c55; }
+.credit-leaderboard .social-header { padding-bottom: 18px; }
+.credit-leaderboard .social-header h2 { font-size: 34px; }
+.credit-leaderboard .eyebrow { color: #dcc38c; }
+.credit-leaderboard .social-close { font: 30px/1 Georgia, serif; }
+.credit-leaderboard-content { padding-bottom: 12px; }
+.credit-leaderboard table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.credit-leaderboard thead th { color: #bbc8b7; font-size: 10px; font-weight: 500; padding: 0 0 10px; text-align: left; }
+.credit-leaderboard thead th:last-child, .credit-leaderboard td:last-child { text-align: right; }
+.credit-leaderboard tbody tr { border-top: 1px solid #dcc38c22; }
+.credit-leaderboard tbody th, .credit-leaderboard tbody td { padding: 12px 0; font-size: 13px; text-align: left; }
+.credit-leaderboard tbody th { font-weight: 500; overflow-wrap: anywhere; padding-right: 12px; }
+.credit-leaderboard tbody td:first-child { width: 45px; color: #aebfab; font-size: 11px; }
+.credit-leaderboard tbody td:last-child { color: #dcc38c; white-space: nowrap; }
+.credit-leaderboard .is-leading th, .credit-leaderboard .is-leading td { color: #ead69e; }
+.credit-leaderboard-footer { padding: 15px 24px 20px; border-top: 1px solid #dcc38c22; flex-shrink: 0; }
+.credit-leaderboard-footer p { color: #bbc8b7; font-size: 10px; line-height: 1.7; }
+@media(max-height:500px) { .credit-leaderboard .social-header { padding: 16px 20px 12px; } .credit-leaderboard .social-header h2 { font-size: 26px; } .credit-leaderboard-footer { padding: 9px 20px; } }

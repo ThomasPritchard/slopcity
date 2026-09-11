@@ -46,3 +46,15 @@ Freeze before asynchronous leave flushing; retain SessionRegistry ownership unti
 Parent owns catalogue, town/context/main and scene integration. Coder owns repository/migration, routes, tracker and tests. Private `economy` sends `WalletState` plus `accruing`; add explicit initial sync. Public Citizen exposes only flat equipment IDs. Apply changed appearance to existing local/remote models; current `scene.sync()` does not. Profile editing cannot grant paid clothing. Recheck session identity after awaits.
 
 Test grant-once, purchase replay/concurrency, insufficient funds, ownership/revision rejection, checkpoint replay/stale epoch, threshold/reconnect remainder, hide/freeze/sleep, leave during write, restart persistence, private-state isolation and two-browser equipment replication. Reuse existing social checks.
+
+## Reception credit leaderboard — 11 September 2026
+
+The casino reception wall displays the ten richest saved guests, including offline players. This deliberately exposes only those guests' names, ranks and combined credit totals to authenticated guests; wallet revisions, profile IDs, inventory and ledger details remain private.
+
+Rank by wallet balance plus open poker escrow. A buy-in or cash-out transfers credits without changing the total. During a hand, saved poker chips retain the opening stack until atomic settlement. Other outstanding casino wagers are already debited from the wallet; unsettled winnings and clothing value are not included. Equal totals share a competition rank (1, 1, 3); creation time then profile ID selects a stable order and cutoff at ten entries.
+
+`GET /game/api/economy/leaderboard` reads one PostgreSQL snapshot. Requests share a 30-second server cache and one in-flight query. The client polls every 30 seconds while visible and playing, refreshes on visibility return, and preserves the last standings with an update-delay message if a request fails. No new tables or mutations are involved.
+
+The display is mounted above the panelling behind the reception desk on the right foyer partition. Clicking it from reception, or selecting the nearby “View credit leaderboard” button, opens a scrollable reading panel. Changed characters use a staggered split-flap animation; initial loading and reduced motion settle immediately. The world display uses three meshes and one persistent texture, uploading only while values change. The reading panel presents the final accessible text immediately.
+
+Checks: database standings and escrow/cash-out cases in `tests/credit-leaderboard.test.ts`; authentication and coalesced reads in `tests/economy-routes.test.ts`; actual reception mounting and split-flap rendering in `scripts/credit-leaderboard-render-check.ts`; guest walk, wall click, responsive reading panel and delayed-response recovery in `scripts/credit-leaderboard-browser-check.ts`. Browser captures use headless WebKit and emulated phone layouts, not physical-device performance measurements.
