@@ -66,7 +66,9 @@
     "test:cinema-render": "node --import tsx scripts/cinema-render-check.ts",
     "test:community-ui": "node --import tsx scripts/community-ui-check.ts",
     "community:admin-password": "node scripts/community-admin-password.mjs",
-    "community:preview": "node --import tsx scripts/community-preview.ts"
+    "community:preview": "node --import tsx scripts/community-preview.ts",
+    "test:chat-network": "node --import tsx scripts/chat-network-check.ts",
+    "test:hud-chat": "node --import tsx scripts/hud-chat-browser-check.ts"
   },
   "dependencies": {
     "@babylonjs/core": "9.25.0",

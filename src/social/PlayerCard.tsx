@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
+import { useId, useState, type ReactNode } from 'react';
+import { SocialDialog } from './SocialDialog';
 import { EMOTE_POSES, type SharedEmoteKind } from '../../shared/emotePoses';
 import { EMOTE_REACH, type EmoteCommand, type EmoteInbox } from '../../shared/emotes';
 import { GIFT_DISTANCE, MAX_GIFT_CREDITS, type FriendAction, type SocialPerson, type SocialSnapshot } from '../../shared/playerSocial';
@@ -35,10 +36,10 @@ type Props = {
   snapshot: SocialSnapshot | null; balance: number; busy: boolean; error: string; notice: string; pending: PendingGift | null;
   invitation?: ReactNode; canInvite: boolean;
   onClose(): void; onMute(): void; onBlock(): void; onFriend(action: FriendAction): void; onEmote(kind: SharedEmoteKind): void;
-  onGift(amount: number): Promise<boolean>;
+  onGift(amount: number): Promise<boolean>; onWhisper?(): void;
 };
-export function PlayerCard({ person, online, distance, blocked, muted, available, snapshot, balance, busy, error, notice, pending, invitation, canInvite, onClose, onMute, onBlock, onFriend, onEmote, onGift }: Props) {
-  const panel = useRef<HTMLElement>(null), close = useRef<HTMLButtonElement>(null), title = useId();
+export function PlayerCard({ person, online, distance, blocked, muted, available, snapshot, balance, busy, error, notice, pending, invitation, canInvite, onClose, onMute, onBlock, onFriend, onEmote, onGift, onWhisper }: Props) {
+  const title = useId();
   const [view, setView] = useState<'actions' | 'gift' | 'confirm'>('actions');
   const [amount, setAmount] = useState('50');
   const [removeFriend, setRemoveFriend] = useState(false);
@@ -47,26 +48,10 @@ export function PlayerCard({ person, online, distance, blocked, muted, available
   const number = Number(amount), validAmount = /^\d+$/.test(amount) && Number.isSafeInteger(number) && number > 0 && number <= maximum;
   const ownPending = pending?.targetId === person.profileId ? pending : null;
   const canGive = online && !blocked && distance <= GIFT_DISTANCE;
-  useEffect(() => {
-    const previous = document.activeElement;
-    close.current?.focus({ preventScroll: true });
-    const focus = (event: FocusEvent) => { if (event.target instanceof Node && !panel.current?.contains(event.target)) close.current?.focus({ preventScroll: true }); };
-    document.addEventListener('focusin', focus);
-    return () => { document.removeEventListener('focusin', focus); if (previous instanceof HTMLElement && previous.isConnected) previous.focus({ preventScroll: true }); else document.getElementById('world')?.focus({ preventScroll: true }); };
-  }, []);
-  function key(event: KeyboardEvent) {
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); }
-    if (event.key === 'Tab') {
-      const buttons = [...panel.current!.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)')].filter(e => e.getClientRects().length);
-      event.preventDefault();
-      const index = buttons.indexOf(document.activeElement as HTMLElement);
-      buttons[(index + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
-    }
-  }
-  return <div className="social-backdrop player-card-backdrop" onPointerDown={event => { if (event.target === event.currentTarget) event.preventDefault(); }}>
-    <section ref={panel} className="social-panel player-card" role="dialog" aria-modal="true" aria-labelledby={title} onKeyDown={key}>
-      <header className="social-header"><div><span className="eyebrow">A FACE IN THE SQUARE</span><h2 id={title}>{person.name}</h2><p className="player-presence">{blocked ? 'Blocked for you' : !online ? 'Not in this town right now' : `${Math.round(distance)} m away`}{isFriend && !blocked ? ' · Your friend' : ''}</p></div><button ref={close} className="social-close" aria-label="Close player card" onClick={onClose}>×</button></header>
+  return <SocialDialog labelledBy={title} className="player-card" onClose={onClose}>
+      <header className="social-header"><div><span className="eyebrow">A FACE IN THE SQUARE</span><h2 id={title}>{person.name}</h2><p className="player-presence">{blocked ? 'Blocked for you' : !online ? 'Not in this town right now' : `${Math.round(distance)} m away`}{isFriend && !blocked ? ' · Your friend' : ''}</p></div><button autoFocus className="social-close" aria-label="Close player card" onClick={onClose}>×</button></header>
       <div className="social-content player-card-content">
+        {onWhisper && <button type="button" className="social-button whisper-entry" disabled={!online || blocked} onClick={onWhisper}>Whisper to {person.name}</button>}
         {invitation}
         {error && <p className="social-error" role="alert">{error}</p>}
         {notice && <p className="player-receipt" role="status">{notice}</p>}
@@ -86,6 +71,5 @@ export function PlayerCard({ person, online, distance, blocked, muted, available
         <div className="player-safety"><button className="social-button" disabled={!online || blocked} aria-pressed={muted} onClick={onMute}>{muted ? 'Unmute voice' : 'Mute voice'}</button><button className="social-button" onClick={onBlock}>{blocked ? 'Unblock player' : 'Block player'}</button></div>
       </div>
       <footer className="social-footer">Your balance stays private. Every shared emote is by invitation.</footer>
-    </section>
-  </div>;
+  </SocialDialog>;
 }

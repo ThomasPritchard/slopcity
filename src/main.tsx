@@ -37,15 +37,16 @@ import { CASINO_ANCHORS, CASINO_INTERACTION_RADIUS, type CasinoState, type Casin
 import { LocationAnnouncement } from './ui/LocationAnnouncement';
 import { TownMapSvg } from './ui/TownMapSvg';
 import { MiniMap } from './ui/MiniMap';
-import { TownChat, type ChatLine } from './ui/TownChat';
+import { TownChat, isSystemLine, type ChatLine, type ChatTab, type ChatPerson } from './ui/TownChat';
+import { CHAT_HISTORY_LIMIT, chatTableFor, type ChatCommand, type ChatMessage } from '../shared/chat';
 import './ui/quiet-glass.css';
+import './ui/hud-qol.css';
 import { loadPreferences, savePreferences, type Preferences } from './settings/preferences';
 import { GRAPHICS_QUALITIES, GRAPHICS_LABELS, GRAPHICS_DESCRIPTIONS, isGraphicsQuality } from './settings/graphics';
 import { TownAudio } from './audio/TownAudio';
 import { checkChat, moderationNoticeKey, type ModerationNoticeKey } from '../shared/moderation.ts';
 import { isBlockedProfileName, PROFILE_NAME_ERROR } from '../shared/profileModeration.ts';
 
-type Chat = { id: string; profileId: string; name: string; body: string };
 // Local-only chat panel guidance shown when moderation intervenes. Never sent to the server and
 // never visible to anyone else; the server remains the authority on what is actually delivered.
 const SYSTEM_LINES: Record<ModerationNoticeKey, string> = {
@@ -136,6 +137,13 @@ function App() {
   const [chatFocused, setChatFocused] = useState(false);
   const [messages, setMessages] = useState<ChatLine[]>([]);
   const [message, setMessage] = useState('');
+  const [chatTab, setChatTab] = useState<ChatTab>('all');
+  const [whisperTarget, setWhisperTarget] = useState<ChatPerson | null>(null);
+  const [readMessages, setReadMessages] = useState<Set<string>>(new Set());
+  const readChat = useCallback((ids: string[]) => setReadMessages(previous => {
+    if (ids.every(id => previous.has(id))) return previous;
+    return new Set([...previous, ...ids].slice(-CHAT_HISTORY_LIMIT * 2));
+  }), []);
   const [silencedUntil, setSilencedUntil] = useState(0);
   const [silencedSeconds, setSilencedSeconds] = useState(0);
   const [hint, setHint] = useState(true);
@@ -148,7 +156,7 @@ function App() {
   const shownSystem = useRef(new Set<ModerationNoticeKey>());
   const silencedAnnounced = useRef(false);
   function pushSystem(body: string) {
-    setMessages(previous => [...previous.slice(-79), { id: `system-${systemSeq.current++}`, system: true, body }]);
+    setMessages(previous => [...previous.slice(-(CHAT_HISTORY_LIMIT - 1)), { id: `system-${systemSeq.current++}`, sentAt: Date.now(), system: true, body }]);
   }
 
   function acceptWallet(state:WalletState,accruing?:boolean) {
@@ -217,8 +225,9 @@ function App() {
   useEffect(() => {
     if (phase !== 'playing' || panel || socialOpen || selectedNeighbour || shopMode) return;
     const chatShortcut = (event: KeyboardEvent) => {
-      if (event.key !== '/' || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (!['/', 'Enter'].includes(event.key) || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable="true"],[contenteditable=""]')) return;
+      if (event.key === 'Enter' && event.target instanceof Element && event.target.closest('button,a,summary')) return;
       event.preventDefault(); event.stopPropagation();
       setChatOpen(true); releaseStick();
       requestAnimationFrame(() => chatInput.current?.focus({ preventScroll: true }));
@@ -365,7 +374,8 @@ function App() {
         }
         setNotice(text); setTimeout(() => setNotice(''), 3500);
       });
-      connected.onMessage<Chat>('chat', value => setMessages(previous => [...previous.slice(-79), value]));
+      connected.onMessage<ChatMessage>('chat', value => setMessages(previous => [...previous.slice(-(CHAT_HISTORY_LIMIT - 1)), value]));
+      connected.onMessage<string>('chat-error', text => pushSystem(text));
       connected.onMessage<{ seconds?: number }>('silenced', value => {
         const seconds = Math.max(0, Math.floor(Number(value?.seconds) || 0));
         if (seconds > 0 && !silencedAnnounced.current) {
@@ -382,7 +392,7 @@ function App() {
         setError(code===4009?'Please complete a fresh entry check to rejoin.':code===4003?'Access to Slop City is currently restricted.':code===4008?'Too many game messages. Please wait before rejoining.':'You have left the town. Rejoin to continue.');
       });
       try { localStorage.setItem('slop-city-profile', JSON.stringify(clean)); } catch { /* A restricted browser can still play. */ }
-      setNotice(''); world.current.enter(connected.sessionId); setPhase('playing'); setHint(true); setMessages([]);
+      setNotice(''); world.current.enter(connected.sessionId); setPhase('playing'); setHint(true); setMessages([]); setReadMessages(new Set()); setChatTab('all'); setWhisperTarget(null); setMessage('');
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not join the town. Please try again.'); setPhase('customising'); }
     finally { joining.current = false; }
   }
@@ -397,7 +407,7 @@ function App() {
     setMuted(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); voiceClient.current?.setMuted(next); return next; });
   }
   async function blockNeighbour(profileId: string, blocked: boolean) {
-    try { const result = await setGuestBlock(profileId, blocked); setGuest(previous => previous ? { ...previous, blocks: result.blocks } : null); if (blocked) setMessages(previous => previous.filter(message => message.profileId !== profileId)); void socialData.refresh(); }
+    try { const result = await setGuestBlock(profileId, blocked); setGuest(previous => previous ? { ...previous, blocks: result.blocks } : null); if (blocked) setMessages(previous => previous.filter(message => (message.profileId !== profileId && (isSystemLine(message) || message.toProfileId !== profileId)))); void socialData.refresh(); }
     catch { setNotice('That change could not be saved. Please try again.'); }
   }
   function returnFromChat() {
@@ -407,16 +417,47 @@ function App() {
   }
   function closeChat() { setChatOpen(false); returnFromChat(); }
   function openChat() { setChatOpen(true); requestAnimationFrame(() => chatInput.current?.focus({ preventScroll: true })); }
+  function whisperTo(person: ChatPerson | null) {
+    setWhisperTarget(person); setChatTab('whisper'); setSelectedNeighbour(null); setSocialOpen(false); setPanel(null); openChat();
+  }
+  function chatHelp() {
+    pushSystem('Enter or / opens chat; Escape returns to play. /town and /table switch channels. /w "Name" message whispers; /r message replies to your latest incoming whisper. Use ↑/↓ in an empty draft for sent history. Chat is kept for this visit.');
+  }
   function sendChat(event: React.FormEvent) {
     event.preventDefault();
-    const body = message.trim(); if (!body || !room.current || silencedUntil > 0) return;
+    let body = message.trim(); if (!body || !room.current || silencedUntil > 0) return;
+    let destination: ChatTab = chatTab, recipient = whisperTarget;
+    if (/^\/help(?:\s|$)/i.test(body)) { chatHelp(); setMessage(''); return; }
+    const channelCommand = body.match(/^\/(town|table)(?:\s+(.*))?$/i);
+    const whisperCommand = body.match(/^\/(?:w|whisper)\s+(?:"([^"]+)"|(\S+))(?:\s+(.*))?$/i);
+    const replyCommand = body.match(/^\/r(?:\s+(.*))?$/i);
+    if (channelCommand) { destination = channelCommand[1].toLowerCase() as ChatTab; setChatTab(destination); body = channelCommand[2] || ''; }
+    else if (whisperCommand) {
+      const name = (whisperCommand[1] || whisperCommand[2]).toLocaleLowerCase();
+      const matches = neighbours.filter(person => !person.blocked && person.name.toLocaleLowerCase() === name);
+      if (matches.length !== 1) { pushSystem(matches.length ? 'More than one neighbour has that name. Choose them from Social or the whisper recipient list.' : 'That neighbour is not available in this town.'); return; }
+      recipient = matches[0]; destination = 'whisper'; setWhisperTarget(recipient); setChatTab('whisper'); body = whisperCommand[3] || '';
+    } else if (replyCommand) {
+      const last = [...messages].reverse().find(line => !isSystemLine(line) && line.channel === 'whisper' && line.profileId !== guest?.id);
+      if (!last || isSystemLine(last)) { pushSystem('No incoming whisper to reply to yet.'); return; }
+      recipient = { profileId: last.profileId, name: last.name }; destination = 'whisper'; setWhisperTarget(recipient); setChatTab('whisper'); body = replyCommand[1] || '';
+    } else if (body.startsWith('/')) { pushSystem('Unknown chat command. Use /help for shortcuts.'); return; }
+    if (!body) { setMessage(''); return; }
+    if (body.length > 240) { pushSystem('Keep your message to 240 characters.'); return; }
     const verdict = checkChat(body);
     if (!verdict.ok) {
-      // Instant feedback only; the server still decides. Keep the draft so it can be edited.
       if (!shownSystem.current.has(verdict.reason)) { shownSystem.current.add(verdict.reason); pushSystem(SYSTEM_LINES[verdict.reason]); }
       return;
     }
-    room.current.send('chat', body); setMessage(''); returnFromChat();
+    let command: ChatCommand;
+    if (destination === 'whisper') {
+      if (!recipient || !neighbours.some(person => person.profileId === recipient.profileId && !person.blocked)) { pushSystem('Choose an available neighbour to whisper to.'); return; }
+      command = { channel: 'whisper', toProfileId: recipient.profileId, body };
+    } else if (destination === 'table') {
+      if (!chatTable) { pushSystem('Open a casino table nearby to use its chat.'); return; }
+      command = { channel: 'table', tableId: chatTable, body };
+    } else command = { channel: 'town', body };
+    room.current.send('chat', command); setMessage(''); returnFromChat();
   }
   function doWave() {
     if (wave || !room.current) return;
@@ -431,6 +472,13 @@ function App() {
   }
   function releaseStick() { setStick({ x: 0, z: 0 }); world.current?.setTouch(0, 0); }
   const localPlayer = players.get(room.current?.sessionId ?? '');
+  const chatTable = localPlayer ? chatTableFor(localPlayer, casinoTable) : null;
+  useEffect(() => { room.current?.send('chat-table', chatTable); }, [chatTable, phase]);
+  const unreadChat = { all: 0, town: 0, table: 0, whisper: 0 };
+  for (const line of messages) if (!readMessages.has(line.id) && line.profileId !== guest?.id) {
+    unreadChat.all++;
+    if (!isSystemLine(line) && (line.channel !== 'table' || line.tableId === chatTable)) unreadChat[line.channel]++;
+  }
   const occupied = new Set([...players.values()].map(player => player.seatId).filter(Boolean));
   const nearbySeats = localPlayer ? SEATS.filter(seat => Math.hypot(seat.x - localPlayer.x, seat.z - localPlayer.z) <= SIT_REACH).sort((a,b) => Math.hypot(a.x-localPlayer.x,a.z-localPlayer.z)-Math.hypot(b.x-localPlayer.x,b.z-localPlayer.z)) : [];
   const availableSeat = nearbySeats.find(seat => !occupied.has(seat.id));
@@ -451,8 +499,8 @@ function App() {
   const invitation = <EmotePrompt inbox={emoteInbox} onCommand={sendEmote}/>;
   const playing = phase === 'playing';
   const customising = phase === 'customising' || phase === 'joining';
-  const townChat = chatOpen ? <TownChat messages={messages} message={message} name={profile.name} colour={SHIRTS[profile.shirt]} population={players.size} silenced={silencedUntil>0} silencedSeconds={silencedSeconds} inputRef={chatInput} onChange={setMessage} onSubmit={sendChat} onFocus={()=>{setChatFocused(true);releaseStick();world.current?.setPaused(true);}} onBlur={()=>setChatFocused(false)} onClose={closeChat}/> : null;
-  const casinoChat = <aside className={`casino-chat${chatOpen?' is-open':''}`} aria-label="Chat while playing">{townChat ?? <button className="casino-chat-toggle" type="button" aria-label="Open town chat" aria-keyshortcuts="/" onClick={openChat}><Icon kind="chat"/>Chat<kbd>/</kbd></button>}</aside>;
+  const townChat = chatOpen ? <TownChat messages={messages} message={message} name={profile.name} colour={SHIRTS[profile.shirt]} population={players.size} profileId={guest?.id ?? ''} tab={chatTab} tableId={chatTable} target={whisperTarget} people={neighbours.filter(person => !person.blocked)} unread={unreadChat} onTab={setChatTab} onTarget={whisperTo} onInspect={openNeighbour} onRead={readChat} onHelp={chatHelp} active={!panel && !socialOpen && !selectedNeighbour && !shopMode} silenced={silencedUntil>0} silencedSeconds={silencedSeconds} inputRef={chatInput} onChange={setMessage} onSubmit={sendChat} onFocus={()=>{setChatFocused(true);releaseStick();world.current?.setPaused(true);}} onBlur={()=>setChatFocused(false)} onClose={closeChat}/> : null;
+  const casinoChat = <aside className={`casino-chat${chatOpen?' is-open':''}`} aria-label="Chat while playing">{townChat ?? <button className="casino-chat-toggle" type="button" aria-label="Open town chat" aria-keyshortcuts="/" onClick={openChat}><Icon kind="chat"/>Chat{unreadChat.all > 0 && <b className="chat-badge">{unreadChat.all}</b>}<kbd>/</kbd></button>}</aside>;
   return <main className={playing ? `game playing${shopMode?' shopping':''}${casinoTable?' at-table':''}${chatFocused?' typing-chat':''}` : customising ? 'game customising' : 'game welcome-menu'}>
     <canvas id="world" ref={canvas} tabIndex={0} aria-label="Slop City 3D world. Use W A S D or arrows to walk, Shift to sprint, Space to jump, and drag to look around. Select a neighbour to interact." />
     <div className="vignette" />
@@ -523,12 +571,12 @@ function App() {
         <div className="identity"><span className="identity-dot" style={{ background: SHIRTS[profile.shirt] }}/><span>{profile.name}<small>NEW NEIGHBOUR</small></span><span className="identity-status">IN TOWN</span></div>
       </div>
       <div className="controls-hint"><kbd>W</kbd><span className="key-stack"><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Walk</span><span className="divider"/>Drag to look<span className="divider"/>Scroll to zoom<span className="divider"/><kbd>/</kbd>Chat</div>
-      {selectedNeighbour && <PlayerCard key={selectedNeighbour.profileId} person={selectedNeighbour} online={!!selectedLive} distance={selectedDistance} blocked={guest?.blocks.includes(selectedNeighbour.profileId) ?? false} muted={!!selectedLive && muted.has(selectedLive[0])} available={!movementDisabled && !selectedLive?.[1].seatId && !selectedLive?.[1].emoteId && !isHopping(selectedLive?.[1].jumpAt ?? 0, Date.now())} snapshot={socialData.snapshot} balance={wallet?.balance ?? 0} busy={socialData.busy} error={socialData.error} notice={socialData.notice} pending={socialData.pending} invitation={invitation} canInvite={!emoteInbox.incoming && !emoteInbox.outgoing} onClose={() => setSelectedNeighbour(null)} onMute={() => { if (selectedLive) muteNeighbour(selectedLive[0]); }} onBlock={() => void blockNeighbour(selectedNeighbour.profileId, !(guest?.blocks.includes(selectedNeighbour.profileId) ?? false))} onFriend={action => void socialData.friend(selectedNeighbour.profileId, action)} onEmote={kind => sendEmote({ action: 'request', targetId: selectedNeighbour.profileId, kind })} onGift={amount => socialData.gift(selectedNeighbour.profileId, selectedNeighbour.name, amount)}/>}
+      {selectedNeighbour && <PlayerCard key={selectedNeighbour.profileId} person={selectedNeighbour} online={!!selectedLive} distance={selectedDistance} blocked={guest?.blocks.includes(selectedNeighbour.profileId) ?? false} muted={!!selectedLive && muted.has(selectedLive[0])} available={!movementDisabled && !selectedLive?.[1].seatId && !selectedLive?.[1].emoteId && !isHopping(selectedLive?.[1].jumpAt ?? 0, Date.now())} snapshot={socialData.snapshot} balance={wallet?.balance ?? 0} busy={socialData.busy} error={socialData.error} notice={socialData.notice} pending={socialData.pending} invitation={invitation} canInvite={!emoteInbox.incoming && !emoteInbox.outgoing} onClose={() => setSelectedNeighbour(null)} onMute={() => { if (selectedLive) muteNeighbour(selectedLive[0]); }} onBlock={() => void blockNeighbour(selectedNeighbour.profileId, !(guest?.blocks.includes(selectedNeighbour.profileId) ?? false))} onFriend={action => void socialData.friend(selectedNeighbour.profileId, action)} onEmote={kind => sendEmote({ action: 'request', targetId: selectedNeighbour.profileId, kind })} onWhisper={() => whisperTo(selectedNeighbour)} onGift={amount => socialData.gift(selectedNeighbour.profileId, selectedNeighbour.name, amount)}/>}
       {!socialOpen && !selectedNeighbour && !panel && !casinoTable && !shopMode && <div className="emote-world-prompt">{invitation}{localPlayer?.emoteId && <div className="emote-active"><span>{localPlayer.emoteKind === 'hug' ? EMOTE_POSES.hug.label : EMOTE_POSES.handshake.label} · A shared moment</span><button className="social-button" onClick={() => { sendEmote({ action: 'cancel' }); canvas.current?.focus(); }}>Stop emote</button></div>}</div>}
       {!socialOpen && !selectedNeighbour && !panel && !casinoTable && !shopMode && !chatFocused && <div className="mobility-controls" aria-label="Movement actions"><button aria-label="Toggle sprint" aria-pressed={sprintEnabled} disabled={!!localPlayer?.seatId || !!localPlayer?.emoteId} onMouseDown={event => event.preventDefault()} onClick={() => { world.current?.setSprint(!sprintEnabled); canvas.current?.focus(); }}>Sprint <kbd>Shift</kbd></button><button aria-label="Jump" disabled={movementDisabled} onMouseDown={event => event.preventDefault()} onClick={() => { world.current?.jump(); canvas.current?.focus(); }}>Jump <kbd>Space</kbd></button></div>}
       <nav className="toolbar" aria-label="Town tools">
         <button title="Community memories" aria-label="Open community memories" aria-pressed={panel==='memory'} onClick={()=>{setSocialOpen(false);setPanel('memory');}}><Icon kind="people"/><span>Memories</span></button>
-        <button title="Town chat (/)" aria-keyshortcuts="/" aria-label="Toggle town chat" aria-pressed={chatOpen} onClick={() => chatOpen ? closeChat() : openChat()}><Icon kind="chat"/><span>Chat</span></button>
+        <button title="Town chat (/)" aria-keyshortcuts="/" aria-label="Toggle town chat" aria-pressed={chatOpen} onClick={() => chatOpen ? closeChat() : openChat()}><Icon kind="chat"/><span>Chat</span>{unreadChat.all > 0 && <b className="toolbar-chat-badge" aria-label={`${unreadChat.all} unread messages`}>{unreadChat.all > 99 ? '99+' : unreadChat.all}</b>}</button>
         <button title="Wave" aria-label="Wave to neighbours" disabled={wave || movementDisabled} onClick={doWave}><Icon kind="wave"/><span>{wave ? 'Hello!' : 'Wave'}</span></button>
         <button title="Neighbours" aria-label="Open neighbours" aria-pressed={socialOpen} onClick={event => { event.currentTarget.focus(); setPanel(null); setSocialOpen(true); }}><Icon kind="people"/><span>Social</span></button>
         <button title="Town map" aria-label="Open town map" aria-pressed={panel === 'map'} onClick={() => setPanel(panel === 'map' ? null : 'map')}><Icon kind="map"/><span>Map</span></button>

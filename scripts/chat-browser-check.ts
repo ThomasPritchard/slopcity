@@ -16,10 +16,6 @@ import type { PrivateGuestProfile } from '../shared/profile.ts';
 loadEnvFile('.env');
 globalThis.WebSocket = WebSocket as unknown as typeof globalThis.WebSocket;
 const { Client } = await import('@colyseus/sdk');
-const { MODERATION_NOTICES } = await import('../shared/moderation.ts');
-// Client pre-check neutered for the modified-client browser guest, while notice matching keeps
-// working — generated from the real shared module so the strings cannot drift.
-const moderationStub = `export function checkChat() { return { ok: true }; }\nexport function moderationNoticeKey(text) {\n  const notices = ${JSON.stringify(MODERATION_NOTICES)};\n  if (typeof text !== 'string') return null;\n  for (const key of Object.keys(notices)) if (notices[key] === text) return key;\n  return null;\n}\n`;
 const port = Number(process.env.TEST_CHAT_PORT || 2577), endpoint = `http://127.0.0.1:${port}`;
 const site = process.env.TEST_CHAT_SITE || 'http://localhost:5176';
 const output = 'output/playwright';
@@ -55,7 +51,7 @@ async function guest(name: string) {
   assert.equal(response.status, 201);
   return { cookie: response.headers.get('set-cookie')!.split(';')[0], profile: await response.json() as PrivateGuestProfile };
 }
-const browser = await (process.env.CHAT_BROWSER === 'webkit' ? webkit : chromium).launch({ headless: true });
+const browser = await (process.env.CHAT_BROWSER === 'webkit' ? webkit : chromium).launch({ headless: true, ...(process.env.CHAT_BROWSER !== 'webkit' && process.platform === 'darwin' ? { args: ['--use-angle=metal'] } : {}) });
 try {
   await until(async () => { try { return (await fetch(`${endpoint}/health`)).ok; } catch { return false; } }, 'isolated server health');
   await until(async () => { try { return (await fetch(site)).ok; } catch { return false; } }, 'worktree vite serving');
@@ -134,7 +130,13 @@ try {
   // three offences escalate to silence, and the badge + disabled input appear — pacing-independent
   // (headless software rendering makes each UI send take seconds, too slow to trip the flood window).
   const stubbed = await browser.newContext({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
-  await stubbed.route('**/shared/moderation.ts*', route => route.fulfill({ contentType: 'text/javascript', body: moderationStub }));
+  await stubbed.route('**/shared/moderation.ts*', async route => {
+    // Replace only chat admission; preserve the exports used by profile validation.
+    const response = await route.fetch(), source = await response.text();
+    assert.ok(source.includes('export function checkChat('));
+    const body = source.replace('export function checkChat(', 'function originalCheckChat(') + '\nexport function checkChat() { return { ok: true }; }\n';
+    await route.fulfill({ response, body });
+  });
   const second = await stubbed.newPage();
   second.on('pageerror', error => errors.push(error.message));
   second.on('console', message => { if (message.type() === 'error' && message.text().includes('same key')) errors.push(message.text()); });

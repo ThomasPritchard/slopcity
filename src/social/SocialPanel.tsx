@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, type ReactNode, type KeyboardEvent } from 'react';
+import { useId, type ReactNode } from 'react';
+import { SocialDialog } from './SocialDialog';
 import './social.css';
 
 export interface SocialPanelProps {
@@ -48,8 +49,6 @@ export function SocialPanel({
   open, onClose, onInspect, extra, invitation, voice, neighbours, blockedProfiles,
   onJoinVoice, onLeaveVoice, onToggleMic, onResumeAudio, onMute, onBlock, onUnblock,
 }: SocialPanelProps) {
-  const panel = useRef<HTMLElement>(null);
-  const closeButton = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const voiceTitleId = useId();
   const neighboursTitleId = useId();
@@ -57,48 +56,15 @@ export function SocialPanel({
   const connected = voice.status === 'connected';
   const connecting = voice.status === 'connecting';
 
-  useEffect(() => {
-    if (!open) return;
-    const previousFocus = document.activeElement;
-    const keepFocusInside = (event: FocusEvent) => {
-      if (event.target instanceof Node && !panel.current?.contains(event.target)) {
-        closeButton.current?.focus({ preventScroll: true });
-      }
-    };
-    closeButton.current?.focus({ preventScroll: true });
-    document.addEventListener('focusin', keepFocusInside);
-    return () => {
-      document.removeEventListener('focusin', keepFocusInside);
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
-        previousFocus.focus({ preventScroll: true });
-      }
-    };
-  }, [open]);
-
-  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
-    } else if (event.key === 'Tab') {
-      const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')]
-        .filter(button => button.getClientRects().length > 0);
-      event.preventDefault();
-      const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
-      buttons[(index + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
-    }
-  }
-
   if (!open) return null;
 
   const voiceLabel = connecting ? 'Joining voice…' : connected ? 'Voice connected' : voice.status === 'error' ? 'Voice unavailable' : 'Voice off';
   const voiceError = voice.error || (voice.status === 'error' ? 'Voice could not connect. Please try again.' : '');
 
-  return <div className="social-backdrop" onPointerDown={event => { if (event.target === event.currentTarget) event.preventDefault(); }}>
-    <section ref={panel} className="social-panel" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onKeyDown={handleKeyDown}>
+  return <SocialDialog labelledBy={titleId} onClose={onClose}>
       <header className="social-header">
         <div><span className="eyebrow">LIFE IN THE SQUARE</span><h2 id={titleId}>Your neighbours.</h2></div>
-        <button ref={closeButton} type="button" className="social-close" aria-label="Close neighbours panel" onClick={onClose}><SocialIcon kind="close" /></button>
+        <button autoFocus type="button" className="social-close" aria-label="Close neighbours panel" onClick={onClose}><SocialIcon kind="close" /></button>
       </header>
       <div className="social-content">
         {invitation}
@@ -146,6 +112,5 @@ export function SocialPanel({
         </section>
       </div>
       <footer className="social-footer">Make yourself at home. Stay in control.</footer>
-    </section>
-  </div>;
+  </SocialDialog>;
 }

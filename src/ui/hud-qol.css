@@ -1,0 +1,99 @@
+/* Chat keeps the established green glass and cream/lime palette, with a readable log. */
+.chat-qol { display: flex; flex-direction: column; height: 230px; margin: 0; background: rgba(25, 45, 36, .94); }
+.chat-qol .chat-title { flex-shrink: 0; min-height: 40px; padding: 0 10px; font-size: 10px; letter-spacing: 1px; }
+.chat-qol .chat-population { color: #d5dfcf; font-size: 10px; letter-spacing: 0; white-space: nowrap; }
+.chat-tools { display: flex; align-items: center; margin-left: auto; }
+.chat-tools button { display: grid; place-items: center; min-width: 30px; height: 36px; padding: 0 4px; color: #e3ebbb; background: transparent; font-size: 17px; border-radius: 4px; letter-spacing: 0; }
+.chat-tools .chat-close { min-width: 36px; min-height: 36px; font-size: 24px; }
+.chat-tools .chat-desktop-tool { display: none; }
+.chat-tools button:hover { background: #e3ebbb18; }
+.chat-qol .chat-tabs { display: flex; flex-shrink: 0; padding: 0 8px; gap: 2px; border-bottom: 1px solid var(--hud-hairline); }
+.chat-tabs button { flex: 1; display: flex; gap: 4px; align-items: center; justify-content: center; background: transparent; color: #d5dfcf; padding: 8px 4px; min-height: 34px; font-size: 11px; border-bottom: 2px solid transparent; }
+.chat-tabs button[aria-pressed='true'] { border-bottom-color: #e3ebbb; color: #f4f6d8; background: #e3ebbb0b; }
+.chat-badge { display: inline-grid; place-items: center; min-width: 17px; padding: 1px 4px; background: #e3ebbb; color: #253e34; border-radius: 8px; font-size: 10px; font-weight: 650; }
+.chat-qol .chat-scroll-area { position: relative; flex: 1; min-height: 32px; }
+.chat-qol .chat-history { display: block; height: 100%; max-height: none; min-height: 0; padding: 9px 12px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; overflow-anchor: none; }
+.chat-qol .chat-history p { font-size: 11px; line-height: 1.65; margin: 0; padding: 1px 0; color: #f6f4e9; }
+.chat-qol .chat-history p + p { margin-top: 3px; }
+.chat-qol .chat-history time { color: #bfccbc; font-size: .85em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chat-qol .chat-channel-tag { color: #c8d7ad; font-size: .9em; }
+.chat-qol .chat-table .chat-channel-tag { color: #f0d99c; }
+.chat-qol .chat-whisper .chat-channel-tag, .chat-qol .chat-whisper .chat-speaker { color: #eed0ed; }
+.chat-qol .chat-history .chat-system, .chat-qol .chat-history .chat-empty { color: #d2dccb; }
+.chat-qol .chat-speaker { display: inline; background: transparent; padding: 0; border-radius: 2px; font-size: inherit; font-weight: 650; color: #e3ebbb; text-align: left; }
+.chat-qol .chat-speaker:hover { text-decoration: underline; }
+.chat-qol .chat-history strong { font-weight: 650; margin-right: 0; }
+.chat-qol .chat-latest { position: absolute; bottom: 6px; right: 12px; max-width: calc(100% - 24px); min-height: 32px; padding: 6px 12px; background: #e3ebbb; color: #253e34; border: 1px solid #8c9b79; border-radius: 16px; font-size: 11px; box-shadow: 0 2px 10px #10271d66; }
+.chat-qol .chat-recipient { display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 11px; padding: 4px 12px; border-bottom: 1px solid var(--hud-hairline); }
+.chat-recipient select { flex: 1; min-width: 0; max-width: 100%; min-height: 32px; background: #263f34; color: #f6f4e9; border: 1px solid #829278; border-radius: 4px; font: inherit; }
+.chat-qol form { display: block; flex-shrink: 0; }
+.chat-qol .chat-destination { display: block; padding: 7px 12px 0; color: #e3ebbb; font-size: 10px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-qol .chat-destination.is-repeated { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+.typing-chat .location { visibility: hidden; }
+.chat-qol .chat-compose-row { display: flex; }
+.chat-qol input { min-height: 36px; font-size: 12px; padding: 7px 12px; }
+.chat-qol input::placeholder { color: #c4cfbf; }
+.chat-qol form button { min-width: 40px; min-height: 36px; }
+.chat-qol .chat-silenced { padding: 4px 12px; font-size: 11px; color: #f0d9a0; }
+.chat-qol button:focus-visible, .chat-qol select:focus-visible, .chat-qol .chat-history:focus-visible { outline: 2px solid var(--hud-lime); outline-offset: -2px; }
+.toolbar button { position: relative; }
+.toolbar-chat-badge { position: absolute; top: -4px; right: -4px; min-width: 16px; padding: 2px 4px; border-radius: 8px; font-size: 9px; color: #253e34; background: #e3ebbb; }
+
+/* Fine pointer + hover deliberately excludes the normal phone and tablet HUD. */
+@media (pointer: fine) and (hover: hover) and (min-width: 1100px) and (min-height: 650px) {
+  .playing { --desktop-hud-scale: 1.3; }
+  .playing .masthead .brand { transform: scale(var(--desktop-hud-scale)); transform-origin: top left; }
+  .playing .masthead .top-right { transform: scale(var(--desktop-hud-scale)); transform-origin: top right; }
+  .playing .hud-right-stack { top: calc(20px + 35px * var(--desktop-hud-scale)); transform: scale(var(--desktop-hud-scale)); transform-origin: top right; }
+  .playing .toolbar { transform: scale(var(--desktop-hud-scale)); transform-origin: bottom right; }
+  .playing .mobility-controls { transform: scale(var(--desktop-hud-scale)); transform-origin: bottom right; bottom: calc(90px * var(--desktop-hud-scale)); }
+  .playing .controls-hint { transform: translateX(-50%) scale(var(--desktop-hud-scale)); transform-origin: center bottom; }
+  .playing .seat-action, .playing .shop-entry, .playing .casino-entry { transform: translateX(-50%) scale(var(--desktop-hud-scale)); transform-origin: center bottom; }
+  .playing .bottom-left { width: clamp(430px, 25vw, 640px); gap: 10px; }
+  .playing .bottom-left > .identity { height: 36px; padding: 0 10px; }
+  .playing .identity > span:not(.identity-dot):not(.identity-status) { font-size: 12px; }
+  .playing .identity small, .playing .identity-status { font-size: 8px; }
+  .playing .bottom-left .chat-qol { height: clamp(320px, 31vh, 470px); max-height: calc(100dvh - 230px); }
+  .playing .bottom-left .chat-qol.chat-tall { height: clamp(440px, 44vh, 680px); }
+  .chat-qol .chat-title { min-height: 40px; }
+  .chat-tools .chat-desktop-tool { display: flex; justify-content: center; }
+  .chat-qol .chat-history p { font-size: var(--chat-font, 14px); }
+  .chat-qol .chat-tabs button { font-size: 12px; }
+  .chat-qol input { font-size: 14px; min-height: 40px; }
+  .chat-qol .chat-destination { font-size: 11px; }
+  .chat-qol .chat-recipient { font-size: 13px; }
+  .casino-chat { width: min(430px, calc(50vw - 56px)); }
+  .casino-chat .chat-qol { height: 310px; max-height: calc(100dvh - 160px); }
+  .casino-chat .chat-qol.chat-tall { height: 440px; }
+  .social-panel { width: 540px; }
+  .social-copy, .social-button { font-size: 13px; }
+  .social-person-name strong, .social-section-heading h3 { font-size: 14px; }
+  .social-person-name > span, .social-person .social-button, .social-empty { font-size: 12px; }
+  .social-microphone strong { font-size: 14px; }
+  .social-microphone div > span { font-size: 12px; }
+  .social-footer { font-size: 11px; }
+}
+@media (pointer: fine) and (hover: hover) and (min-width: 2500px) and (min-height: 650px) { .playing { --desktop-hud-scale: 1.6; } }
+@media (pointer: fine) and (hover: hover) and (min-width: 3400px) and (min-height: 650px) { .playing { --desktop-hud-scale: 2; } }
+/* At smaller desktop widths the corner controls leave no room for a centre hint. */
+@media (pointer: fine) and (max-width: 1699px) { .playing .controls-hint { display: none; } }
+@media (pointer: fine) and (min-width: 700px) and (max-width: 1099px) { .bottom-left { width: 340px; } }
+@media (pointer: coarse), (max-width: 699px) {
+  .chat-qol .chat-tools button { min-width: 44px; min-height: 44px; }
+  .chat-qol .chat-title { min-height: 44px; }
+  .chat-qol .chat-tabs button { min-height: 40px; }
+  .chat-qol input, .chat-recipient select { font-size: 16px; min-height: 44px; }
+  .chat-qol form button { min-height: 44px; min-width: 44px; }
+  .chat-qol .chat-population { display: none; }
+  .chat-qol .chat-latest { min-height: 44px; }
+  .chat-qol .chat-recipient { padding-top: 2px; padding-bottom: 2px; }
+}
+@media (pointer: coarse) and (orientation: portrait), (max-width: 699px) and (orientation: portrait) {
+  .bottom-left .chat-qol { height: min(300px, 40dvh); }
+  .casino-chat .chat-qol { height: 100%; }
+}
+@media (orientation: landscape) and (max-height: 620px) {
+  .bottom-left:has(.chat-qol) { width: min(360px, 46vw); }
+  .bottom-left .chat-qol { height: min(230px, calc(100dvh - 140px)); }
+  .casino-chat .chat-qol { height: min(254px, calc(100dvh - 95px)); max-height: none; }
+}

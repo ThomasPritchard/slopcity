@@ -18,6 +18,7 @@ import { checkChat, MODERATION_NOTICES, sanitizeChatBody } from '../shared/moder
 import { ChatDiscipline } from './moderation.ts';
 import { SharedEmotes } from './emotes.ts';
 import { HOP_COOLDOWN_MS, isHopping } from '../shared/mobility.ts';
+import { chatTableFor, isChatTable, parseChatCommand, type ChatMessage } from '../shared/chat.ts';
 
 export class TownRoom extends Room<{ state: TownState }> {
   maxClients = CAPACITY;
@@ -44,6 +45,7 @@ export class TownRoom extends Room<{ state: TownState }> {
     for (const client of this.clients) if (profileIds.includes(this.state.players.get(client.sessionId)?.profileId ?? '')) client.send('social-changed', {});
   }
   private chatAt = new Map<string, number>();
+  private chatTables = new Map<string, CasinoTableId>();
   private waveAt = new Map<string, number>();
   private discipline = new ChatDiscipline();
 
@@ -179,15 +181,21 @@ export class TownRoom extends Room<{ state: TownState }> {
         this.movementInputs.set(client.sessionId, { input, at: performance.now() });
       }
     });
+    this.onMessage('chat-table', (client, value: unknown) => {
+      this.chatTables.delete(client.sessionId);
+      const citizen = this.state.players.get(client.sessionId);
+      if (citizen && isChatTable(value) && chatTableFor(citizen, value) === value) this.chatTables.set(client.sessionId, value);
+    });
     this.onMessage('chat', (client, value: unknown) => {
-      if (typeof value !== 'string') return;
+      const command = parseChatCommand(value);
+      if (!command) { client.send('chat-error', 'Choose a valid chat destination.'); return; }
       const now = performance.now();
-      if (now - (this.chatAt.get(client.sessionId) ?? -10000) < 800) { safety.eventFor(client.sessionId,'chat_rate_limited'); return; }
+      if (now - (this.chatAt.get(client.sessionId) ?? -10000) < 800) { safety.eventFor(client.sessionId,'chat_rate_limited'); client.send('chat-error', 'Please wait a moment before sending another message.'); return; }
       const citizen = this.state.players.get(client.sessionId);
       if (!citizen) return;
       const silenced = this.discipline.silenceRemaining(citizen.profileId);
       if (silenced > 0) { this.chatAt.set(client.sessionId, now); client.send('silenced', { seconds: Math.ceil(silenced / 1000) }); return; }
-      const body = sanitizeChatBody(value);
+      const body = sanitizeChatBody(command.body);
       if (!body) return;
       this.chatAt.set(client.sessionId, now);
       const verdict = checkChat(body);
@@ -204,9 +212,24 @@ export class TownRoom extends Room<{ state: TownState }> {
         if (silencedMs > 0) client.send('silenced', { seconds: Math.ceil(silencedMs / 1000) });
         return;
       }
+      const message: ChatMessage = { id: randomUUID(), sentAt: Date.now(), profileId: citizen.profileId, name: citizen.name, body, channel: command.channel };
+      if (command.channel === 'whisper') {
+        const receiver = this.clients.find(other => this.hasSession(other.sessionId) && this.state.players.get(other.sessionId)?.profileId === command.toProfileId);
+        if (!receiver || receiver === client || this.isBlocked(citizen.profileId, command.toProfileId)) { client.send('chat-error', 'That neighbour is unavailable for whispers.'); return; }
+        message.toProfileId = command.toProfileId;
+        message.toName = this.state.players.get(receiver.sessionId)!.name;
+        receiver.send('chat', message); client.send('chat', message);
+        return;
+      }
+      if (command.channel === 'table') {
+        if (chatTableFor(citizen, this.chatTables.get(client.sessionId)) !== command.tableId) { client.send('chat-error', 'Open this table nearby or take a seat to use its chat.'); return; }
+        message.tableId = command.tableId;
+      }
       for (const receiver of this.clients) {
         const target = this.state.players.get(receiver.sessionId);
-        if (target && !this.isBlocked(citizen.profileId, target.profileId)) receiver.send('chat', { id: client.sessionId, profileId: citizen.profileId, name: citizen.name, body });
+        if (!target || !this.hasSession(receiver.sessionId) || this.isBlocked(citizen.profileId, target.profileId)) continue;
+        if (command.channel === 'table' && chatTableFor(target, this.chatTables.get(receiver.sessionId)) !== command.tableId) continue;
+        receiver.send('chat', message);
       }
     });
     this.onMessage('wave', client => {
@@ -286,7 +309,7 @@ export class TownRoom extends Room<{ state: TownState }> {
     const stopping = ownsSession ? salary.stop(client.sessionId) : Promise.resolve();
     if(ownsSession)this.blocked.delete(profile.id);
     this.discipline.dispose(client.sessionId);
-    for (const map of [this.movementInputs, this.chatAt, this.waveAt, this.hearing, this.hearingJson]) map.delete(client.sessionId);
+    for (const map of [this.movementInputs, this.chatAt, this.chatTables, this.waveAt, this.hearing, this.hearingJson]) map.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.wallets.delete(client.sessionId); this.accruing.delete(client.sessionId);
     void voice.remove(this.roomId, client.sessionId);

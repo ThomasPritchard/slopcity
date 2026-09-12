@@ -1,16 +1,8 @@
-.social-backdrop {
+.social-panel {
   position: fixed;
   inset: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: #0e251d88;
-  backdrop-filter: blur(5px);
-}
-
-.social-panel {
+  margin: auto;
+  padding: 0;
   display: flex;
   flex-direction: column;
   width: 460px;
@@ -75,8 +67,8 @@
 .social-footer { flex-shrink: 0; border-top: 1px solid #d7e2b526; padding: 14px 24px; color: #b9c9af; font-size: 9px; line-height: 1.6; }
 
 @media (max-width: 480px) {
-  .social-backdrop { align-items: flex-end; padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
-  .social-panel { width: 100%; max-height: calc(100dvh - 24px - env(safe-area-inset-bottom)); }
+  .social-panel { margin-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .social-panel { width: calc(100% - 24px); max-height: calc(100dvh - 24px - env(safe-area-inset-bottom)); }
   .social-header { padding: 21px 20px 18px; }
   .social-header h2 { font-size: 32px; }
   .social-content { padding: 0 20px; }
@@ -87,9 +79,12 @@
 }
 
 @media (max-height: 500px) {
-  .social-backdrop { padding: 12px; }
   .social-panel { max-height: calc(100dvh - 24px); }
   .social-header { padding-top: 16px; padding-bottom: 14px; }
   .social-header h2 { font-size: 29px; margin-top: 5px; }
   .social-footer { padding-top: 9px; padding-bottom: 9px; }
 }
+
+.social-panel:not([open]) { display: none; }
+.social-panel::backdrop { background: #0e251d99; backdrop-filter: blur(5px); }
+.whisper-entry { width: 100%; margin-bottom: 18px; }
