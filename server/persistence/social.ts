@@ -1,16 +1,18 @@
+import { CreditProtectionRepository, GIFT_ENFORCEMENT_LOCK } from './creditProtection.ts';
 import { readFile } from 'node:fs/promises';
 import type { PoolClient } from 'pg';
 import { EconomyError, type EconomyRepository } from './economy.ts';
 import { validProfileId } from './guests.ts';
 import { MAX_GIFT_CREDITS, type FriendAction, type GiftReceipt, type SocialSnapshot } from '../../shared/playerSocial.ts';
 export class SocialRepository {
- constructor(readonly economy:EconomyRepository) {}
+ readonly protection: CreditProtectionRepository;
+ constructor(readonly economy:EconomyRepository) { this.protection=new CreditProtectionRepository(economy); }
  async initialise(){await this.economy.transaction(async c=>{
   await c.query('SELECT pg_advisory_xact_lock(782641092)');
   const versions=(await c.query('SELECT version FROM guest_schema_migrations')).rows.map(r=>r.version);
-  if(!versions.includes(5)||versions.some(v=>![1,2,3,4,5,6,7,8,9,10,11,12].includes(v)))throw new Error('Unsupported social schema');
+  if(!versions.includes(5)||versions.some(v=>![1,2,3,4,5,6,7,8,9,10,11,12,13].includes(v)))throw new Error('Unsupported social schema');
   if(!versions.includes(6)){await c.query(await readFile(new URL('./migrations/006_player_social.sql',import.meta.url),'utf8'));await c.query('INSERT INTO guest_schema_migrations(version) VALUES(6)');}
- });}
+ });await this.protection.initialise();}
  private validate(id:string,target:string){if(!validProfileId(target)||id===target)throw new EconomyError('invalid_target','Choose another player',400);}
  private async pair(c:PoolClient,id:string,target:string){
   const rows=await c.query('SELECT id FROM guest_profiles WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE',[[id,target]]);
@@ -46,20 +48,23 @@ export class SocialRepository {
   this.validate(id,target);
   if(!validProfileId(requestId)||!Number.isSafeInteger(amount)||amount<1||amount>MAX_GIFT_CREDITS)throw new EconomyError('invalid_gift','Enter a whole credit amount from 1 to 1000 and a request UUID',400);
   return this.economy.transaction(async c=>{
+   await c.query('SELECT pg_advisory_xact_lock($1)',[GIFT_ENFORCEMENT_LOCK]);
    await this.pair(c,id,target);
    for(const profile of [id,target].sort())await this.economy.lock(c,profile);
    const prior=(await c.query('SELECT target_id,amount FROM player_gifts WHERE sender_id=$1 AND request_id=$2',[id,requestId])).rows[0];
-   if(prior){if(prior.target_id!==target||prior.amount!==amount)throw new EconomyError('request_conflict','This gift request was used for another gift');return {requestId,targetId:target,amount,wallet:await this.economy.snapshot(c,id),giftingAllowance:await this.allowance(c,id),replayed:true};}
+   if(prior){if(prior.target_id!==target||prior.amount!==amount)throw new EconomyError('request_conflict','This gift request was used for another gift');return {requestId,targetId:target,amount,wallet:await this.economy.snapshot(c,id),giftingAllowance:await this.allowance(c,id),replayed:true,reversed:await this.protection.reversed(c,id,requestId)};}
    await this.unblocked(c,id,target);
+   if(await this.protection.restricted(c,id))throw new EconomyError('gift_restricted','Gifting is unavailable for this profile following coordinated gift activity.',403);
    const wallet=await this.economy.snapshot(c,id),allowance=await this.allowance(c,id);
    if(wallet.balance<amount)throw new EconomyError('insufficient_funds','You need more credits');
    if(allowance<amount)throw new EconomyError('insufficient_allowance','Earn more salary before gifting these credits');
    if(!eligible())throw new EconomyError('not_nearby','Both players must be nearby in the same town');
-   await c.query('INSERT INTO player_gifts(sender_id,request_id,target_id,amount) VALUES($1,$2,$3,$4)',[id,requestId,target,amount]);
+   const gift=(await c.query('INSERT INTO player_gifts(sender_id,request_id,target_id,amount,created_at) VALUES($1,$2,$3,$4,clock_timestamp()) RETURNING created_at::text',[id,requestId,target,amount])).rows[0];
    await c.query('UPDATE economy_wallets SET balance=balance-$2,gifting_allowance=gifting_allowance-$2,revision=revision+1 WHERE profile_id=$1',[id,amount]);
    await c.query('UPDATE economy_wallets SET balance=balance+$2,revision=revision+1 WHERE profile_id=$1',[target,amount]);
    await c.query("INSERT INTO economy_ledger(profile_id,operation_key,kind,amount) VALUES($1,$3,'gift_sent',-$4::integer),($2,$3,'gift_received',$4)",[id,target,`gift:${id}:${requestId}`,amount]);
-   return {requestId,targetId:target,amount,wallet:await this.economy.snapshot(c,id),giftingAllowance:await this.allowance(c,id),replayed:false};
+   await this.protection.detect(c,target,gift.created_at);
+   return {requestId,targetId:target,amount,wallet:await this.economy.snapshot(c,id),giftingAllowance:await this.allowance(c,id),replayed:false,reversed:await this.protection.reversed(c,id,requestId)};
   });
  }
 }

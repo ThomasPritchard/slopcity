@@ -10,7 +10,7 @@ export class SafetyRepository {
   await this.economy.transaction(async c => {
    await c.query('SELECT pg_advisory_xact_lock(782641092)');
    const versions = (await c.query('SELECT version FROM guest_schema_migrations')).rows.map(row => row.version);
-   if (!versions.includes(8) || versions.some(v => ![1,2,3,4,5,6,7,8,9,10,11,12].includes(v))) throw new Error('Unsupported safety schema');
+   if (!versions.includes(8) || versions.some(v => ![1,2,3,4,5,6,7,8,9,10,11,12,13].includes(v))) throw new Error('Unsupported safety schema');
    if (!versions.includes(9)) { await c.query(await readFile(new URL('./migrations/009_safety.sql', import.meta.url), 'utf8')); await c.query('INSERT INTO guest_schema_migrations(version) VALUES(9)'); }
   });
  }

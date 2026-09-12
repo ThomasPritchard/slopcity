@@ -58,7 +58,7 @@ export function usePlayerSocial(enabled: boolean, ownerId: string | undefined, o
       if (context.current.ownerId === ownerId) {
         remember(null, ownerId); onWallet(receipt.wallet);
         setSnapshot(value => value ? { ...value, giftingAllowance: receipt.giftingAllowance } : null);
-        setNotice(`${receipt.amount.toLocaleString()} credits sent to ${targetName}.`); void refresh();
+        setNotice(receipt.reversed ? 'This gift was removed after coordinated gift activity was detected.' : `${receipt.amount.toLocaleString()} credits sent to ${targetName}.`); void refresh();
       }
       return true;
     } catch (error) {

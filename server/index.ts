@@ -1,5 +1,6 @@
 import { mountAccountRoutes } from './accounts.ts';
 import { TwitchLiveService } from './twitchLive.ts';
+import { applyConfiguredCreditIncidents } from './creditIncidents.ts';
 import { mountCommunityRoutes } from './community.ts';
 import { AddressedHttpServer, clientAddress, proxySecret } from './clientAddress.ts';
 import { guardHttpRequest, mountSafetyGuards } from './safetyRoutes.ts';
@@ -37,6 +38,7 @@ try {
   const bannedNames = await safety.banProhibitedNames();
   if (bannedNames) console.info(JSON.stringify({event:'prohibited_profile_names_banned',count:bannedNames}));
   await casinoRepository.recoverPending();
+  await applyConfiguredCreditIncidents(socialRepository.protection);
 } catch {
   await guests.close();
   await lock.close();
@@ -75,6 +77,7 @@ const server = new Server({
       catch { response.status(503).json({ status: 'unavailable' }); }
     });
     mountEconomyRoutes(app, guests, economy, {
+      protection: socialRepository.protection,
       canPurchase: id => { const active=sessions.get(id); return !!active && !!towns.get(active.roomId)?.canPurchase(id); },
       onEquipped: (id,state) => { const active=sessions.get(id); if(active) towns.get(active.roomId)?.publishEconomy(id,active.sessionId,state); },
     });

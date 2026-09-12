@@ -1,0 +1,28 @@
+.credit-notice { position:fixed; margin:auto; padding:0; width:min(500px,calc(100vw - 32px)); max-width:none; max-height:calc(100dvh - 32px); border:1px solid #8e7552; border-radius:8px; background:#f3eedc; color:#293e32; box-shadow:0 24px 90px #10201666; overflow:hidden; font-family:'DM Sans',sans-serif; }
+.credit-notice[open] { display:flex; flex-direction:column; }
+.credit-notice::backdrop { background:#0d211ae6; backdrop-filter:blur(4px); }
+.credit-notice * { box-sizing:border-box; }
+.credit-notice-heading { padding:26px 28px 18px; border-bottom:1px solid #64734b33; flex-shrink:0; }
+.credit-notice-eyebrow { font-size:10px; font-weight:600; letter-spacing:1.4px; color:#70522d; }
+.credit-notice h2 { margin:10px 0 0; font:400 38px/1.08 'Instrument Serif',Georgia,serif; outline:none; }
+.credit-notice-body { min-height:0; overflow:auto; overscroll-behavior:contain; padding:8px 28px 10px; }
+.credit-notice p { font-size:14px; line-height:1.65; margin:16px 0; }
+.credit-notice p.credit-notice-date { font-size:12px; line-height:1.5; margin:12px 0 0; }
+.credit-notice p.credit-notice-reset { font-size:13px; line-height:1.5; margin:12px 0 0; }
+.credit-notice-amount { margin:20px 0 16px; border-block:1px solid #64734b33; padding:18px 0; }
+.credit-notice-amount div { display:flex; gap:16px; justify-content:space-between; align-items:baseline; }
+.credit-notice dt { font-size:13px; font-weight:500; }
+.credit-notice dd { margin:0; font:400 42px/1 'Instrument Serif',Georgia,serif; font-variant-numeric:tabular-nums; }
+.credit-notice-activity { padding:0; margin:0; list-style:none; }
+.credit-notice-activity li { display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px 16px; padding:8px 0; font-size:12px; line-height:1.5; }
+.credit-notice-activity strong { font-weight:600; }
+.credit-notice p.credit-notice-warning { font-size:12px; color:#5b4932; }
+.credit-notice p.credit-notice-error { color:#8c291f; }
+.credit-notice-footer { flex-shrink:0; border-top:1px solid #64734b33; padding:16px 28px; }
+.credit-notice-footer button { width:100%; min-height:46px; border:1px solid #29452e; border-radius:4px; background:#29452e; color:#fffbed; font:500 14px/1.4 'DM Sans',sans-serif; cursor:pointer; }
+.credit-notice-footer button:disabled { opacity:.65; cursor:wait; }
+.credit-notice button:focus-visible { outline:3px solid #b88434; outline-offset:3px; }
+.credit-notice-retry { position:fixed; z-index:20; bottom:100px; left:16px; max-width:calc(100vw - 32px); padding:12px; background:#f3eedc; color:#293e32; font-size:13px; }
+.credit-notice-retry button { margin-left:12px; min-height:44px; }
+@media(max-width:480px) { .credit-notice-heading,.credit-notice-footer { padding:18px 20px; } .credit-notice-body { padding:0 20px 4px; } .credit-notice h2 { font-size:34px; } }
+@media(max-height:480px) { .credit-notice-heading { padding:14px 24px 10px; } .credit-notice h2 { font-size:30px; margin-top:6px; } .credit-notice-footer { padding:10px 24px; } }

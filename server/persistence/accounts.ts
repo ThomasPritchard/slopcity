@@ -22,7 +22,7 @@ export class AccountRepository {
    await c.query("SET LOCAL lock_timeout='5s'");
    await c.query('SELECT pg_advisory_xact_lock(782641092)');
    const versions = (await c.query('SELECT version FROM guest_schema_migrations')).rows;
-   if (!versions.some(r => r.version === 10) || versions.some(r => !Number.isInteger(r.version) || r.version < 1 || r.version > 12)) throw new Error('Unsupported accounts schema');
+   if (!versions.some(r => r.version === 10) || versions.some(r => !Number.isInteger(r.version) || r.version < 1 || r.version > 13)) throw new Error('Unsupported accounts schema');
    if (!versions.some(r => r.version === 11)) {
     await c.query(await readFile(new URL('./migrations/011_accounts.sql', import.meta.url), 'utf8'));
     await c.query('INSERT INTO guest_schema_migrations(version) VALUES(11)');

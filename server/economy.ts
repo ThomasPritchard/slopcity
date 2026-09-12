@@ -1,10 +1,11 @@
+import type { CreditProtectionRepository } from './persistence/creditProtection.ts';
 import { CREDIT_LEADERBOARD_REFRESH_MS, type CreditLeaderboard } from '../shared/creditLeaderboard.ts';
 import express, { type Application, type Request, type Response, type NextFunction } from 'express';
 import { authenticateGuest,isAllowedOrigin } from './guest.ts';
 import type { GuestRepository } from './persistence/guests.ts';
 import { EconomyError, type EconomyRepository } from './persistence/economy.ts';
 import type { WalletState } from '../shared/catalog.ts';
-export function mountEconomyRoutes(app:Application,guests:GuestRepository,economy:EconomyRepository,hooks:{canPurchase:(profileId:string)=>boolean;onEquipped:(profileId:string,state:WalletState)=>void}){
+export function mountEconomyRoutes(app:Application,guests:GuestRepository,economy:EconomyRepository,hooks:{canPurchase:(profileId:string)=>boolean;onEquipped:(profileId:string,state:WalletState)=>void;protection?:CreditProtectionRepository}){
  const router=express.Router();
  router.use((req,res,next)=>{res.setHeader('Cache-Control','no-store');if(req.method!=='GET'&&!isAllowedOrigin(req.headers.origin)){res.status(403).json({code:'origin',error:'Origin not allowed'});return;}next();});
  router.use(express.json({limit:'2kb'}));
@@ -21,6 +22,10 @@ export function mountEconomyRoutes(app:Application,guests:GuestRepository,econom
   } catch { res.status(503).json({ code: 'unavailable', error: 'The leaderboard is unavailable. Please check again shortly.' }); }
  });
 
+ if(hooks.protection){
+  router.get('/notices',async(_req,res)=>res.json({notices:await hooks.protection!.pending(res.locals.profileId)}));
+  router.post('/notices/acknowledge',async(req,res)=>{await hooks.protection!.acknowledge(res.locals.profileId,req.body?.notices);res.sendStatus(204);});
+ }
  router.post('/purchase',async(req,res)=>{
   if(typeof req.body?.itemId!=='string'||typeof req.body?.requestId!=='string')throw new EconomyError('invalid_request','Choose an item and purchase request',400);
   res.json(await economy.purchase(res.locals.profileId,req.body.itemId,req.body.requestId,()=>hooks.canPurchase(res.locals.profileId)));

@@ -1,5 +1,6 @@
 import { AccountProvider, captureAccountLink, useAccount } from './account/AccountProvider';
 import { AccountButton } from './account/AccountButton';
+import { CreditNoticeDialog } from './economy/CreditNoticeDialog';
 import { useAdmission } from './social/useAdmission';
 import { useCreditLeaderboard } from './leaderboard/useCreditLeaderboard';
 import { CreditLeaderboardPanel } from './leaderboard/CreditLeaderboardPanel';
@@ -82,6 +83,7 @@ function Icon({ kind, size = 20 }: { kind: string; size?: number }) {
 }
 function App() {
   const account = useAccount();
+  const [creditNoticeOpen,setCreditNoticeOpen]=useState(false);
   const admission = useAdmission();
   const [entryDeadline,setEntryDeadline] = useState(0);
   async function reverifyEntry() {
@@ -233,7 +235,7 @@ function App() {
     return () => { viewport?.removeEventListener('resize', update); viewport?.removeEventListener('scroll', update); };
   }, []);
   useEffect(() => {
-    if (phase !== 'playing' || panel || socialOpen || selectedNeighbour || shopMode) return;
+    if (phase !== 'playing' || creditNoticeOpen || panel || socialOpen || selectedNeighbour || shopMode) return;
     const chatShortcut = (event: KeyboardEvent) => {
       if (!['/', 'Enter'].includes(event.key) || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable="true"],[contenteditable=""]')) return;
@@ -244,7 +246,7 @@ function App() {
     };
     document.addEventListener('keydown', chatShortcut, true);
     return () => document.removeEventListener('keydown', chatShortcut, true);
-  }, [phase, panel, socialOpen, selectedNeighbour, shopMode]);
+  }, [phase, creditNoticeOpen, panel, socialOpen, selectedNeighbour, shopMode]);
   useEffect(() => {
     if (!silencedUntil) return;
     const tick = () => {
@@ -262,10 +264,10 @@ function App() {
   useEffect(() => { if(ready) world.current?.syncCommunity(community.programme); }, [community.programme, ready]);
   useEffect(() => { if(ready) world.current?.setCinemaPlaybackEnabled(phase === 'playing' && panel === null && !socialOpen && !selectedNeighbour && !shopMode && !casinoTable); }, [ready,phase,panel,socialOpen,selectedNeighbour,shopMode,casinoTable]);
   useEffect(() => { if(ready)world.current?.focusCommunity(phase==='playing' ? panel==='memory'?'board':panel==='cinema'?'cinema':null : null); }, [panel,phase,ready]);
-  useEffect(() => { world.current?.setPaused(account.isOpen || panel !== null || socialOpen || selectedNeighbour !== null || chatFocused || shopMode!==null || casinoTable!==null || phase !== 'playing'); }, [account.isOpen, panel, socialOpen, selectedNeighbour, chatFocused, shopMode, casinoTable, phase]);
+  useEffect(() => { world.current?.setPaused(creditNoticeOpen || account.isOpen || panel !== null || socialOpen || selectedNeighbour !== null || chatFocused || shopMode!==null || casinoTable!==null || phase !== 'playing'); }, [creditNoticeOpen, account.isOpen, panel, socialOpen, selectedNeighbour, chatFocused, shopMode, casinoTable, phase]);
   useEffect(() => {
-    if (phase === 'playing') room.current?.send('interaction-busy', panel !== null || shopMode !== null || casinoTable !== null || chatFocused);
-  }, [panel, shopMode, casinoTable, chatFocused, phase]);
+    if (phase === 'playing') room.current?.send('interaction-busy', creditNoticeOpen || panel !== null || shopMode !== null || casinoTable !== null || chatFocused);
+  }, [creditNoticeOpen, panel, shopMode, casinoTable, chatFocused, phase]);
   useEffect(() => { world.current?.selectPlayer(selectedNeighbour?.profileId ?? null); }, [selectedNeighbour?.profileId]);
   const activeEmoteId = players.get(room.current?.sessionId ?? '')?.emoteId;
   useEffect(() => { if (activeEmoteId) { setSelectedNeighbour(null); setSocialOpen(false); } }, [activeEmoteId]);
@@ -514,7 +516,7 @@ function App() {
   useEffect(() => { world.current?.setInteractionFocus(focusGame); }, [focusGame?.id]);
   const selectedLive = selectedNeighbour ? [...players.entries()].find(([, player]) => player.profileId === selectedNeighbour.profileId) : undefined;
   const selectedDistance = localPlayer && selectedLive ? Math.hypot(localPlayer.x - selectedLive[1].x, localPlayer.z - selectedLive[1].z) : Infinity;
-  const movementDisabled = !!localPlayer?.seatId || !!localPlayer?.emoteId || isHopping(localPlayer?.jumpAt ?? 0, Date.now());
+  const movementDisabled = creditNoticeOpen || !!localPlayer?.seatId || !!localPlayer?.emoteId || isHopping(localPlayer?.jumpAt ?? 0, Date.now());
   const invitation = <EmotePrompt inbox={emoteInbox} onCommand={sendEmote}/>;
   const playing = phase === 'playing';
   const customising = phase === 'customising' || phase === 'joining';
@@ -610,6 +612,7 @@ function App() {
       {error && <div role="alert" className="connection-alert">{error}</div>}
       {(panel === 'map' || panel === 'settings') && <div className="modal-backdrop" onClick={() => setPanel(null)}><section className="modal soft-corner-panel" role="dialog" aria-modal="true" aria-label={panel === 'map' ? 'Town map' : 'Settings'} onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') setPanel(null); if (e.key === 'Tab') { const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input,select')]; const first = items[0], last = items[items.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } } }}><header className="soft-panel-header"><button autoFocus className="close" aria-label="Close panel" onClick={() => setPanel(null)}><Icon kind="close"/></button><span className="eyebrow">Slop City</span><h2>{panel === 'map' ? 'Get your bearings.' : 'Make it comfortable.'}</h2></header><div className="soft-panel-content">{panel === 'map' ? <><TownMapSvg players={players} sessionId={room.current?.sessionId} labeled ariaLabel="Map of the square: casino north, clothing shop east, picture house west, fountain in the centre"/><p className="map-legend"><span className="live-dot"/> You are in {stats.district}.</p></> : <><AccountButton/><div className="comfort-settings"><label className="setting"><span>Graphics quality<small id="graphics-quality-description">{GRAPHICS_DESCRIPTIONS[preferences.graphics]}</small></span><select aria-label="Graphics quality" aria-describedby="graphics-quality-description" value={preferences.graphics} onChange={e => { if (isGraphicsQuality(e.target.value)) updatePreferences({graphics:e.target.value}); }}>{GRAPHICS_QUALITIES.map(quality => <option key={quality} value={quality}>{GRAPHICS_LABELS[quality]}</option>)}</select></label><label className="setting"><span>Motion<small>Reduce decorative movement; keep game results visible.</small></span><select aria-label="Motion preference" value={preferences.motion} onChange={e=>updatePreferences({motion:e.target.value as Preferences['motion']})}><option value="system">Follow device</option><option value="reduced">Reduced</option><option value="full">Full</option></select></label><fieldset><legend>City sound</legend><label className="setting"><span>Sound effects <output>{Math.round(preferences.effects*100)}%</output></span><input aria-label="Sound effects volume" type="range" min="0" max="1" step="0.05" value={preferences.effects} onChange={e=>updatePreferences({effects:Number(e.target.value)})}/></label><label className="setting"><span>Fountain ambience <output>{Math.round(preferences.ambience*100)}%</output></span><input aria-label="Fountain ambience volume" type="range" min="0" max="1" step="0.05" value={preferences.ambience} onChange={e=>updatePreferences({ambience:Number(e.target.value)})}/></label><small>Slide to zero to mute. Saved for this browser.</small></fieldset></div><div className="setting"><span>Proximity voice<small>Join from Social. Your microphone starts muted.</small></span><Icon kind="mic"/></div><p className="diagnostics">Rendering at {stats.fps} fps · {players.size} connected<br/>Saved guest · Shared town</p><button className="secondary" onClick={() => { setPanel(null); void room.current?.leave(); }}>Leave the square</button></>}</div></section></div>}
     </>}
+    {playing && <CreditNoticeDialog onOpenChange={setCreditNoticeOpen}/>}
     {admission.dialog}
     {playing && entryDeadline > 0 && <div className="entry-check-reminder" role="status">The host requested a fresh entry check. Complete it within two minutes to stay in town.<button onClick={()=>void reverifyEntry()}>Complete entry check</button></div>}
     {(panel==='memory'||panel==='cinema'||panel==='submit'||panel==='admin') && <CommunityPanel initialView={panel==='memory'?'board':panel} onViewChange={communityViewChanged} guestAvailable={!!guest} onClose={()=>setPanel(null)}/>}

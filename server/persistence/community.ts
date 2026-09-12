@@ -12,11 +12,11 @@ const columns='id,title,credit,status,width,height,featured,sort_order,created_a
 function submission(row:any):CommunitySubmission{return {id:row.id,title:row.title,credit:row.credit,status:row.status,width:row.width,height:row.height,featured:row.featured,sortOrder:row.sort_order,createdAt:row.created_at.toISOString(),imageUrl:`/game/api/community/submissions/${row.id}/image`};}
 export class CommunityRepository {
  constructor(readonly economy:EconomyRepository){}
- async initialise(){await this.economy.transaction(async c=>{await c.query('SELECT pg_advisory_xact_lock(782641092)');const versions=(await c.query('SELECT version FROM guest_schema_migrations')).rows.map(r=>r.version);if(!versions.includes(6)||versions.some(v=>![1,2,3,4,5,6,7,8,9,10,11,12].includes(v)))throw new Error('Unsupported community schema');if(!versions.includes(8)){await c.query(await readFile(new URL('./migrations/008_community.sql',import.meta.url),'utf8'));await c.query('INSERT INTO guest_schema_migrations(version) VALUES(8)');}});}
+ async initialise(){await this.economy.transaction(async c=>{await c.query('SELECT pg_advisory_xact_lock(782641092)');const versions=(await c.query('SELECT version FROM guest_schema_migrations')).rows.map(r=>r.version);if(!versions.includes(6)||versions.some(v=>![1,2,3,4,5,6,7,8,9,10,11,12,13].includes(v)))throw new Error('Unsupported community schema');if(!versions.includes(8)){await c.query(await readFile(new URL('./migrations/008_community.sql',import.meta.url),'utf8'));await c.query('INSERT INTO guest_schema_migrations(version) VALUES(8)');}});}
  async initialiseProtection(){await this.economy.transaction(async c=>{
   await c.query("SET LOCAL lock_timeout='5s'");await c.query('SELECT pg_advisory_xact_lock(782641092)');
   const versions=(await c.query('SELECT version FROM guest_schema_migrations')).rows.map(r=>r.version);
-  if(!versions.includes(11)||versions.some(v=>!Number.isInteger(v)||v<1||v>12))throw new Error('Unsupported submission protection schema');
+  if(!versions.includes(11)||versions.some(v=>!Number.isInteger(v)||v<1||v>13))throw new Error('Unsupported submission protection schema');
   if(!versions.includes(12)){await c.query(await readFile(new URL('./migrations/012_submission_protection.sql',import.meta.url),'utf8'));await c.query('INSERT INTO guest_schema_migrations(version) VALUES(12)');}
   await c.query('UPDATE community_programme SET submission_protection=$1::jsonb WHERE submission_protection IS NULL',[JSON.stringify(createSubmissionProtectionState())]);
  });}
