@@ -26,7 +26,7 @@ try {
   report.admission='Simulated provider on an isolated local server; real HTTP and game WebSockets';
  }
  const completeFixtureCheck=async()=>{if(fixtureAdmission){await page.getByRole('dialog',{name:'A quick check before you join.'}).waitFor();await page.getByRole('button',{name:'Continue',exact:true}).click();}};
- await page.goto(origin);await page.getByRole('textbox',{name:'WHAT SHOULD WE CALL YOU?'}).fill('Comfort check');await page.getByRole('button',{name:'Enter',exact:true}).click();await completeFixtureCheck();await page.getByRole('button',{name:'Join the square',exact:true}).waitFor();await page.waitForTimeout(700);
+ await page.goto(origin);await page.getByRole('textbox',{name:'What should we call you?'}).fill('Comfort check');await page.getByRole('button',{name:'Choose your look',exact:true}).click();await completeFixtureCheck();await page.getByRole('button',{name:'Join the square',exact:true}).waitFor();await page.waitForTimeout(700);
  report.phoneCanvas=await page.locator('#world').evaluate((c:HTMLCanvasElement)=>({width:c.width,height:c.height,cssWidth:c.clientWidth,cssHeight:c.clientHeight}));
  const dimensions=report.phoneCanvas as {width:number;height:number;cssWidth:number;cssHeight:number};assert.ok(dimensions.width>=dimensions.cssWidth);assert.ok(Math.abs(dimensions.width/dimensions.height-dimensions.cssWidth/dimensions.cssHeight)<.005);
  for(const size of [{width:390,height:844},{width:320,height:740},{width:844,height:390}]) {
@@ -74,7 +74,7 @@ try {
  report.settingsLayouts=settingsLayouts;
  await page.setViewportSize({width:390,height:844});await graphics.scrollIntoViewIfNeeded();
  await page.screenshot({path:'output/playwright/polish/comfort-settings.png'});
- await page.reload();await page.getByRole('button',{name:'Enter',exact:true}).click();await page.getByRole('button',{name:'Join the square',exact:true}).click();await completeFixtureCheck();await page.getByRole('button',{name:'Open settings'}).tap();
+ await page.reload();await page.getByRole('button',{name:'Choose your look',exact:true}).click();await page.getByRole('button',{name:'Join the square',exact:true}).click();await completeFixtureCheck();await page.getByRole('button',{name:'Open settings'}).tap();
  assert.equal(await graphics.inputValue(),'medium');assert.equal(await page.getByRole('combobox',{name:'Motion preference'}).inputValue(),'reduced');assert.equal(await page.getByRole('slider',{name:'Sound effects volume'}).inputValue(),'0');assert.equal(await page.getByRole('slider',{name:'Fountain ambience volume'}).inputValue(),'0');
  report.mediumCanvas=await page.locator('#world').evaluate((c:HTMLCanvasElement)=>({width:c.width,height:c.height}));assert.deepEqual(report.mediumCanvas,{width:390,height:844});
  report.savedPreferences=await page.evaluate(()=>JSON.parse(localStorage.getItem('slop-city-comfort')||'{}'));

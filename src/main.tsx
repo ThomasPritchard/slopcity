@@ -1,3 +1,5 @@
+import { AccountProvider, captureAccountLink, useAccount } from './account/AccountProvider';
+import { AccountButton } from './account/AccountButton';
 import { useAdmission } from './social/useAdmission';
 import { useCreditLeaderboard } from './leaderboard/useCreditLeaderboard';
 import { CreditLeaderboardPanel } from './leaderboard/CreditLeaderboardPanel';
@@ -41,6 +43,11 @@ import { TownChat, isSystemLine, type ChatLine, type ChatTab, type ChatPerson } 
 import { CHAT_HISTORY_LIMIT, chatTableFor, type ChatCommand, type ChatMessage } from '../shared/chat';
 import './ui/quiet-glass.css';
 import './ui/hud-qol.css';
+import './ui/soft-corner.css';
+import './ui/welcome.css';
+import './ui/changing-room.css';
+import './ui/soft-corner-hud.css';
+import './ui/soft-corner-panels.css';
 import { loadPreferences, savePreferences, type Preferences } from './settings/preferences';
 import { GRAPHICS_QUALITIES, GRAPHICS_LABELS, GRAPHICS_DESCRIPTIONS, isGraphicsQuality } from './settings/graphics';
 import { TownAudio } from './audio/TownAudio';
@@ -74,6 +81,7 @@ function Icon({ kind, size = 20 }: { kind: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[kind] || paths.compass}</svg>;
 }
 function App() {
+  const account = useAccount();
   const admission = useAdmission();
   const [entryDeadline,setEntryDeadline] = useState(0);
   async function reverifyEntry() {
@@ -115,7 +123,9 @@ function App() {
   const [sprintEnabled, setSprintEnabled] = useState(false);
   const [muted, setMuted] = useState(new Set<string>());
   const [guest, setGuest] = useState<PrivateGuestProfile | null>(null);
+  const returningGuestId = useRef<string | null>(null);
   const [guestReady, setGuestReady] = useState(false);
+  useEffect(() => { void account.refresh(); }, [guest?.id, account.refresh]);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const knownNames = useRef(new Map<string, string>());
@@ -174,7 +184,7 @@ function App() {
     window.addEventListener('pointerdown', unlockAudio);
     window.addEventListener('keydown', unlockAudio);
     let mounted = true;
-    void restoreGuest().then(async saved => { if (!mounted) return; if (saved) { setGuest(saved); setProfile(saved); const balance=await getWallet(); if(mounted)acceptWallet(balance,false); } }).catch(() => { if (mounted) setError('Your saved guest could not load. Check that the local game services are running.'); }).finally(() => { if (mounted) setGuestReady(true); });
+    void restoreGuest().then(async saved => { if (!mounted) return; if (saved) { returningGuestId.current = saved.id; setGuest(saved); setProfile(saved); const balance=await getWallet(); if(mounted)acceptWallet(balance,false); } }).catch(() => { if (mounted) setError('Your saved guest could not load. Check that the local game services are running.'); }).finally(() => { if (mounted) setGuestReady(true); });
     let timer: ReturnType<typeof setInterval>;
     try {
       const scene = new TownScene(canvas.current!, preferences.graphics); world.current = scene;
@@ -252,7 +262,7 @@ function App() {
   useEffect(() => { if(ready) world.current?.syncCommunity(community.programme); }, [community.programme, ready]);
   useEffect(() => { if(ready) world.current?.setCinemaPlaybackEnabled(phase === 'playing' && panel === null && !socialOpen && !selectedNeighbour && !shopMode && !casinoTable); }, [ready,phase,panel,socialOpen,selectedNeighbour,shopMode,casinoTable]);
   useEffect(() => { if(ready)world.current?.focusCommunity(phase==='playing' ? panel==='memory'?'board':panel==='cinema'?'cinema':null : null); }, [panel,phase,ready]);
-  useEffect(() => { world.current?.setPaused(panel !== null || socialOpen || selectedNeighbour !== null || chatFocused || shopMode!==null || casinoTable!==null || phase !== 'playing'); }, [panel, socialOpen, selectedNeighbour, chatFocused, shopMode, casinoTable, phase]);
+  useEffect(() => { world.current?.setPaused(account.isOpen || panel !== null || socialOpen || selectedNeighbour !== null || chatFocused || shopMode!==null || casinoTable!==null || phase !== 'playing'); }, [account.isOpen, panel, socialOpen, selectedNeighbour, chatFocused, shopMode, casinoTable, phase]);
   useEffect(() => {
     if (phase === 'playing') room.current?.send('interaction-busy', panel !== null || shopMode !== null || casinoTable !== null || chatFocused);
   }, [panel, shopMode, casinoTable, chatFocused, phase]);
@@ -333,13 +343,22 @@ function App() {
   async function join() {
     if (joining.current || !world.current || !guest) return;
     if (isBlockedProfileName(profile.name)) { setError(PROFILE_NAME_ERROR); return; }
-    joining.current = true; setError(''); setPhase('joining');
+    joining.current = true; setError('');
     const clean = parseProfile(profile); setProfile(clean);
+    let entryNotice = '';
     try {
+      // Every returning guest connection gets the optional save choice and entry check together.
+      if (returningGuestId.current === guest.id && account.status?.profileId === guest.id && account.status.kind === 'guest') {
+        const decision = await account.offerSave();
+        if (!decision.continueToTown) return;
+        entryNotice = decision.notice ?? '';
+      }
+      setPhase('joining');
       if (clean.name !== guest.name || clean.shirt !== guest.shirt || clean.skin !== guest.skin) setGuest(await saveGuest(clean, guest.revision));
       await admission.ensure();
       const endpoint = import.meta.env.VITE_GAME_URL || `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/game`;
       const connected = await new Client(endpoint).joinOrCreate<TownState>('town');
+      returningGuestId.current = guest.id;
       room.current = connected; sequence.current = 0; setEntryDeadline(0);
       connected.onMessage<{deadline:number}>('entry-check',({deadline})=>{setEntryDeadline(deadline);world.current?.stopMovement();void reverifyEntry();});
       connected.onMessage<EconomyView>('economy',value=>acceptWallet(value,value.accruing));
@@ -392,7 +411,7 @@ function App() {
         setError(code===4009?'Please complete a fresh entry check to rejoin.':code===4003?'Access to Slop City is currently restricted.':code===4008?'Too many game messages. Please wait before rejoining.':'You have left the town. Rejoin to continue.');
       });
       try { localStorage.setItem('slop-city-profile', JSON.stringify(clean)); } catch { /* A restricted browser can still play. */ }
-      setNotice(''); world.current.enter(connected.sessionId); setPhase('playing'); setHint(true); setMessages([]); setReadMessages(new Set()); setChatTab('all'); setWhisperTarget(null); setMessage('');
+      setNotice(entryNotice); world.current.enter(connected.sessionId); setPhase('playing'); setHint(true); setMessages([]); setReadMessages(new Set()); setChatTab('all'); setWhisperTarget(null); setMessage('');
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not join the town. Please try again.'); setPhase('customising'); }
     finally { joining.current = false; }
   }
@@ -505,42 +524,46 @@ function App() {
     <canvas id="world" ref={canvas} tabIndex={0} aria-label="Slop City 3D world. Use W A S D or arrows to walk, Shift to sprint, Space to jump, and drag to look around. Select a neighbour to interact." />
     <div className="vignette" />
     <header className="masthead">
-      <a className="brand" href="#" onClick={e => e.preventDefault()} aria-label="Slop City"><span className="brand-mark">s<span>c</span></span><span>SLOP CITY<small>{playing ? `THE NEIGHBOURHOOD · ${stats.district.toUpperCase()}` : 'A PLACE TO MAKE YOUR OWN'}</small></span></a>
+      {playing && <div className="brand hud-brand"><img src="/brand/soft-corner.svg" width="370" height="301" alt="Slop City"/><span className="hud-district">{stats.district}</span></div>}
+      {customising && <img className="custom-brand" src="/brand/soft-corner.svg" width="370" height="301" alt="Slop City"/>}
       <div className="top-right"><span className="build-tag">PRE-ALPHA <i>v0.1</i></span>{playing && <span className="population"><span className="live-dot"/><Icon kind="people" size={16}/>{players.size}<span className="muted">/ {CAPACITY}</span></span>}</div>
     </header>
     {!playing && !customising && <>
       <div className="welcome-shade" />
       <div className="welcome-layout">
-      <section className="welcome">
-        <div className="eyebrow"><span className="small-line"/> YOUR NEXT CHAPTER STARTS HERE</div>
-        <h1>A little city.<br/>A lot of <em>possibility.</em></h1>
-        <p className="welcome-copy">Find your people. Make yourself at home.<br/>The square is yours to explore.</p>
+      <section className="welcome" aria-labelledby="welcome-title">
+        <h1 id="welcome-title" className="welcome-logo"><img src="/brand/soft-corner.svg" width="370" height="301" alt="Slop City" fetchPriority="high"/></h1>
+        <p className="welcome-copy">A little place to hang out.</p>
         <form className="join-card" onSubmit={e => { e.preventDefault(); void customise(); }}>
-          <div className="card-heading"><span>First, make an entrance.</span><span className="step">01 / 01</span></div>
-          <label className="field-label" htmlFor="display-name">WHAT SHOULD WE CALL YOU?</label>
-          <input id="display-name" disabled={!guestReady || saving} autoComplete="nickname" maxLength={20} placeholder="Your name" value={profile.name === 'New neighbour' ? '' : profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })}/>
-          <button className="enter" disabled={!ready || !guestReady || saving} type="submit">{saving ? 'Remembering your guest…' : !ready || !guestReady ? 'Opening the square…' : 'Enter'}<Icon kind="arrow"/></button>
-          <p className="fine-print">{guest ? 'Your guest is remembered in this browser.' : 'No account needed. Your guest stays with this browser.'} Next, choose your look.</p>
+          <label className="field-label" htmlFor="display-name">What should we call you?</label>
+          <input id="display-name" disabled={!guestReady || saving} autoComplete="nickname" aria-describedby="guest-note" maxLength={20} placeholder="Your name" value={profile.name === 'New neighbour' ? '' : profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })}/>
+          <button className="enter" disabled={!ready || !guestReady || saving} type="submit">{saving ? 'Remembering your guest…' : !ready || !guestReady ? 'Opening the square…' : 'Choose your look'}<Icon kind="arrow" size={26}/></button>
+          <p id="guest-note" className="fine-print">{account.status?.kind === 'member' ? 'Your progress is saved to your email account.' : guest ? 'Your guest is saved in this browser.' : 'No account needed. Your guest stays in this browser.'}</p>
+          {account.status && account.status.kind !== 'guest' && <AccountButton/>}
           {error && <p className="error" role="alert">{error}</p>}
         </form>
-        <p className="development-note">A shared town with your own wardrobe, credits and neighbours.<br className="desktop-only"/> Earn a little. Find your next look. Try your luck at the Meridian.</p>
       </section>
       <CommunityNews onOpen={() => setPanel('memory')}/>
       </div>
-      <footer className="welcome-footer"><span>COME AS YOU ARE.</span><span>STAY A LITTLE WHILE.</span></footer>
     </>}
     {customising && <>
-      <section className="custom-heading"><span className="eyebrow">THE CHANGING ROOM</span><h1>Make it <em>you.</em></h1><p>A fresh start. Your own style.</p></section>
+      <section className="custom-heading"><span>The changing room</span><h1>Make it you.</h1><p>A fresh start. Your own style.</p></section>
       <section className="custom-panel" aria-label="Character customisation">
-        <span className="eyebrow">YOUR FIRST LOOK</span><h2>{profile.name}</h2>
-        <p className="custom-copy">Try a colour. Take a turn.<br/>See yourself in the city.</p>
-        <fieldset className="custom-field"><legend>SKIN TONE</legend><div className="swatches">{SKINS.map((colour, i) => <button key={colour} type="button" className={profile.skin === i ? 'swatch selected' : 'swatch'} style={{ background: colour }} aria-label={`Skin tone ${i + 1}`} aria-pressed={profile.skin === i} onClick={() => setProfile({ ...profile, skin: i })}/>)}</div></fieldset>
-        <fieldset className="custom-field"><legend>STARTER JACKET COLOUR</legend><div className="swatches">{SHIRTS.map((colour, i) => <button key={colour} type="button" className={profile.shirt === i ? 'swatch selected' : 'swatch'} style={{ background: colour }} aria-label={`Outfit colour ${i + 1}`} aria-pressed={profile.shirt === i} onClick={() => setProfile({ ...profile, shirt: i })}/>)}</div></fieldset>
-        <div className="outfit-description"><span>THE EVERYDAY SET</span><p>Utility jacket · Straight-leg trousers<br/>Leather sneakers</p><small>Your complimentary first outfit. Saved when you join.</small></div>
-        <button className="enter" disabled={phase === 'joining'} onClick={() => void join()}>{phase === 'joining' ? 'Joining your neighbours…' : 'Join the square'}<Icon kind="arrow"/></button>
-        <button className="change-name" onClick={() => { const name = document.getElementById('custom-name'); name?.focus(); }}>Edit name</button>
-        <label className="sr-only" htmlFor="custom-name">Character name</label><input id="custom-name" className="custom-name" maxLength={20} value={profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })}/>
-        {error && <p className="error" role="alert">{error}</p>}
+        <div className="custom-options">
+          <h2>Your first look</h2>
+          <p className="custom-copy">Pick a colour. Take a turn.</p>
+          <div className="custom-colours">
+            <fieldset className="custom-field"><legend>Skin tone</legend><div className="swatches">{SKINS.map((colour, i) => <button key={colour} type="button" className={profile.skin === i ? 'swatch selected' : 'swatch'} style={{ background: colour }} aria-label={`Skin tone ${i + 1}`} aria-pressed={profile.skin === i} onClick={() => setProfile({ ...profile, skin: i })}/>)}</div></fieldset>
+            <fieldset className="custom-field"><legend>Jacket colour</legend><div className="swatches">{SHIRTS.map((colour, i) => <button key={colour} type="button" className={profile.shirt === i ? 'swatch selected' : 'swatch'} style={{ background: colour }} aria-label={`Outfit colour ${i + 1}`} aria-pressed={profile.shirt === i} onClick={() => setProfile({ ...profile, shirt: i })}/>)}</div></fieldset>
+          </div>
+          <div className="custom-name-field"><label htmlFor="custom-name">Your name</label><input id="custom-name" className="custom-name" autoComplete="nickname" maxLength={20} value={profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })}/></div>
+          <div className="outfit-description"><span>The everyday set</span><p>Utility jacket · Straight-leg trousers<br/>Leather sneakers</p><small>Your first outfit, on the house.</small></div>
+        </div>
+        <div className="custom-actions">
+          {error && <p className="error" role="alert">{error}</p>}
+          <button className="enter" disabled={phase === 'joining'} onClick={() => void join()}>{phase === 'joining' ? 'Joining your neighbours…' : 'Join the square'}<Icon kind="arrow" size={26}/></button>
+          <p>Your look is saved when you join.</p>
+        </div>
       </section>
       <div className="preview-controls"><button aria-label="Rotate character left" onClick={() => world.current?.rotatePreview(-1)}>↶</button><div className="preview-views">{(['face', 'outfit', 'shoes'] as const).map(view => <button key={view} aria-label={`View ${view}`} aria-pressed={previewView === view} onClick={() => { setPreviewView(view); world.current?.framePreview(view); }}>{view}</button>)}</div><button aria-label="Rotate character right" onClick={() => world.current?.rotatePreview(1)}>↷</button></div>
     </>}
@@ -585,11 +608,12 @@ function App() {
       </nav>
       <div className="joystick" ref={joystick} role="group" aria-label="Touch movement control" onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); moveStick(event); }} onPointerMove={moveStick} onPointerUp={releaseStick} onPointerCancel={releaseStick} onLostPointerCapture={releaseStick}><div className="stick-guide"/><div className="stick" style={{ transform: `translate(${stick.x * 35}px, ${stick.z * 35}px)` }}/></div>
       {error && <div role="alert" className="connection-alert">{error}</div>}
-      {(panel === 'map' || panel === 'settings') && <div className="modal-backdrop" onClick={() => setPanel(null)}><section className="modal" role="dialog" aria-modal="true" aria-label={panel === 'map' ? 'Town map' : 'Settings'} onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') setPanel(null); if (e.key === 'Tab') { const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input,select')]; const first = items[0], last = items[items.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } } }}><button autoFocus className="close" aria-label="Close panel" onClick={() => setPanel(null)}><Icon kind="close"/></button><span className="eyebrow">SLOP CITY</span><h2>{panel === 'map' ? 'Get your bearings.' : 'Make it comfortable.'}</h2>{panel === 'map' ? <><TownMapSvg players={players} sessionId={room.current?.sessionId} labeled ariaLabel="Map of the square: casino north, clothing shop east, picture house west, fountain in the centre"/><p className="map-legend"><span className="live-dot"/> You are in {stats.district}.</p></> : <><div className="comfort-settings"><label className="setting"><span>Graphics quality<small id="graphics-quality-description">{GRAPHICS_DESCRIPTIONS[preferences.graphics]}</small></span><select aria-label="Graphics quality" aria-describedby="graphics-quality-description" value={preferences.graphics} onChange={e => { if (isGraphicsQuality(e.target.value)) updatePreferences({graphics:e.target.value}); }}>{GRAPHICS_QUALITIES.map(quality => <option key={quality} value={quality}>{GRAPHICS_LABELS[quality]}</option>)}</select></label><label className="setting"><span>Motion<small>Reduce decorative movement; keep game results visible.</small></span><select aria-label="Motion preference" value={preferences.motion} onChange={e=>updatePreferences({motion:e.target.value as Preferences['motion']})}><option value="system">Follow device</option><option value="reduced">Reduced</option><option value="full">Full</option></select></label><fieldset><legend>City sound</legend><label className="setting"><span>Sound effects <output>{Math.round(preferences.effects*100)}%</output></span><input aria-label="Sound effects volume" type="range" min="0" max="1" step="0.05" value={preferences.effects} onChange={e=>updatePreferences({effects:Number(e.target.value)})}/></label><label className="setting"><span>Fountain ambience <output>{Math.round(preferences.ambience*100)}%</output></span><input aria-label="Fountain ambience volume" type="range" min="0" max="1" step="0.05" value={preferences.ambience} onChange={e=>updatePreferences({ambience:Number(e.target.value)})}/></label><small>Slide to zero to mute. Saved for this browser.</small></fieldset></div><div className="setting"><span>Proximity voice<small>Join from Social. Your microphone starts muted.</small></span><Icon kind="mic"/></div><p className="diagnostics">Rendering at {stats.fps} fps · {players.size} connected<br/>Saved guest · Shared town</p><button className="secondary" onClick={() => { setPanel(null); void room.current?.leave(); }}>Leave the square</button></>}</section></div>}
+      {(panel === 'map' || panel === 'settings') && <div className="modal-backdrop" onClick={() => setPanel(null)}><section className="modal soft-corner-panel" role="dialog" aria-modal="true" aria-label={panel === 'map' ? 'Town map' : 'Settings'} onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') setPanel(null); if (e.key === 'Tab') { const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input,select')]; const first = items[0], last = items[items.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } } }}><header className="soft-panel-header"><button autoFocus className="close" aria-label="Close panel" onClick={() => setPanel(null)}><Icon kind="close"/></button><span className="eyebrow">Slop City</span><h2>{panel === 'map' ? 'Get your bearings.' : 'Make it comfortable.'}</h2></header><div className="soft-panel-content">{panel === 'map' ? <><TownMapSvg players={players} sessionId={room.current?.sessionId} labeled ariaLabel="Map of the square: casino north, clothing shop east, picture house west, fountain in the centre"/><p className="map-legend"><span className="live-dot"/> You are in {stats.district}.</p></> : <><AccountButton/><div className="comfort-settings"><label className="setting"><span>Graphics quality<small id="graphics-quality-description">{GRAPHICS_DESCRIPTIONS[preferences.graphics]}</small></span><select aria-label="Graphics quality" aria-describedby="graphics-quality-description" value={preferences.graphics} onChange={e => { if (isGraphicsQuality(e.target.value)) updatePreferences({graphics:e.target.value}); }}>{GRAPHICS_QUALITIES.map(quality => <option key={quality} value={quality}>{GRAPHICS_LABELS[quality]}</option>)}</select></label><label className="setting"><span>Motion<small>Reduce decorative movement; keep game results visible.</small></span><select aria-label="Motion preference" value={preferences.motion} onChange={e=>updatePreferences({motion:e.target.value as Preferences['motion']})}><option value="system">Follow device</option><option value="reduced">Reduced</option><option value="full">Full</option></select></label><fieldset><legend>City sound</legend><label className="setting"><span>Sound effects <output>{Math.round(preferences.effects*100)}%</output></span><input aria-label="Sound effects volume" type="range" min="0" max="1" step="0.05" value={preferences.effects} onChange={e=>updatePreferences({effects:Number(e.target.value)})}/></label><label className="setting"><span>Fountain ambience <output>{Math.round(preferences.ambience*100)}%</output></span><input aria-label="Fountain ambience volume" type="range" min="0" max="1" step="0.05" value={preferences.ambience} onChange={e=>updatePreferences({ambience:Number(e.target.value)})}/></label><small>Slide to zero to mute. Saved for this browser.</small></fieldset></div><div className="setting"><span>Proximity voice<small>Join from Social. Your microphone starts muted.</small></span><Icon kind="mic"/></div><p className="diagnostics">Rendering at {stats.fps} fps · {players.size} connected<br/>Saved guest · Shared town</p><button className="secondary" onClick={() => { setPanel(null); void room.current?.leave(); }}>Leave the square</button></>}</div></section></div>}
     </>}
     {admission.dialog}
     {playing && entryDeadline > 0 && <div className="entry-check-reminder" role="status">The host requested a fresh entry check. Complete it within two minutes to stay in town.<button onClick={()=>void reverifyEntry()}>Complete entry check</button></div>}
     {(panel==='memory'||panel==='cinema'||panel==='submit'||panel==='admin') && <CommunityPanel initialView={panel==='memory'?'board':panel} onViewChange={communityViewChanged} guestAvailable={!!guest} onClose={()=>setPanel(null)}/>}
   </main>;
 }
-createRoot(document.getElementById('root')!).render(/^\/admin\/?$/.test(location.pathname)?<AdminPage/>:<App/>);
+const accountToken = captureAccountLink();
+createRoot(document.getElementById('root')!).render(<AccountProvider initialToken={accountToken}>{/^\/admin\/?$/.test(location.pathname)?<AdminPage/>:<App/>}</AccountProvider>);

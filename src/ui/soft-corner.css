@@ -1,0 +1,40 @@
+/* Shared colours for the approved Soft Corner screens. */
+.welcome-menu, .customising, .playing {
+  --soft-cream: #f1eedb;
+  --soft-ink: #193b30;
+  --soft-accent: #dfe9a9;
+  --soft-muted: #476153;
+  --soft-line: #193b3026;
+}
+
+:is(.welcome-menu, .customising, .playing) .build-tag {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--soft-cream);
+  font: 700 22px/1.15 'DM Sans', sans-serif;
+  letter-spacing: -.035em;
+  text-transform: lowercase;
+}
+:is(.welcome-menu, .customising, .playing) .build-tag i {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: 500 12px/1.3 'DM Sans', sans-serif;
+  letter-spacing: 0;
+}
+@media (max-width: 699px), (max-height: 560px) {
+  :is(.welcome-menu, .customising) .build-tag { font-size: 16px; }
+  :is(.welcome-menu, .customising) .build-tag i { font-size: 11px; }
+}

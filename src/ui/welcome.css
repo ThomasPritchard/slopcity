@@ -1,0 +1,171 @@
+/* Soft Corner entry menu. Keep the changing room and in-town HUD independent. */
+.welcome-menu {
+  color: var(--soft-cream);
+}
+
+.welcome-menu .masthead { justify-content: flex-end; }
+.welcome-menu .welcome-layout {
+  inset: 110px 7% 65px;
+  grid-template-columns: minmax(0, 470px) minmax(0, 410px);
+  align-items: center;
+  gap: clamp(40px, 6vw, 100px);
+  padding: 12px 6px;
+  scrollbar-color: #f1eedb66 transparent;
+}
+.welcome-menu .welcome-shade {
+  background: linear-gradient(90deg, #182c24ed, #192b23cc 27%, #1d2f2659 52%, #1d2f2600 75%);
+}
+.welcome-menu .welcome-logo {
+  width: min(100%, 375px);
+  margin: 0 0 24px;
+  font: inherit;
+  line-height: 0;
+}
+.welcome-logo img { display: block; width: 100%; height: auto; }
+.welcome-menu .welcome-copy {
+  color: var(--soft-cream);
+  font-size: clamp(20px, 1.65vw, 27px);
+  font-weight: 650;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+.welcome-menu .join-card {
+  margin-top: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.welcome-menu .field-label {
+  margin-bottom: 12px;
+  color: var(--soft-cream);
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+.welcome-menu .join-card input {
+  min-height: 64px;
+  padding: 16px 22px;
+  border: 1px solid #d8dfbd;
+  border-radius: 14px;
+  background: #19372eee;
+  color: var(--soft-cream);
+  font-size: 21px;
+  line-height: 1.4;
+}
+.welcome-menu .join-card input::placeholder { color: #c3cebb; }
+.welcome-menu .enter {
+  min-height: 64px;
+  margin-top: 14px;
+  padding: 16px 22px;
+  gap: 16px;
+  border-radius: 16px;
+  background: var(--soft-accent);
+  color: var(--soft-ink);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
+}
+.welcome-menu .enter:hover:not(:disabled) { background: #edf3c8; }
+.welcome-menu .enter:active:not(:disabled) { background: #d1de91; }
+.welcome-menu .join-card .fine-print {
+  margin-top: 12px;
+  color: #d8decd;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+}
+.welcome-menu .join-card .error { font-size: 15px; }
+.welcome-menu .join-card :focus-visible { outline: 3px solid var(--soft-accent); outline-offset: 4px; }
+.welcome-menu .community-news { color: var(--soft-cream); padding-bottom: 0; }
+.welcome-menu .news-board-label {
+  padding: 0 6px 18px;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+.welcome-menu .news-post {
+  padding: 30px 26px;
+  border: 1px solid #f7f4e3;
+  border-radius: 10px;
+  background: var(--soft-cream);
+  color: var(--soft-ink);
+  box-shadow: 0 10px 32px #11261a26;
+}
+.welcome-menu .news-pin { width: 13px; height: 13px; left: calc(50% - 6.5px); }
+.welcome-menu .news-tag { color: var(--soft-ink); font-size: 15px; letter-spacing: 0; }
+.welcome-menu .news-post h2 {
+  margin: 9px 0 20px;
+  font: 700 clamp(25px, 1.9vw, 30px)/1.2 'DM Sans', sans-serif;
+  letter-spacing: -.035em;
+  text-wrap: balance;
+}
+.welcome-menu .news-photo { border: 0; border-radius: 10px; background: var(--soft-ink); }
+.welcome-menu .news-photo img { height: clamp(240px, 33dvh, 310px); }
+.welcome-menu .news-photo > span {
+  min-height: 54px;
+  padding: 13px 16px;
+  gap: 12px;
+  color: var(--soft-cream);
+  font-size: 15px;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-align: left;
+}
+.welcome-menu .news-photo b { font-size: 26px; line-height: 1; }
+.welcome-menu .news-photo:hover { background: #244d3e; }
+.welcome-menu .news-photo:focus-visible { outline: 3px solid var(--soft-ink); outline-offset: 4px; }
+.welcome-menu .news-post p { margin-top: 20px; font-size: 15px; line-height: 1.65; text-wrap: pretty; }
+
+@media (max-width: 1100px) {
+  .welcome-menu .welcome-layout { inset: 82px 5% 32px; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 38px; }
+  .welcome-menu .welcome-logo { width: min(100%, 310px); }
+  .welcome-menu .news-post { padding: 26px 20px; }
+  .welcome-menu .news-photo > span { padding-inline: 12px; font-size: 13px; }
+}
+@media (max-height: 780px) and (min-width: 700px) {
+  .welcome-menu .welcome-layout { inset-block: 72px 28px; align-items: start; }
+  .welcome-menu .welcome-logo { width: min(100%, 270px); margin-bottom: 18px; }
+  .welcome-menu .welcome-copy { font-size: 21px; }
+  .welcome-menu .join-card { margin-top: 28px; }
+  .welcome-menu .news-photo img { height: 230px; }
+}
+@media (max-width: 699px) {
+  .welcome-menu .welcome-layout {
+    inset: max(64px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 48px;
+    padding: 12px 6px 24px;
+  }
+  .welcome-menu .welcome-shade { background: linear-gradient(90deg, #182c24f0, #192b23b8 65%, #1d2f2680); }
+  .welcome-menu .welcome-logo { width: min(80%, 260px); margin-bottom: 22px; }
+  .welcome-menu .welcome-copy { font-size: 21px; }
+  .welcome-menu .join-card { margin-top: 30px; }
+  .welcome-menu .field-label { font-size: 17px; }
+  .welcome-menu .join-card input, .welcome-menu .enter { min-height: 58px; padding: 14px 18px; font-size: 18px; }
+  .welcome-menu .join-card .fine-print { font-size: 12px; }
+  .welcome-menu .news-board-label { font-size: 18px; }
+  .welcome-menu .news-post { padding: 26px 22px; }
+  .welcome-menu .news-photo img { height: 280px; }
+}
+@media (max-height: 500px) and (min-width: 700px) {
+  .welcome-menu .welcome-layout { inset: 56px max(24px, env(safe-area-inset-right)) 16px max(24px, env(safe-area-inset-left)); gap: 32px; }
+  .welcome-menu .welcome-logo { width: 100px; margin-bottom: 8px; }
+  .welcome-menu .welcome-copy { font-size: 18px; }
+  .welcome-menu .join-card { margin-top: 14px; }
+  .welcome-menu .field-label { font-size: 16px; margin-bottom: 8px; }
+  .welcome-menu .join-card input, .welcome-menu .enter { min-height: 48px; padding: 12px 16px; font-size: 16px; }
+  .welcome-menu .enter { margin-top: 10px; }
+  .welcome-menu .join-card .fine-print { margin-top: 8px; font-size: 12px; }
+  .welcome-menu .news-board-label { font-size: 17px; }
+  .welcome-menu .news-photo img { height: 220px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .welcome-menu .enter { transition: none; }
+}

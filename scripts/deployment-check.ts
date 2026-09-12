@@ -211,9 +211,25 @@ try {
   const wallet = await api('economy', guests[0].cookie) as WalletState;
   console.log('PASS: 10 guest clients, secure cookies, shared population, chat and wave over proxied WSS.');
 
+  const initialAccount = await api('account', guests[0].cookie);
+  assert.equal(initialAccount.kind, 'guest');
+  assert.equal(initialAccount.emailEnabled, false, 'production email is disabled by default in the disposable smoke stack');
+  const uploadBody = { requestId: randomUUID(), title: 'Container community check', credit: 'Disposable acceptance', imageBase64: (await readFile('public/community/first-memory.png')).toString('base64') };
+  const deniedGuestUpload = await localFetch(`${origin}/game/api/community/submissions`, {
+    method: 'POST', headers: { Cookie: guests[0].cookie, Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify(uploadBody),
+  });
+  assert.equal(deniedGuestUpload.status, 403, 'guest profiles cannot submit images');
+  // Fixture membership only: the guarded disposable Compose database never sends email.
+  assert.match(guests[0].profile.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+  await docker(['exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', 'slop_city', '-v', 'ON_ERROR_STOP=1', '-c',
+    `INSERT INTO player_accounts(profile_id,email_normalized) VALUES('${guests[0].profile.id}','container-member@example.invalid')`]);
+  const memberAccount = await api('account', guests[0].cookie);
+  assert.equal(memberAccount.kind, 'member');
+  assert.equal(memberAccount.emailEnabled, false);
+
   const submitted = await localFetch(`${origin}/game/api/community/submissions`, {
     method: 'POST', headers: { Cookie: guests[0].cookie, Origin: origin, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: 'Container community check', credit: 'Disposable acceptance', imageBase64: (await readFile('public/community/first-memory.png')).toString('base64') }),
+    body: JSON.stringify(uploadBody),
   });
   assert.equal(submitted.status, 201, 'production image decoder accepts the supplied still image');
   const submission = await submitted.json() as { id: string; imageUrl: string; status: string };
@@ -224,7 +240,7 @@ try {
   assert.equal(normalisedImage.toString('ascii', 8, 12), 'WEBP');
   assert.equal((await localFetch(`${origin}/game/api/community/images/${submission.id}`)).status, 404);
   assert.equal((await localFetch(`${origin}${submission.imageUrl}`, { headers: { Cookie: guests[1].cookie } })).status, 404);
-  console.log('PASS: container image decoding, private pending upload and denied public/other-guest reads through HTTPS.');
+  console.log('PASS: guest upload denial, fixture member image decoding, private pending upload and denied public/other-guest reads through HTTPS.');
 
   const voice = await localFetch(`${origin}/game/api/voice/token`, { method: 'POST', headers: { Cookie: guests[0].cookie, Origin: origin } });
   assert.equal(voice.status, 200);
@@ -243,6 +259,10 @@ try {
   await healthy();
   const restored = await api('profile', guests[0].cookie) as PrivateGuestProfile;
   assert.equal(restored.id, guests[0].profile.id); assert.equal(restored.name, guests[0].profile.name);
+  const restoredAccount = await api('account', guests[0].cookie);
+  assert.equal(restoredAccount.kind, 'member');
+  assert.equal(restoredAccount.email, memberAccount.email);
+  assert.equal(restoredAccount.emailEnabled, false);
   const restoredWallet = await api('economy', guests[0].cookie) as WalletState;
   assert.equal(restoredWallet.balance, wallet.balance); assert.deepEqual(restoredWallet.owned, wallet.owned);
   const restoredImage = await localFetch(`${origin}${submission.imageUrl}`, { headers: { Cookie: guests[0].cookie } });
@@ -251,7 +271,7 @@ try {
   const rejoined = watch(await client(guests[0].cookie).create<TownState>('town'));
   await until(() => rejoined.state?.players?.size === 1, 'post-restart admission');
   await rejoined.leave();
-  console.log('PASS: game container restart preserves guest identity, wallet and clothing; admission works again.');
+  console.log('PASS: game container restart preserves profile identity, fixture email membership, wallet and clothing; admission works again.');
 
   const countSql = "SELECT (SELECT count(*) FROM guest_profiles), (SELECT count(*) FROM economy_wallets), (SELECT count(*) FROM economy_owned), (SELECT count(*) FROM casino_wagers), (SELECT count(*) FROM community_images), (SELECT md5(string_agg(encode(image,'hex'),'' ORDER BY id)) FROM community_images), (SELECT revision FROM community_programme WHERE singleton)";
   const counts = await docker(['exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', 'slop_city', '-At', '-v', 'ON_ERROR_STOP=1', '-c', countSql]);

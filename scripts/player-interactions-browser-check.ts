@@ -63,10 +63,10 @@ async function join(p: Page, name: string, reload = false) {
     });
     await p.goto(endpoint);
   }
-  await p.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).waitFor();
+  await p.getByRole('textbox', { name: 'What should we call you?' }).waitFor();
   await p.waitForFunction(() => !(document.querySelector('#display-name') as HTMLInputElement)?.disabled);
-  if (!reload) await p.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).fill(name);
-  await p.getByRole('button', { name: 'Enter', exact: true }).click({ timeout: 90000 });
+  if (!reload) await p.getByRole('textbox', { name: 'What should we call you?' }).fill(name);
+  await p.getByRole('button', { name: 'Choose your look', exact: true }).click({ timeout: 90000 });
   await p.getByRole('button', { name: 'Join the square', exact: true }).click();
   await p.getByRole('button', { name: 'Open town map', exact: true }).waitFor();
   const dismiss = p.getByRole('button', { name: 'Dismiss welcome' }); if (await dismiss.isVisible()) await dismiss.click();

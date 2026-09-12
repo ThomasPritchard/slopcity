@@ -23,7 +23,7 @@ async function mobileLayout(game:string,action:string){
 }
 
 try{
- await page.goto('http://localhost:5173');await page.getByRole('textbox',{name:'WHAT SHOULD WE CALL YOU?'}).fill('Tom');await page.getByRole('button',{name:'Enter',exact:true}).click();await page.getByRole('button',{name:'Join the square',exact:true}).click();await page.getByRole('button',{name:'Open town map'}).waitFor();const welcome=page.getByRole('button',{name:'Dismiss welcome'});if(await welcome.isVisible())await welcome.click();
+ await page.goto('http://localhost:5173');await page.getByRole('textbox',{name:'What should we call you?'}).fill('Tom');await page.getByRole('button',{name:'Choose your look',exact:true}).click();await page.getByRole('button',{name:'Join the square',exact:true}).click();await page.getByRole('button',{name:'Open town map'}).waitFor();const welcome=page.getByRole('button',{name:'Dismiss welcome'});if(await welcome.isVisible())await welcome.click();
  if(compact){await page.getByRole('button',{name:'Open settings'}).click();await page.getByRole('combobox',{name:'Graphics quality'}).selectOption('medium');await page.getByRole('button',{name:'Close panel'}).click();}
  await page.evaluate(async()=>{const path='/node_modules/.vite/deps/@babylonjs_core_Engines_engine.js';const{Engine}=await import(path);(window as any).casinoScene=Engine.Instances[0].scenes[0];});
  assert.equal((await wallet()).balance,1000);

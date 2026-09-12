@@ -57,7 +57,7 @@ export class AdmissionService {
   if (this.mode === 'paused') throw new SafetyError(403,'entry_paused','Town entry is temporarily paused. Please try again shortly.');
   if (profileId && this.mode === 'approved' && !this.approved.has(profileId)) throw new SafetyError(403,'approval_required','Town entry is currently limited to approved guests. Ask the host to approve your guest name.');
  }
- async verify(token: unknown, ip: string): Promise<number> {
+ async verify(token: unknown, ip: string, action: 'town_entry' | 'account_entry' | 'account_email' | 'community_upload' = 'town_entry'): Promise<number> {
   const generation = this.generation;
   if (!this.enabled) return generation;
   if (typeof token !== 'string' || !token.length || token.length > 2048) throw required();
@@ -70,7 +70,7 @@ export class AdmissionService {
    });
    if (!response.ok) throw new Error('Provider unavailable');
    const result = await response.json();
-   if (result.success !== true || !this.config.hostnames.includes(result.hostname) || result.action !== 'town_entry') throw required();
+   if (result.success !== true || !this.config.hostnames.includes(result.hostname) || result.action !== action) throw required();
    if (generation !== this.generation) throw required();
    return generation;
   } catch (error) {
@@ -109,6 +109,14 @@ export class AdmissionService {
  }
  connect(sessionId: string, profileId: string, cookie: string | undefined, notify: Connection['notify'], disconnect: Connection['disconnect']) { this.connections.set(sessionId,{profileId,credential:credential(cookie),notify,disconnect}); }
  disconnect(sessionId: string) { this.connections.delete(sessionId); }
+ invalidateProfiles(profileIds: string[]) {
+  const targets = new Set(profileIds);
+  for (const id of targets) this.grants.delete(id);
+  for (const [id, connection] of this.connections) if (targets.has(connection.profileId)) {
+   this.connections.delete(id);
+   connection.disconnect();
+  }
+ }
  async snapshot() { return {enabled:this.enabled,mode:this.mode,approved:await this.repository.approved(),pending:[...this.connections.values()].filter(c=>c.deadline).length}; }
  async edit(action: unknown, target: unknown): Promise<void> {
   if (!['mode','approve','revoke','reverify'].includes(String(action)) || typeof target !== 'string' || (action === 'mode' && !['open','paused','approved'].includes(target)) || ((action === 'approve' || action === 'revoke') && !validProfileId(target)) || (action === 'reverify' && (target !== 'all' || !this.enabled))) throw new SafetyError(400,'invalid_control','Choose a valid entry control. Reverification requires Turnstile.');

@@ -39,8 +39,8 @@ try {
   if (response.status() >= 400 && !(response.status() === 401 && path === '/game/api/profile') && !(unavailableFixture && response.status() === 503 && path === '/game/api/economy/leaderboard')) failures.push(`${response.status()} ${path}`);
  });
  await page.goto(endpoint);
- await page.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).fill('Leaderboard check');
- await page.getByRole('button', { name: 'Enter', exact: true }).click({ timeout: 90_000 });
+ await page.getByRole('textbox', { name: 'What should we call you?' }).fill('Leaderboard check');
+ await page.getByRole('button', { name: 'Choose your look', exact: true }).click({ timeout: 90_000 });
  await page.getByRole('button', { name: 'Join the square', exact: true }).click();
  await page.getByRole('button', { name: 'Open neighbours', exact: true }).waitFor();
  const welcome = page.getByRole('button', { name: 'Dismiss welcome', exact: true }); if (await welcome.isVisible()) await welcome.click();

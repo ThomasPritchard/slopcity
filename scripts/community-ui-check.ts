@@ -3,13 +3,18 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { webkit, type BrowserContext, type Locator, type Page } from 'playwright';
 import { FIRST_MEMORY } from '../shared/memories.ts';
 import { BRIDGEMIND_TWITCH_CHANNEL, COMMUNITY_LIMITS, communitySlide, type Programme, type ProgrammeSettings } from '../shared/community.ts';
+import type { AccountStatus } from '../shared/account.ts';
 
 const endpoint = process.env.GAME_URL || 'http://localhost:5173';
 const output = 'output/playwright/community-ui';
-// The optional isolated-preview access file is private, ignored state. Never print it.
+// The isolated-preview access file contains private credentials. Never print it.
 const accessFile = process.env.COMMUNITY_ACCESS_FILE;
-if (!accessFile) throw new Error('Set COMMUNITY_ACCESS_FILE to the isolated local acceptance admin access JSON.');
-const access = JSON.parse(await readFile(accessFile, 'utf8')) as { password: string; origin: string };
+if (!accessFile) throw new Error('Set COMMUNITY_ACCESS_FILE to private isolated-local JSON with origin, password and memberCookie.');
+let access: { password: string; origin: string; memberCookie: string };
+try { access = JSON.parse(await readFile(accessFile, 'utf8')); }
+catch { throw new Error('COMMUNITY_ACCESS_FILE must be a readable private JSON file with origin, password and memberCookie.'); }
+if (!access || typeof access.password !== 'string' || !access.password || typeof access.origin !== 'string') throw new Error('The private acceptance JSON must contain the isolated local origin and admin password.');
+if (typeof access.memberCookie !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(access.memberCookie)) throw new Error('Set memberCookie in the private acceptance JSON to the opaque slop_guest cookie value of an email-verified fixture profile from this same isolated local origin.');
 assert.equal(new URL(endpoint).origin, access.origin, 'Acceptance credentials must belong to this isolated local origin');
 assert.equal(new URL(endpoint).hostname, 'localhost', 'This test changes the disposable local community programme');
 await mkdir(output, { recursive: true });
@@ -48,13 +53,20 @@ async function visibleControl(control: Locator, height: number, width: number) {
 }
 try {
  const context = await browser.newContext({ viewport: { width:1440, height:960 }, hasTouch:true });
+ await context.addCookies([{ name:'slop_guest', value:access.memberCookie, domain:'localhost', path:'/game', httpOnly:true, sameSite:'Strict', secure:new URL(endpoint).protocol==='https:' }]);
+ const memberResponse = await context.request.get(`${new URL(endpoint).origin}/game/api/account`);
+ assert.equal(memberResponse.status(), 200, 'The isolated local account endpoint must accept the fixture cookie');
+ const memberStatus = await memberResponse.json() as AccountStatus;
+ assert.equal(memberStatus.kind, 'member', 'memberCookie must resolve to an email-verified fixture account on this isolated local origin');
+ if (memberStatus.challenge?.enabled !== false) throw new Error('Community UI acceptance requires verification disabled in the disposable local fixture. Use a separate real-provider check for enabled verification; this script does not bypass challenges.');
+ checks.push('Private local fixture cookie resolves to a verified member before navigation; external verification is disabled only in this disposable fixture');
  await mockTwitchDetection(context);
  await context.addInitScript(() => { localStorage.setItem('slop-city-comfort', JSON.stringify({ low:true, motion:'reduced', effects:0, ambience:0 })); if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => { throw Error('No real microphone in community acceptance'); }; });
  // Provider documents are isolated: these checks prove deliberate mounting and layout, not live media.
  await context.route('https://player.twitch.tv/**', route => route.fulfill({ contentType:'text/html', body:'<!doctype html><html><meta charset="utf-8"><body style="margin:0;background:#10261b;color:#fff;font:18px sans-serif;display:grid;place-content:center;height:100vh"><p>Official player frame · local acceptance response</p><button>Provider playback control</button></body></html>' }));
  await context.route('https://www.youtube.com/embed/**', route => route.fulfill({ contentType:'text/html', body:'<!doctype html><html><meta charset="utf-8"><body style="margin:0;background:#10261b;color:#fff;font:18px sans-serif;display:grid;place-content:center;height:100vh"><p>YouTube frame · local acceptance response</p><button>Provider playback control</button></body></html>' }));
  page = await context.newPage(); page.setDefaultTimeout(30_000); page.on('pageerror', error => errors.push(error.message));
- await page.goto(endpoint); await page.getByRole('button', { name:'Enter', exact:true }).waitFor({ timeout:90_000 });
+ await page.goto(endpoint); await page.getByRole('button', { name:'Choose your look', exact:true }).waitFor({ timeout:90_000 });
  await page.getByRole('button', { name:'Open our first community memory', exact:true }).click();
  let panel = page.getByRole('dialog', { name:'Slop City memories', exact:true }); await panel.waitFor();
  for (const [label,width,height] of [['desktop',1440,960],['portrait',390,844],['landscape',844,390]] as const) {
@@ -75,8 +87,8 @@ try {
  await page.setViewportSize({ width:1440,height:960 });
  await panel.getByRole('button',{name:'Zoom board in',exact:true}).click(); assert.equal(await panel.locator('output[aria-label="Board zoom"]').textContent(),'125%');
  await page.keyboard.press('Escape'); await panel.waitFor({state:'detached'}); assert.equal(await page.getByRole('button',{name:'Open our first community memory',exact:true}).evaluate(node=>node===document.activeElement),true);
- await page.getByRole('textbox',{name:'WHAT SHOULD WE CALL YOU?'}).fill('Community acceptance');
- await page.getByRole('button',{name:'Enter',exact:true}).click(); await page.getByRole('button',{name:'Join the square',exact:true}).click();
+ await page.getByRole('textbox',{name:'What should we call you?'}).fill('Community acceptance');
+ await page.getByRole('button',{name:'Choose your look',exact:true}).click(); await page.getByRole('button',{name:'Join the square',exact:true}).click();
  await page.getByRole('button',{name:'Open community memories',exact:true}).waitFor(); const welcome=page.getByRole('button',{name:'Dismiss welcome',exact:true});if(await welcome.isVisible())await welcome.click();
  await page.getByRole('button',{name:'Open community memories',exact:true}).click(); panel=page.getByRole('dialog',{name:'Slop City memories',exact:true});
  // Real programme clock, images and client polling with mocked Twitch offline status and an independently skewed browser clock.
@@ -128,7 +140,7 @@ try {
  await form.getByRole('button',{name:'Try sending again',exact:true}).click(); await form.getByRole('status').filter({hasText:'Sent to Tom'}).waitFor();
  await panel.locator('.community-submissions li').filter({hasText:title}).getByText('Waiting for review',{exact:true}).waitFor();
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:`${output}/submission-portrait.png`});
- checks.push('Real guest upload, file validation, preview, failed-request retry, private pending owner status');
+ checks.push('Real verified-fixture upload, file validation, preview, failed-request retry, private pending owner status');
  const submission=await page.evaluate(async name=>{const body=await(await fetch('/game/api/community/submissions')).json();return body.submissions.find((item:{title:string})=>item.title===name);},title);
  assert.ok(submission?.id);
  const anon=await browser.newContext();const privateResponse=await anon.request.get(`${endpoint}${submission.imageUrl}`);assert.ok([401,404].includes(privateResponse.status()));await anon.close();
@@ -162,6 +174,6 @@ try {
  await admin.getByRole('button',{name:'Review queue',exact:false}).click();await admin.getByLabel('Show',{exact:true}).selectOption('approved');card=admin.locator('.community-review-image').filter({hasText:title});await card.getByRole('button',{name:'Reject',exact:true}).click();await card.waitFor({state:'detached'});await admin.getByLabel('Show',{exact:true}).selectOption('rejected');card=admin.locator('.community-review-image').filter({hasText:title});await card.getByRole('button',{name:'Remove',exact:true}).click();await card.getByRole('button',{name:'Remove image',exact:true}).click();await card.waitFor({state:'detached'});await admin.getByRole('button',{name:'Sign out',exact:true}).click();await admin.getByLabel('Admin password',{exact:true}).waitFor();
  checks.push('Rejection, explicit permanent removal and admin sign out');
  assert.deepEqual(errors,[]);
- await writeFile(`${output}/results.json`,JSON.stringify({checkedAt:new Date().toISOString(),endpoint,checks,sharedReel,errors,limits:['Headless WebKit emulates viewport sizes; no physical device performance claim.','Twitch live/offline status is a browser response fixture over the real local API; no live detection proof.', 'Provider documents locally fulfilled; no live broadcast or audio proof.']},null,2));
+ await writeFile(`${output}/results.json`,JSON.stringify({checkedAt:new Date().toISOString(),endpoint,checks,sharedReel,errors,limits:['Headless WebKit emulates viewport sizes; no physical device performance claim.','The verified account is an existing private local fixture; this journey does not prove account upgrade, email delivery or real verification.','Twitch live/offline status is a browser response fixture over the real local API; no live detection proof.', 'Provider documents locally fulfilled; no live broadcast or audio proof.']},null,2));
  console.log(`PASS: ${checks.length} community UI journeys; results in ${output}/results.json`);
 } catch(error) {await page?.screenshot({path:`${output}/failure.png`}).catch(()=>{});throw error;}finally{await browser.close();}

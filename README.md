@@ -89,6 +89,7 @@ npm run test:interactions-network
 npm run test:interactions-browser
 npm run test:voice
 npm run test:startup
+npm run test:welcome
 npm run test:cinema-render
 npm run test:community-browser
 npm run test:browser

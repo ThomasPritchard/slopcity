@@ -12,8 +12,8 @@ async function join(name: string) {
   const page = await context.newPage(); pages.push(page); page.setDefaultTimeout(45000);
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('http://localhost:5173');
-  await page.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).fill(name);
-  await page.getByRole('button', { name: 'Enter', exact: true }).click();
+  await page.getByRole('textbox', { name: 'What should we call you?' }).fill(name);
+  await page.getByRole('button', { name: 'Choose your look', exact: true }).click();
   await page.getByRole('button', { name: 'Join the square', exact: true }).click();
   await page.getByRole('button', { name: 'Open town map', exact: true }).first().waitFor();
   const welcome = page.getByRole('button', { name: 'Dismiss welcome', exact: true }); if (await welcome.isVisible()) await welcome.click();

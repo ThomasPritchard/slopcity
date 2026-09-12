@@ -28,6 +28,7 @@
     "test:wave": "node --import tsx scripts/wave-check.ts",
     "test:chat": "node --import tsx scripts/chat-browser-check.ts",
     "test:startup": "node --import tsx scripts/startup-check.ts",
+    "test:welcome": "node --import tsx scripts/welcome-browser-check.ts",
     "services:start": "node scripts/services.mjs",
     "services:stop": "node scripts/services.mjs stop",
     "test:social": "node --import tsx scripts/social-check.ts",

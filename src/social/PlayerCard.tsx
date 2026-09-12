@@ -48,8 +48,8 @@ export function PlayerCard({ person, online, distance, blocked, muted, available
   const number = Number(amount), validAmount = /^\d+$/.test(amount) && Number.isSafeInteger(number) && number > 0 && number <= maximum;
   const ownPending = pending?.targetId === person.profileId ? pending : null;
   const canGive = online && !blocked && distance <= GIFT_DISTANCE;
-  return <SocialDialog labelledBy={title} className="player-card" onClose={onClose}>
-      <header className="social-header"><div><span className="eyebrow">A FACE IN THE SQUARE</span><h2 id={title}>{person.name}</h2><p className="player-presence">{blocked ? 'Blocked for you' : !online ? 'Not in this town right now' : `${Math.round(distance)} m away`}{isFriend && !blocked ? ' · Your friend' : ''}</p></div><button autoFocus className="social-close" aria-label="Close player card" onClick={onClose}>×</button></header>
+  return <SocialDialog labelledBy={title} className="player-card soft-corner-panel" onClose={onClose}>
+      <header className="social-header"><div><span className="eyebrow">A face in the square</span><h2 id={title}>{person.name}</h2><p className="player-presence">{blocked ? 'Blocked for you' : !online ? 'Not in this town right now' : `${Math.round(distance)} m away`}{isFriend && !blocked ? ' · Your friend' : ''}</p></div><button autoFocus className="social-close" aria-label="Close player card" onClick={onClose}>×</button></header>
       <div className="social-content player-card-content">
         {onWhisper && <button type="button" className="social-button whisper-entry" disabled={!online || blocked} onClick={onWhisper}>Whisper to {person.name}</button>}
         {invitation}

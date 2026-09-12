@@ -14,8 +14,8 @@ try {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(origin);
-  await page.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).fill('Docker visitor');
-  await page.getByRole('button', { name: 'Enter', exact: true }).click();
+  await page.getByRole('textbox', { name: 'What should we call you?' }).fill('Docker visitor');
+  await page.getByRole('button', { name: 'Choose your look', exact: true }).click();
   await page.getByRole('button', { name: 'Join the square', exact: true }).waitFor();
   await page.screenshot({ path: 'output/playwright/deployment/changing-room.png' });
   await page.getByRole('button', { name: 'Join the square', exact: true }).click();
@@ -28,8 +28,8 @@ try {
   await page.waitForTimeout(1200);
   await page.screenshot({ path: 'output/playwright/deployment/town.png' });
   await page.reload();
-  await page.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).waitFor();
-  assert.equal(await page.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).inputValue(), 'Docker visitor');
+  await page.getByRole('textbox', { name: 'What should we call you?' }).waitFor();
+  assert.equal(await page.getByRole('textbox', { name: 'What should we call you?' }).inputValue(), 'Docker visitor');
   assert.deepEqual(errors, []);
   console.log('PASS: headless Chromium production assets, 3D changing room, town join/chat through HTTPS/WSS, secure cookie and profile reload.');
 } finally {

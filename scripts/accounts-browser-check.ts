@@ -1,0 +1,175 @@
+// Disposable local API/database + real React UI. Email and Turnstile providers are fixtures.
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { Pool } from 'pg';
+import express from 'express';
+import sharp from 'sharp';
+import { resolve } from 'node:path';
+import { chromium, type Page } from 'playwright';
+import { GuestRepository } from '../server/persistence/guests.ts';
+import { EconomyRepository } from '../server/persistence/economy.ts';
+import { CasinoRepository } from '../server/persistence/casino.ts';
+import { SocialRepository } from '../server/persistence/social.ts';
+import { CommunityRepository } from '../server/persistence/community.ts';
+import { SafetyRepository } from '../server/persistence/safety.ts';
+import { AdmissionRepository } from '../server/persistence/admission.ts';
+import { AccountRepository } from '../server/persistence/accounts.ts';
+import { AccountMailer } from '../server/accountMail.ts';
+import { AdmissionService } from '../server/admission.ts';
+import { mountAccountRoutes } from '../server/accounts.ts';
+import { mountCommunityRoutes } from '../server/community.ts';
+import { mountGuestRoutes, SessionRegistry } from '../server/guest.ts';
+import { mountEconomyRoutes } from '../server/economy.ts';
+import { hashCommunityPassword } from '../server/communityAuth.ts';
+import { captureClientAddress } from '../server/clientAddress.ts';
+
+const database = new URL(process.env.DATABASE_URL!);
+assert.ok(['localhost','127.0.0.1','[::1]'].includes(database.hostname), 'Requires loopback development database');
+const schema = `accounts_browser_${randomUUID().replaceAll('-','')}`;
+const root = new Pool({connectionString:database.toString()});
+await root.query(`CREATE SCHEMA ${schema}`);
+database.searchParams.set('options', `-c search_path=${schema}`);
+const guests = new GuestRepository(database.toString()), economy = new EconomyRepository(guests.pool), community = new CommunityRepository(economy), accounts = new AccountRepository(economy);
+const output = 'output/playwright/accounts', outbox = `.local/${schema}-mail`;
+await mkdir(output,{recursive:true});
+const app = express();
+app.use((req,_res,next)=>{captureClientAddress(req);if(req.url.startsWith('/game/'))req.url=req.url.slice(5);next();});
+let joinAttempts=0;
+// Stop at the unchanged matchmaking boundary; this fixture does not host a town.
+app.post('/matchmake/joinOrCreate/town',(_req,res)=>{joinAttempts++;res.status(503).json({code:503,error:'Entry reached in local UI check'});});
+const api = app.listen(0,'127.0.0.1');
+await once(api,'listening');
+const address = api.address(); assert.ok(address && typeof address === 'object');
+
+let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined, page:Page|undefined;
+const errors:string[]=[], checks:string[]=[];
+try {
+ await guests.initialise();await economy.initialise();await new CasinoRepository(economy).initialise();await new SocialRepository(economy).initialise();await community.initialise();await new SafetyRepository(economy).initialise();
+ const used = new Set<string>(), providerActions: string[] = [];
+ const admission = new AdmissionService({siteKey:'fixture-site',secret:'fixture-secret',hostnames:['localhost']},new AdmissionRepository(economy),async(_url,options)=>{
+  const token=JSON.parse(String(options?.body)).response as string;
+  providerActions.push(token.split(':')[1]);
+  if(used.has(token) || !token.startsWith('fixture:'))return Response.json({success:false});
+  used.add(token);return Response.json({success:true,hostname:'localhost',action:token.split(':')[1]});
+ });
+ await admission.initialise();await accounts.initialise();await community.initialiseProtection();
+ // Every existing repository must reopen a database at schema 12.
+ await guests.initialise();await economy.initialise();await new CasinoRepository(economy).initialise();await new SocialRepository(economy).initialise();await community.initialise();await new SafetyRepository(economy).initialise();await admission.initialise();
+ const origin=`http://localhost:${address.port}`;
+ process.env.APP_ORIGIN=origin;process.env.APP_ORIGINS='';
+ const password=randomUUID();
+ mountAccountRoutes(app,guests,accounts,new AccountMailer({mode:'outbox',origin,outboxDir:outbox}),admission);
+ mountCommunityRoutes(app,guests,community,{accounts,admission,passwordHash:await hashCommunityPassword(password)});
+ mountEconomyRoutes(app,guests,economy,{canPurchase:()=>false,onEquipped:()=>{}});
+ mountGuestRoutes(app,guests,new SessionRegistry(),undefined,admission);
+ app.use(express.static(resolve('dist')));
+ app.get(['/','/admin'],(_req,res)=>res.sendFile(resolve('dist/index.html')));
+ const guest=await guests.create({name:'Saved neighbour',shirt:0,skin:0}), before=await economy.ensure(guest.profile.id);
+ browser=await chromium.launch({headless:true,args:[...(process.platform==='darwin'?['--use-angle=metal']:[]),'--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});
+ const context=await browser.newContext({viewport:{width:1440,height:960}});
+ await context.addCookies([{name:'slop_guest',value:guest.secret,domain:'localhost',path:'/game',httpOnly:true,sameSite:'Strict'}]);
+ await context.addInitScript(()=>{
+  localStorage.setItem('slop-city-comfort',JSON.stringify({graphics:'low',motion:'reduced',effects:0,ambience:0}));
+  if(navigator.mediaDevices)navigator.mediaDevices.getUserMedia=async()=>{throw Error('Microphone disabled in account acceptance');};
+ });
+ await context.route('https://challenges.cloudflare.com/turnstile/v0/api.js*',route=>route.fulfill({contentType:'application/javascript',body:`window.turnstile={render(el,o){const b=document.createElement('button');b.type='button';b.textContent='Complete fixture verification';b.onclick=()=>o.callback('fixture:'+o.action+':'+crypto.randomUUID());const e=document.createElement('button');e.type='button';e.textContent='Expire fixture verification';e.onclick=()=>o['expired-callback']();el.replaceChildren(b,e);return 'fixture'},remove(){},reset(){}};`}));
+ page=await context.newPage();page.setDefaultTimeout(60_000);page.on('pageerror',error=>errors.push(error.message));
+ const request=async(path:string,body?:unknown)=>page!.evaluate(async({path,body})=>{const response=await fetch('/game/api'+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return{status:response.status,body:response.status===204?null:await response.json()};},{path,body});
+ async function challenge(expire=false){const dialog=page!.locator('dialog.entry-check');await dialog.getByRole('button',{name:'Complete fixture verification'}).click();if(expire){await dialog.getByRole('button',{name:'Expire fixture verification'}).click();assert.equal(await dialog.getByRole('button',{name:'Continue',exact:true}).isDisabled(),true);await dialog.getByRole('button',{name:'Retry check'}).click();await dialog.getByRole('button',{name:'Complete fixture verification'}).click();}await dialog.getByRole('button',{name:'Continue',exact:true}).click();await dialog.waitFor({state:'detached'});}
+ async function latestLink(){const files=await readdir(outbox);const messages=await Promise.all(files.map(async name=>JSON.parse(await readFile(`${outbox}/${name}`,'utf8'))));const message=messages.at(-1);const match=message?.text.match(/http:\/\/localhost:\d+\/#account=[A-Za-z0-9_-]{43}/);assert.ok(match);return match[0] as string;}
+ await page.goto(origin);await page.getByRole('button',{name:'Choose your look',exact:true}).waitFor();
+ assert.equal((await request('/account')).body.kind,'guest');
+ assert.equal(await page.getByRole('button',{name:'Save your progress',exact:true}).count(),0,'Returning guest welcome has no separate save button');
+ await page.screenshot({path:`${output}/returning-guest-welcome.png`});
+ assert.equal((await request('/community/submissions',{title:'Guest denied'})).status,403);
+ const account=page.locator('dialog.account-dialog');
+ await page.getByRole('button',{name:'Choose your look',exact:true}).click();
+ assert.equal(await account.count(),0,'No prompt before the final join action');
+ await page.getByRole('button',{name:'Join the square',exact:true}).click();
+ await account.getByRole('button',{name:'Not yet',exact:true}).waitFor();
+ assert.equal(joinAttempts,0,'Joining waits for the returning guest decision');
+ assert.equal(await account.getByRole('button',{name:'Not yet',exact:true}).isDisabled(),true);
+ await page.keyboard.press('Escape');assert.equal(await account.count(),0);assert.equal(joinAttempts,0,'Escape cancels joining');
+ await page.getByRole('button',{name:'Join the square',exact:true}).click();
+ await account.getByRole('button',{name:'Complete fixture verification'}).click();
+ await account.getByRole('button',{name:'Expire fixture verification'}).click();
+ assert.equal(await account.getByRole('button',{name:'Not yet',exact:true}).isDisabled(),true,'Expired inline check blocks both choices');
+ await account.getByRole('button',{name:'Retry check'}).click();await account.getByRole('button',{name:'Complete fixture verification'}).click();
+ await account.getByRole('button',{name:'Not yet',exact:true}).click();
+ assert.equal(await page.locator('dialog.entry-check').count(),0,'No second verification dialog');
+ await page.getByText('Entry reached in local UI check',{exact:true}).waitFor();assert.equal(joinAttempts,1);
+ assert.equal((await readdir(outbox).catch(()=>[])).length,0,'Declining sends no email');
+ await page.getByRole('button',{name:'Join the square',exact:true}).click();
+ await account.getByRole('button',{name:'Not yet',exact:true}).waitFor();
+ assert.equal(joinAttempts,1,'Reconnecting offers the choice again before entering');
+ await account.getByRole('button',{name:'Complete fixture verification'}).click();await account.getByRole('button',{name:'Not yet',exact:true}).click();
+ await page.getByText('Entry reached in local UI check',{exact:true}).waitFor();assert.equal(joinAttempts,2);
+ assert.deepEqual(providerActions,['account_entry','account_entry'],'Exactly one verification for each combined entry');
+ checks.push('Returning guest sees explicit Not yet on every connection; Escape cancels; expired inline check blocks entry; each completed choice uses one check and no separate dialog');
+ await page.goto(origin);await page.getByRole('button',{name:'Choose your look',exact:true}).click();await page.getByRole('button',{name:'Join the square',exact:true}).click();
+ await account.getByRole('button',{name:'Not yet',exact:true}).waitFor();
+ await account.getByRole('button',{name:'Complete fixture verification'}).click();
+ for(const[label,width,height]of[['desktop',1440,960],['portrait',390,844],['landscape',844,390]]as const){
+  await page.setViewportSize({width,height});await account.getByLabel('Email address',{exact:true}).fill('neighbour@example.test');
+  const skip=await account.getByRole('button',{name:'Not yet',exact:true}).boundingBox();
+  assert.ok(skip && skip.height>=44 && skip.y>=0 && skip.y+skip.height<=height,'Decline remains visible and usable at every viewport');
+  assert.equal(await account.evaluate(node=>node.scrollWidth>node.clientWidth+1),false);
+  await page.screenshot({path:`${output}/save-${label}.png`});
+ }
+ let entryDropped=false;const entryRequests:string[]=[];
+ await page.route('**/game/api/account/entry',async route=>{entryRequests.push(route.request().postDataJSON().requestId);if(!entryDropped){entryDropped=true;await route.fetch();await route.abort('failed');}else await route.continue();});
+ await account.getByRole('button',{name:'Save and join',exact:true}).click();await account.getByRole('alert').waitFor();
+ assert.equal(joinAttempts,2,'Uncertain response keeps the entry panel open');
+ await account.getByRole('button',{name:'Complete fixture verification'}).click();await account.getByRole('button',{name:'Save and join',exact:true}).click();
+ await page.getByText('Entry reached in local UI check',{exact:true}).waitFor();assert.equal(joinAttempts,3);
+ assert.equal(entryRequests.length,2);assert.equal(entryRequests[0],entryRequests[1],'Lost entry response retries the same request');
+ assert.equal((await readdir(outbox)).length,1,'Retry sends exactly one email');
+ assert.deepEqual(providerActions,['account_entry','account_entry','account_entry'],'Saving and retrying only validates one combined token');
+ assert.equal(await page.locator('dialog.entry-check').count(),0);
+ await page.unroute('**/game/api/account/entry');
+ const link=await latestLink();
+ await page.goto(link);await account.getByRole('button',{name:'Confirm and save my progress'}).waitFor();assert.equal(new URL(page.url()).hash,'');
+ assert.equal((await accounts.status(guest.profile.id)).kind,'guest','Opening link does not consume it');
+ await account.getByRole('button',{name:'Confirm and save my progress'}).click();await page.getByRole('button',{name:'Your account',exact:true}).waitFor();
+ const member=await request('/account');assert.equal(member.body.profileId,guest.profile.id);assert.equal(member.body.kind,'member');assert.deepEqual(await economy.ensure(guest.profile.id),before);assert.equal(await guests.resolve(guest.secret),null);
+ checks.push('Guest rejected, real outbox verification and explicit same-profile upgrade preserve wallet; old cookie revoked; link removed from URL; desktop/portrait/short-landscape account layout');
+ await page.setViewportSize({width:1440,height:960});
+ await page.getByRole('button',{name:'Choose your look',exact:true}).click();await page.getByRole('button',{name:'Join the square',exact:true}).click();await challenge();
+ await page.getByText('Entry reached in local UI check',{exact:true}).waitFor();assert.equal(joinAttempts,4);assert.equal(await account.count(),0,'Members skip the save offer');
+ await page.goto(origin);await page.getByRole('button',{name:'Choose your look',exact:true}).waitFor();
+ checks.push('Returning verified account proceeds to admission without a save prompt');
+ await page.getByRole('button',{name:'Open our first community memory',exact:true}).click();await page.getByRole('button',{name:'Share a memory',exact:true}).click();
+ const form=page.getByRole('form',{name:'Submit a community image',exact:true});
+ const image=await sharp({create:{width:100,height:80,channels:3,background:'#557b46'}}).png().toBuffer();
+ await form.getByLabel('Community image',{exact:true}).setInputFiles({name:'memory.png',mimeType:'image/png',buffer:image});await form.getByLabel('Title',{exact:true}).fill('Account acceptance memory');
+ let dropped=false;await page.route('**/game/api/community/submissions',async route=>{if(route.request().method()==='POST'&&!dropped){dropped=true;await route.fetch();await route.abort('failed');}else await route.continue();});
+ await form.getByRole('button',{name:/Send for review/}).click();await challenge(true);await form.getByRole('alert').waitFor();assert.equal((await community.list(guest.profile.id)).length,1,'Server committed before response was lost');
+ await form.getByRole('button',{name:'Try sending again'}).click();await challenge();await form.getByRole('status').filter({hasText:'Sent to Tom'}).waitFor();assert.equal((await community.list(guest.profile.id)).length,1);
+ checks.push('Expired upload challenge is retried; lost successful response replay uses the same ID and leaves exactly one real pending image');
+ await page.goto(`${origin}/admin`);await page.getByLabel('Admin password',{exact:true}).fill(password);await page.getByRole('button',{name:'Open the review desk',exact:true}).click();await page.getByRole('button',{name:/Review queue/}).click();
+ await page.getByRole('button',{name:'Pause player submissions',exact:true}).click();await page.getByRole('button',{name:'Clear manual pause',exact:true}).waitFor();
+ assert.deepEqual((await community.protectionStatus()).reasons,['manual']);
+ for(const[label,width,height]of[['portrait',390,844],['landscape',844,390]]as const){await page.setViewportSize({width,height});await page.screenshot({path:`${output}/review-${label}.png`});}
+ await page.getByRole('button',{name:'Clear manual pause',exact:true}).click();await page.getByRole('button',{name:'Pause player submissions',exact:true}).waitFor();assert.deepEqual((await community.protectionStatus()).reasons,[]);
+ checks.push('Review desk manual pause/resume writes persisted protection state and renders at phone viewports');
+ // Recovery on a fresh browser: using a sign-in link with another guest requires explicit switch consent.
+ const other=await guests.create({name:'Other neighbour',shirt:0,skin:0});
+ const signin=(await accounts.issue('signin','neighbour@example.test'))!;
+ await context.addCookies([{name:'slop_guest',value:other.secret,domain:'localhost',path:'/game',httpOnly:true,sameSite:'Strict'}]);
+ await page.goto(`${origin}/#account=${signin.token}`);
+ await account.getByRole('heading',{name:'You are switching profiles.'}).waitFor();assert.equal(await account.getByRole('button',{name:'Confirm and switch profiles'}).isDisabled(),true);
+ await account.getByRole('checkbox').check();await account.getByRole('button',{name:'Confirm and switch profiles'}).click();await page.getByRole('button',{name:'Your account',exact:true}).waitFor();assert.equal((await request('/account')).body.profileId,guest.profile.id);assert.equal(await guests.resolve(other.secret),null);
+ await page.getByRole('button',{name:'Your account',exact:true}).click();await account.getByRole('button',{name:'Sign out',exact:true}).click();await page.getByRole('button',{name:'Sign in',exact:true}).waitFor();assert.equal((await request('/account')).body.kind,'none');
+ checks.push('Cross-profile sign-in requires explicit consent, rotates credentials, restores original profile, and logout clears authentication');
+ await page.setViewportSize({width:1440,height:960});await page.getByRole('textbox',{name:'What should we call you?',exact:true}).fill('First visit');
+ await page.getByRole('button',{name:'Choose your look',exact:true}).click();await challenge();
+ await page.getByRole('button',{name:'Join the square',exact:true}).click();await page.getByText('Entry reached in local UI check',{exact:true}).waitFor();
+ assert.equal(joinAttempts,5);assert.equal(await account.count(),0,'A guest created during this visit is not a returning guest');
+ checks.push('First-time guest creates a profile and proceeds directly to matchmaking without a save prompt');
+ assert.deepEqual(errors,[]);
+ await writeFile(`${output}/results.json`,JSON.stringify({checkedAt:new Date().toISOString(),checks,errors,limits:['Disposable local PostgreSQL and real API/UI; Turnstile and email delivery use fixtures.','Join checks stop at a fixture matchmaking response; no multiplayer session proof.','No production deployment, live Resend delivery or physical device proof.']},null,2));
+ console.log(`PASS: ${checks.length} account/submission browser journeys; ${output}/results.json`);
+}catch(error){await page?.screenshot({path:`${output}/failure.png`}).catch(()=>{});throw error;}
+finally{await browser?.close();await new Promise<void>(resolve=>api.close(()=>resolve()));await guests.close();await root.query(`DROP SCHEMA ${schema} CASCADE`);await root.end();await rm(outbox,{recursive:true,force:true});}

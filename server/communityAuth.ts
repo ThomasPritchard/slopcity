@@ -6,6 +6,13 @@ export async function verifyCommunityPassword(password:string,encoded:string):Pr
 export class RequestLimiter {
  private buckets=new Map<string,{count:number;until:number}>();
  constructor(private maximum:number,private duration:number,private capacity=2000){}
+ canTake(key:string,now=Date.now()):boolean {
+  const bucket=this.buckets.get(key);
+  if(bucket)return bucket.until<=now||bucket.count<this.maximum;
+  if(this.buckets.size<this.capacity)return true;
+  for(const value of this.buckets.values())if(value.until<=now)return true;
+  return false;
+ }
  take(key:string,now=Date.now()):boolean { for(const [key,b] of this.buckets)if(b.until<=now)this.buckets.delete(key);let bucket=this.buckets.get(key);if(!bucket){if(this.buckets.size>=this.capacity)return false;bucket={count:0,until:now+this.duration};this.buckets.set(key,bucket);}return ++bucket.count<=this.maximum; }
 }
 export const ADMIN_COOKIE='slop_community_admin';

@@ -61,9 +61,9 @@ export function SocialPanel({
   const voiceLabel = connecting ? 'Joining voice…' : connected ? 'Voice connected' : voice.status === 'error' ? 'Voice unavailable' : 'Voice off';
   const voiceError = voice.error || (voice.status === 'error' ? 'Voice could not connect. Please try again.' : '');
 
-  return <SocialDialog labelledBy={titleId} onClose={onClose}>
+  return <SocialDialog labelledBy={titleId} className="soft-corner-panel" onClose={onClose}>
       <header className="social-header">
-        <div><span className="eyebrow">LIFE IN THE SQUARE</span><h2 id={titleId}>Your neighbours.</h2></div>
+        <div><span className="eyebrow">Life in the square</span><h2 id={titleId}>Your neighbours.</h2></div>
         <button autoFocus type="button" className="social-close" aria-label="Close neighbours panel" onClick={onClose}><SocialIcon kind="close" /></button>
       </header>
       <div className="social-content">

@@ -10,8 +10,8 @@ const endpoint = process.env.GAME_URL || 'http://localhost:5173';
 function observe(page: Page) { page.on('pageerror', error => errors.push(error.message)); }
 async function join(page: Page, name: string, mobilePreview = false) {
   observe(page); await page.goto(endpoint);
-  await page.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).fill(name);
-  await page.getByRole('button', { name: 'Enter', exact: true }).click();
+  await page.getByRole('textbox', { name: 'What should we call you?' }).fill(name);
+  await page.getByRole('button', { name: 'Choose your look', exact: true }).click();
   await page.getByRole('button', { name: 'Join the square', exact: true }).waitFor();
   if (mobilePreview) {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -48,12 +48,12 @@ try {
   const desktop = await browser.newContext({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 });
   const page = await desktop.newPage(); observe(page);
   await page.goto(endpoint);
-  await page.getByRole('button', { name: 'Enter', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Choose your look', exact: true }).waitFor();
   await page.waitForTimeout(1200);
   await page.screenshot({ path: `${output}/01-welcome.png` });
-  await page.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).fill('Tom');
+  await page.getByRole('textbox', { name: 'What should we call you?' }).fill('Tom');
   assert.equal(await page.getByRole('button', { name: 'Skin tone 1' }).count(), 0, 'appearance controls are absent from entry menu');
-  await page.getByRole('button', { name: 'Enter', exact: true }).click();
+  await page.getByRole('button', { name: 'Choose your look', exact: true }).click();
   await page.getByRole('button', { name: 'Join the square', exact: true }).waitFor();
   await page.waitForTimeout(1200);
   await page.screenshot({ path: `${output}/07-changing-room.png` });

@@ -11,8 +11,8 @@ const errors: string[] = [];
 page.on('pageerror', error => errors.push(error.stack || error.message));
 try {
   await page.goto(process.env.GAME_URL || 'http://localhost:5173');
-  await page.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).fill('Tom');
-  await page.getByRole('button', { name: 'Enter', exact: true }).click();
+  await page.getByRole('textbox', { name: 'What should we call you?' }).fill('Tom');
+  await page.getByRole('button', { name: 'Choose your look', exact: true }).click();
   await page.getByRole('button', { name: 'Join the square', exact: true }).click();
   await page.getByRole('button', { name: 'Open town map' }).waitFor();
   await page.getByRole('button', { name: 'Dismiss welcome' }).click();

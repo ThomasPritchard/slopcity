@@ -1,0 +1,65 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { randomUUID } from 'node:crypto';
+import { Pool } from 'pg';
+import { GuestRepository } from '../server/persistence/guests.ts';
+import { EconomyRepository } from '../server/persistence/economy.ts';
+import { CasinoRepository } from '../server/persistence/casino.ts';
+import { SocialRepository } from '../server/persistence/social.ts';
+import { CommunityRepository, type ProtectedSubmissionInput } from '../server/persistence/community.ts';
+
+test('protected uploads persist atomic receipts, quotas, cooldowns, moderation hysteresis and restart', { skip: !process.env.DATABASE_URL }, async () => {
+ const url=new URL(process.env.DATABASE_URL!);
+ assert.ok(['localhost','127.0.0.1','[::1]'].includes(url.hostname),'Requires local database');
+ const admin=new Pool({connectionString:url.toString()});
+ const schema=`protection_test_${randomUUID().replaceAll('-','')}`;
+ await admin.query(`CREATE SCHEMA ${schema}`);url.searchParams.set('options',`-c search_path=${schema}`);
+ const guests=new GuestRepository(url.toString()),economy=new EconomyRepository(guests.pool),repo=new CommunityRepository(economy);
+ try {
+  await guests.initialise();await economy.initialise();await new CasinoRepository(economy).initialise();await new SocialRepository(economy).initialise();await repo.initialise();
+  await guests.pool.query('INSERT INTO guest_schema_migrations(version) VALUES(11)');await repo.initialiseProtection();
+  const owner=randomUUID();await guests.pool.query("INSERT INTO guest_profiles(id,name,shirt,skin) VALUES($1,'Uploader',0,0)",[owner]);
+  const input:ProtectedSubmissionInput={owner,admin:false,network:'network',requestId:randomUUID(),payloadHash:'hash',title:'Picture',credit:'Tester',image:{data:Buffer.from('image1'),width:1,height:1}};
+  const results=await Promise.all([repo.submitProtected(input),repo.submitProtected(input)]);
+  assert.equal(results[0].status,201);assert.deepEqual(results[0],results[1]);
+  assert.equal((await repo.list()).length,1);
+  assert.deepEqual(await repo.replay(owner,input.requestId,'hash'),results[0]);
+  await assert.rejects(repo.replay(owner,input.requestId,'changed'),{status:409});
+  await assert.rejects(repo.submitProtected({...input,payloadHash:'changed'}),{status:409});
+  const duplicate=await repo.submitProtected({...input,requestId:randomUUID()});assert.equal(duplicate.status,409);
+  assert.equal((await guests.pool.query('SELECT count FROM community_submission_days WHERE owner_key=$1',[owner])).rows[0].count,1);
+  await repo.changeProtection({action:'pause'});
+  assert.deepEqual((await new CommunityRepository(economy).protectionStatus()).reasons,['manual']);
+  const paused={...input,requestId:randomUUID(),image:{...input.image!,data:Buffer.from('resume image')}};
+  assert.equal((await repo.submitProtected(paused)).status,429);
+  assert.equal((await repo.protectionStatus()).accountCooldowns.length,0);
+  await repo.changeProtection({action:'resume'});
+  assert.equal(await repo.replay(owner,paused.requestId,paused.payloadHash),null);
+  assert.equal((await repo.submitProtected(paused)).status,201);
+  for(let n=0;n<4;n++)await repo.submitProtected({...input,requestId:randomUUID(),invalid:'bad image'});
+  assert.equal((await repo.protectionStatus()).accountCooldowns.length,1);
+  await repo.changeProtection({action:'clear-cooldown',profileId:owner});
+  await guests.pool.query("UPDATE community_submission_days SET count=10 WHERE owner_key=$1",[owner]);
+  const before=(await guests.pool.query("SELECT count FROM community_submission_days WHERE owner_key='global'")).rows[0].count;
+  const dailyRetry={...input,requestId:randomUUID(),image:{...input.image!,data:Buffer.from('unique')}};
+  assert.equal((await repo.submitProtected(dailyRetry)).status,429);
+  assert.equal((await guests.pool.query("SELECT count FROM community_submission_days WHERE owner_key='global'")).rows[0].count,before);
+  await guests.pool.query("UPDATE community_submission_days SET count=1 WHERE owner_key=$1",[owner]);
+  assert.equal(await repo.replay(owner,dailyRetry.requestId,dailyRetry.payloadHash),null);
+  assert.equal((await repo.submitProtected(dailyRetry)).status,201);
+  const broken={...input,requestId:randomUUID(),image:{data:Buffer.alloc(1024*1024+1),width:1,height:1}};
+  await assert.rejects(repo.submitProtected(broken));
+  assert.equal(await repo.replay(owner,broken.requestId,broken.payloadHash),null);
+  assert.equal((await guests.pool.query("SELECT count FROM community_submission_days WHERE owner_key='global'")).rows[0].count,before+1);
+  // Direct fixture creation isolates backlog transitions from account and daily limits.
+  await guests.pool.query("INSERT INTO community_images(id,title,credit,image,width,height) SELECT md5('fixture'||n)::uuid,'Fixture','',decode('01','hex'),1,1 FROM generate_series(1,62) n");
+  assert.deepEqual((await repo.protectionStatus()).reasons,['backlog']);
+  const rows=(await repo.list()).slice(0,15);for(const row of rows)await repo.moderate(row.id,{status:'approved'});
+  assert.deepEqual((await repo.protectionStatus()).reasons,[]);
+  await guests.pool.query("INSERT INTO community_images(id,title,credit,image,width,height) SELECT md5('extra'||n)::uuid,'Fixture','',decode('01','hex'),1,1 FROM generate_series(1,25) n");
+  assert.equal((await repo.submitProtected({...input,owner:null,admin:true,requestId:randomUUID()})).status,429);
+  assert.equal((await repo.protectionStatus()).pending,75);
+  await repo.initialiseProtection();await repo.initialise();
+  assert.deepEqual((await repo.protectionStatus()).reasons,['backlog']);
+ } finally {await guests.close();await admin.query(`DROP SCHEMA ${schema} CASCADE`);await admin.end();}
+});

@@ -108,3 +108,41 @@ test('an in-flight response cannot satisfy a newer raid check; provider concurre
  await assert.rejects(()=>bounded.verify('overflow','198.51.100.1'),/Too many/);
  responses.forEach(r=>r(Response.json({success:true,hostname:'localhost',action:'town_entry'})));await Promise.all(requests);
 });
+test('email and upload challenges require their own fresh action and cannot reuse entry verification', async () => {
+ const used = new Set<string>();
+ const { service } = fixture(async (_input, options) => {
+  const token = JSON.parse(String(options?.body)).response as string;
+  if (used.has(token)) return Response.json({ success: false, 'error-codes': ['timeout-or-duplicate'] });
+  used.add(token);
+  return Response.json({ success: true, hostname: 'localhost', action: token.split(':')[0] });
+ });
+ await service.verify('town_entry:one', '198.51.100.1');
+ await assert.rejects(service.verify('town_entry:one', '198.51.100.1', 'account_email'));
+ await assert.rejects(service.verify('town_entry:two', '198.51.100.1', 'account_email'));
+ await service.verify('account_email:one', '198.51.100.1', 'account_email');
+ await assert.rejects(service.verify('account_email:one', '198.51.100.1', 'community_upload'));
+ await assert.rejects(service.verify('account_email:two', '198.51.100.1', 'community_upload'));
+ await service.verify('account_entry:one', '198.51.100.1', 'account_entry');
+ await assert.rejects(service.verify('account_entry:one', '198.51.100.1', 'account_entry'));
+ await assert.rejects(service.verify('account_entry:two', '198.51.100.1', 'community_upload'));
+ await assert.rejects(service.verify('account_entry:three', '198.51.100.1', 'account_email'));
+ await assert.rejects(service.verify('account_entry:four', '198.51.100.1'));
+ await service.verify('community_upload:one', '198.51.100.1', 'community_upload');
+ await assert.rejects(service.verify('community_upload:one', '198.51.100.1', 'community_upload'));
+});
+test('account session invalidation clears target grants and disconnects matching connections once', async () => {
+ const { service } = fixture(), target = randomUUID(), other = randomUUID(), targetCookie = cookie(), otherCookie = cookie();
+ const generation = await service.verify('target-grant', '198.51.100.1');
+ service.issue(target, targetCookie, generation); service.issue(other, otherCookie, generation);
+ let targetDisconnects = 0, otherDisconnects = 0;
+ service.connect('target-one', target, targetCookie, () => {}, () => { targetDisconnects++; });
+ service.connect('target-two', target, cookie(), () => {}, () => { targetDisconnects++; });
+ service.connect('other-one', other, otherCookie, () => {}, () => { otherDisconnects++; });
+ service.invalidateProfiles([target, target]);
+ assert.equal(targetDisconnects, 2); assert.equal(otherDisconnects, 0);
+ assert.equal(service.status(target, targetCookie).verified, false);
+ assert.equal(service.status(other, otherCookie).verified, true);
+ assert.throws(() => service.reserve(target, targetCookie));
+ service.invalidateProfiles([target]); assert.equal(targetDisconnects, 2);
+ service.invalidateProfiles([other]); assert.equal(otherDisconnects, 1);
+});

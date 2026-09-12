@@ -1,0 +1,205 @@
+/* The preview keeps its existing 72% desktop / 58% portrait camera area. */
+.customising { min-height: 0; color: var(--soft-cream); }
+.customising::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 72%;
+  z-index: 1;
+  background: var(--soft-ink);
+  pointer-events: none;
+}
+.customising .masthead { align-items: flex-start; }
+.customising .custom-brand { width: 68px; height: auto; }
+.customising .custom-heading {
+  top: 135px;
+  left: 6%;
+  max-width: 28%;
+  color: var(--soft-cream);
+  text-shadow: 0 2px 14px #193b3080;
+}
+.customising .custom-heading > span { font-size: 16px; font-weight: 550; }
+.customising .custom-heading h1 {
+  margin: 10px 0 12px;
+  font: 700 clamp(32px, 3.2vw, 50px)/1.1 'DM Sans', sans-serif;
+  letter-spacing: -.035em;
+  text-wrap: balance;
+}
+.customising .custom-heading p { color: var(--soft-cream); font-size: 15px; line-height: 1.5; }
+.customising .custom-panel {
+  top: 50%;
+  right: clamp(24px, 4vw, 72px);
+  width: clamp(310px, 26vw, 380px);
+  max-height: calc(100dvh - 150px);
+  padding: 0;
+  transform: translateY(-44%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #f7f4e3;
+  border-radius: 18px;
+  background: var(--soft-cream);
+  color: var(--soft-ink);
+  box-shadow: 0 12px 36px #10281d26;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.customising .custom-options {
+  min-height: 0;
+  padding: 28px 26px 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #193b3066 transparent;
+}
+.customising .custom-panel h2 {
+  margin: 0;
+  font: 700 29px/1.2 'DM Sans', sans-serif;
+  letter-spacing: -.025em;
+}
+.customising .custom-copy { display: block; margin-top: 8px; color: #435b4d; font-size: 15px; line-height: 1.5; }
+.customising .custom-name-field { margin-top: 24px; }
+.customising .custom-name-field label, .customising .custom-field legend {
+  float: none;
+  display: block;
+  width: auto;
+  margin: 0 0 10px;
+  color: var(--soft-ink);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+.customising .custom-name {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  padding: 13px 16px;
+  border: 1px solid #657b68;
+  border-radius: 14px;
+  background: #fffdf3;
+  color: var(--soft-ink);
+  font-size: 18px;
+  line-height: 1.4;
+}
+.customising .custom-field { margin-top: 24px; padding: 0; border: 0; }
+.customising .custom-field .swatches { flex-wrap: wrap; gap: 8px; padding: 2px; }
+.customising .custom-field .swatch {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border: 5px solid var(--soft-cream);
+  touch-action: manipulation;
+}
+.customising .custom-field .swatch.selected::after { inset: -1px; border: 2px solid var(--soft-ink); }
+.customising .outfit-description { display: block; margin: 24px 0 0; padding-top: 20px; border-top: 1px solid #193b302b; }
+.customising .outfit-description > span { color: var(--soft-ink); font-size: 15px; font-weight: 650; letter-spacing: 0; }
+.customising .outfit-description p { margin-top: 8px; color: #435b4d; font-size: 13px; line-height: 1.6; }
+.customising .outfit-description small { margin-top: 8px; color: #435b4d; font-size: 12px; }
+.customising .custom-actions { flex-shrink: 0; padding: 0 26px 24px; background: var(--soft-cream); }
+.customising .custom-actions .enter {
+  min-height: 58px;
+  padding: 15px 18px;
+  gap: 12px;
+  border-radius: 16px;
+  background: var(--soft-accent);
+  color: var(--soft-ink);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: left;
+}
+.customising .custom-actions .enter:hover:not(:disabled) { background: #d1de91; }
+.customising .custom-actions > p { margin-top: 10px; color: #435b4d; font-size: 12px; line-height: 1.5; }
+.customising .custom-actions > .error { margin: 0 0 12px; max-height: 100px; overflow-y: auto; color: #8b352b; font-size: 14px; }
+.customising .custom-panel :focus-visible { outline: 3px solid var(--soft-ink); outline-offset: 3px; }
+.customising .preview-controls {
+  left: 36%;
+  bottom: 28px;
+  padding: 6px;
+  gap: 8px;
+  border: 1px solid #f1eedb55;
+  border-radius: 20px;
+  background: var(--soft-ink);
+  box-shadow: 0 6px 20px #10271d33;
+}
+.customising .preview-controls button { min-width: 44px; min-height: 44px; width: 44px; height: 44px; border-radius: 14px; color: var(--soft-cream); font-size: 22px; }
+.customising .preview-views { gap: 4px; }
+.customising .preview-views button { width: auto; height: 44px; padding: 0 14px; font-size: 14px; font-weight: 550; text-transform: capitalize; letter-spacing: 0; }
+.customising .preview-views button[aria-pressed='true'] { background: var(--soft-accent); color: var(--soft-ink); }
+.customising .preview-controls button:focus-visible { outline: 3px solid var(--soft-accent); outline-offset: 3px; }
+
+@media (max-width: 1100px) and (min-width: 700px) {
+  .customising .custom-heading { left: 4%; top: 125px; max-width: 29%; }
+  .customising .custom-heading h1 { font-size: 34px; }
+  .customising .custom-panel { right: 24px; width: 310px; }
+  .customising .custom-options { padding: 24px 20px 20px; }
+  .customising .custom-actions { padding-inline: 20px; }
+  .customising .custom-field .swatches { gap: 6px; }
+}
+@media (max-width: 699px) {
+  .customising::after { inset: 58% 0 0; }
+  .customising .masthead { top: max(16px, env(safe-area-inset-top)); left: max(22px, env(safe-area-inset-left)); }
+  .customising .custom-brand { width: 48px; }
+  .customising .custom-heading { top: 18px; left: 90px; max-width: calc(100% - 114px); }
+  .customising .custom-heading > span { font-size: 13px; }
+  .customising .custom-heading h1 { margin: 5px 0; font-size: 24px; }
+  .customising .custom-heading p { display: none; }
+  .customising .custom-panel {
+    inset: auto 0 0;
+    width: 100%;
+    height: 42%;
+    max-height: none;
+    padding: 0;
+    transform: none;
+    border-radius: 20px 20px 0 0;
+  }
+  .customising .custom-options { padding: 18px max(22px, env(safe-area-inset-right)) 20px max(22px, env(safe-area-inset-left)); }
+  .customising .custom-panel h2 { font-size: 24px; }
+  .customising .custom-copy { display: none; }
+  .customising .custom-name-field { margin-top: 18px; }
+  .customising .custom-name { min-height: 48px; font-size: 16px; padding: 11px 14px; }
+  .customising .custom-colours { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  .customising .custom-field { margin-top: 20px; }
+  .customising .custom-field .swatches { gap: 4px; }
+  .customising .outfit-description { display: none; }
+  .customising .custom-actions { padding: 12px max(22px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left)); border-top: 1px solid #193b3026; }
+  .customising .custom-actions .enter { min-height: 52px; padding-block: 12px; font-size: 17px; }
+  .customising .custom-actions > p { margin-top: 8px; }
+  .customising .preview-controls { left: 50%; bottom: calc(42% + 12px); gap: 5px; padding: 5px; max-width: calc(100% - 24px); }
+  .customising .preview-views { gap: 2px; }
+  .customising .preview-views button { padding: 0 10px; font-size: 13px; }
+}
+@media (max-width: 699px) and (max-height: 700px) {
+  .customising .custom-options { padding: 14px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left)); }
+  .customising .custom-panel h2 { display: none; }
+  .customising .custom-colours { gap: 12px; }
+  .customising .custom-field { margin-top: 0; }
+  .customising .custom-field legend { margin-bottom: 8px; font-size: 14px; }
+  .customising .custom-field .swatches { gap: 0; }
+  .customising .custom-actions { padding: 10px 16px max(12px, env(safe-area-inset-bottom)); }
+  .customising .custom-actions > p { display: none; }
+  .customising .custom-actions > .error { display: block; max-height: 50px; }
+}
+@media (max-height: 560px) and (min-width: 700px) {
+  .customising .masthead { top: max(14px, env(safe-area-inset-top)); }
+  .customising .custom-brand { width: 44px; }
+  .customising .custom-heading { top: 68px; left: 28px; max-width: 27%; }
+  .customising .custom-heading > span { font-size: 13px; }
+  .customising .custom-heading h1 { margin-top: 6px; font-size: 28px; }
+  .customising .custom-heading p { display: none; }
+  .customising .custom-panel { top: 56px; right: max(16px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); width: 310px; max-height: none; transform: none; }
+  .customising .custom-options { padding: 18px 20px; }
+  .customising .custom-panel h2 { font-size: 24px; }
+  .customising .custom-copy, .customising .outfit-description { display: none; }
+  .customising .custom-name-field, .customising .custom-field { margin-top: 18px; }
+  .customising .custom-name { min-height: 48px; font-size: 16px; }
+  .customising .custom-actions { padding: 12px 20px; border-top: 1px solid #193b3026; }
+  .customising .custom-actions .enter { min-height: 48px; padding: 12px 16px; font-size: 16px; }
+  .customising .custom-actions > p { display: none; }
+  .customising .custom-actions > .error { display: block; max-height: 50px; }
+  .customising .preview-controls { left: 30%; bottom: max(12px, env(safe-area-inset-bottom)); gap: 4px; padding: 5px; }
+  .customising .preview-views button { padding: 0 10px; font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .customising .swatch, .customising .enter { transition: none; }
+}

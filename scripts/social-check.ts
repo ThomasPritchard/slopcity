@@ -9,8 +9,8 @@ const endpoint = process.env.GAME_URL || 'http://localhost:5173';
 async function join(page:Page,name:string) {
  page.on('pageerror',error=>errors.push(error.message));
  await page.goto(endpoint);
- await page.getByRole('textbox',{name:'WHAT SHOULD WE CALL YOU?'}).fill(name);
- await page.getByRole('button',{name:'Enter',exact:true}).click();
+ await page.getByRole('textbox',{name:'What should we call you?'}).fill(name);
+ await page.getByRole('button',{name:'Choose your look',exact:true}).click();
  await page.getByRole('button',{name:'Outfit colour 3',exact:true}).click();
  await page.getByRole('button',{name:'Join the square',exact:true}).click();
  await page.getByRole('button',{name:'Open town map',exact:true}).waitFor();
@@ -70,9 +70,9 @@ try {
  await page.getByRole('button',{name:'Stand up',exact:true}).click();await page.waitForTimeout(350);
  assert.equal(await page.getByRole('button',{name:'Wave to neighbours'}).isEnabled(),true);
  await page.getByRole('button',{name:'Open settings'}).click();await page.getByRole('button',{name:'Leave the square'}).click();
- await page.getByRole('textbox',{name:'WHAT SHOULD WE CALL YOU?'}).waitFor();await page.reload();
+ await page.getByRole('textbox',{name:'What should we call you?'}).waitFor();await page.reload();
  await page.waitForFunction(()=>!(document.querySelector('#display-name') as HTMLInputElement)?.disabled);
- assert.equal(await page.getByRole('textbox',{name:'WHAT SHOULD WE CALL YOU?'}).inputValue(),'Tom');
+ assert.equal(await page.getByRole('textbox',{name:'What should we call you?'}).inputValue(),'Tom');
  const restored=await page.evaluate(async()=>await(await fetch('/game/api/profile')).json());assert.equal(restored.id,saved.id);assert.equal(restored.shirt,2);
  assert.deepEqual(errors,[]);
  await writeFile(`${output}/social-results.json`,JSON.stringify({checkedAt:new Date().toISOString(),browser:'headless WebKit',checks:['saved guest restores','two guests and chat','mute toggle','persistent block/unblock and chat filtering','mobile dialog and focus restore','walk to bench','seated pose and movement suppression','stand','no runtime errors'],errors},null,2));

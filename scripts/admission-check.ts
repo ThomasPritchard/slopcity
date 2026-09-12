@@ -72,7 +72,7 @@ try {
  browser=await chromium.launch({headless:true,args:['--use-angle=metal']});const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),errors:string[]=[];
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('https://challenges.cloudflare.com/turnstile/v0/api.js*',route=>route.fulfill({contentType:'application/javascript',body:`window.turnstile={render(el,options){el.textContent='Verification test fixture';setTimeout(()=>options.callback('fixture-'+crypto.randomUUID()),10);return 'fixture';},remove(){},reset(){}};`}));
- await page.goto(origin);await page.getByRole('textbox',{name:'WHAT SHOULD WE CALL YOU?'}).fill('Browser neighbour');await page.getByRole('button',{name:'Enter',exact:true}).click();
+ await page.goto(origin);await page.getByRole('textbox',{name:'What should we call you?'}).fill('Browser neighbour');await page.getByRole('button',{name:'Choose your look',exact:true}).click();
  await page.getByRole('dialog',{name:'A quick check before you join.'}).waitFor();
  for(const[label,width,height]of[['desktop',1440,1000],['portrait',390,844],['landscape',844,390]]as const){await page.setViewportSize({width,height});await page.screenshot({path:`${out}/entry-${label}.png`});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);}
  await page.getByRole('button',{name:'Continue',exact:true}).click();await page.getByRole('button',{name:'Join the square',exact:true}).waitFor({timeout:60_000});

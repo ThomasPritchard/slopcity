@@ -70,8 +70,8 @@ async function arrive(name: string, seat: number) {
   page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations.push({ player: name, at: new Date().toISOString(), path: new URL(frame.url()).pathname }); });
   const player = { page, name, seat, before: 0, afterBuyIn: 0 }; players.push(player);
   await page.goto('http://localhost:5173');
-  await page.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).fill(name);
-  await page.getByRole('button', { name: 'Enter', exact: true }).click({ timeout: 90_000 });
+  await page.getByRole('textbox', { name: 'What should we call you?' }).fill(name);
+  await page.getByRole('button', { name: 'Choose your look', exact: true }).click({ timeout: 90_000 });
   await page.getByRole('button', { name: 'Join the square', exact: true }).click();
   await page.getByRole('button', { name: 'Open town map', exact: true }).first().waitFor();
   const welcome = page.getByRole('button', { name: 'Dismiss welcome', exact: true });

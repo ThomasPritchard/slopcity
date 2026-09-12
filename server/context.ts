@@ -1,3 +1,5 @@
+import { AccountRepository } from './persistence/accounts.ts';
+import { AccountMailer } from './accountMail.ts';
 import { AdmissionService, turnstileConfig } from './admission.ts';
 import { AdmissionRepository } from './persistence/admission.ts';
 import { CommunityRepository } from './persistence/community.ts';
@@ -18,6 +20,8 @@ export const guests = new GuestRepository();
 export const sessions = new SessionRegistry();
 export const voice = new VoiceService();
 export const economy = new EconomyRepository(guests.pool);
+export const accounts = new AccountRepository(economy);
+export const accountMailer = new AccountMailer();
 export const socialRepository = new SocialRepository(economy);
 export const communityRepository = new CommunityRepository(economy);
 export const safety = new SafetyService(new SafetyRepository(economy));

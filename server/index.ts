@@ -1,3 +1,4 @@
+import { mountAccountRoutes } from './accounts.ts';
 import { TwitchLiveService } from './twitchLive.ts';
 import { mountCommunityRoutes } from './community.ts';
 import { AddressedHttpServer, clientAddress, proxySecret } from './clientAddress.ts';
@@ -16,7 +17,7 @@ import { mountEconomyRoutes } from './economy.ts';
 if (existsSync('.env')) loadEnvFile('.env');
 const config = runtimeConfig();
 const addressSecret = proxySecret();
-const { guests, sessions, voice, towns, economy, casinoRepository, socialRepository, communityRepository, safety, admission } = await import('./context.ts');
+const { guests, sessions, voice, towns, economy, casinoRepository, socialRepository, communityRepository, safety, admission, accounts, accountMailer } = await import('./context.ts');
 const { TownRoom } = await import('./town.ts');
 let stopping = false;
 const lock = await acquireRuntimeLock(process.env.DATABASE_URL!, () => {
@@ -31,6 +32,8 @@ try {
   await communityRepository.initialise();
   await safety.initialise();
   await admission.initialise();
+  await accounts.initialise();
+  await communityRepository.initialiseProtection();
   const bannedNames = await safety.banProhibitedNames();
   if (bannedNames) console.info(JSON.stringify({event:'prohibited_profile_names_banned',count:bannedNames}));
   await casinoRepository.recoverPending();
@@ -81,7 +84,8 @@ const server = new Server({
       changed: ids => { for(const town of towns.values())town.socialChanged(ids); },
       gifted: async ids => { for(const id of ids){const active=sessions.get(id);if(active){const wallet=await economy.ensure(id);towns.get(active.roomId)?.publishEconomy(id,active.sessionId,wallet);}} },
     });
-    mountCommunityRoutes(app, guests, communityRepository, { safety, twitchLive, admission });
+    mountAccountRoutes(app, guests, accounts, accountMailer, admission, safety);
+    mountCommunityRoutes(app, guests, communityRepository, { safety, twitchLive, admission, accounts });
     mountGuestRoutes(app, guests, sessions, safety, admission);
   },
 });

@@ -30,9 +30,12 @@ async function until(check: () => boolean | Promise<boolean>, label: string, tim
 async function join(page: Page, name: string) {
   page.setDefaultTimeout(30000); page.on('pageerror', error => errors.push(error.message));
   page.on('response', response => { const path = new URL(response.url()).pathname; if (response.status() >= 400 && !(response.status() === 401 && path === '/game/api/profile')) failures.push(`${response.status()} ${path}`); });
-  await page.addInitScript(() => { localStorage.setItem('slop-city-comfort', JSON.stringify({ graphics: 'medium', motion: 'reduced', effects: 0, ambience: 0 })); });
-  await page.goto(site); await page.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).fill(name);
-  await page.getByRole('button', { name: 'Enter', exact: true }).click({ timeout: 90000 });
+  await page.addInitScript(() => {
+    localStorage.setItem('slop-city-comfort', JSON.stringify({ graphics: 'medium', motion: 'reduced', effects: 0, ambience: 0 }));
+    if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => { throw Error('No real microphone in HUD acceptance'); };
+  });
+  await page.goto(site); await page.getByRole('textbox', { name: 'What should we call you?' }).fill(name);
+  await page.getByRole('button', { name: 'Choose your look', exact: true }).click({ timeout: 90000 });
   await page.getByRole('button', { name: 'Join the square', exact: true }).click({ timeout: 90000 });
   await page.getByRole('button', { name: 'Open neighbours', exact: true }).waitFor();
   const welcome = page.getByRole('button', { name: 'Dismiss welcome' }); if (await welcome.isVisible()) await welcome.click();
@@ -57,6 +60,34 @@ async function dialogVisible(page: Page, name: string) {
   await fits(page, 'dialog[open]');
   assert.equal(await dialog.evaluate(node => { const box = node.getBoundingClientRect(); return node.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)); }), true, 'dialog receives hit tests above game');
 }
+async function townPanels(page: Page, label: string) {
+  for (const [name, opener] of [['Town map', 'Open town map'], ['Settings', 'Open settings']] as const) {
+    await page.getByRole('button', { name: opener, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name, exact: true });
+    await dialog.waitFor(); await fits(page, '.modal');
+    const close = dialog.getByRole('button', { name: 'Close panel', exact: true });
+    const before = await close.boundingBox();
+    await dialog.locator('.soft-panel-content').evaluate(node => { node.scrollTop = node.scrollHeight; });
+    assert.deepEqual(await close.boundingBox(), before, `${name}: close stays visible when content scrolls`);
+    if (name === 'Settings') {
+      const leave = dialog.getByRole('button', { name: 'Leave the square', exact: true });
+      await leave.scrollIntoViewIfNeeded();
+      const box = await leave.boundingBox();
+      assert.ok(box && box.y >= 0 && box.y + box.height <= page.viewportSize()!.height, 'Leave remains reachable');
+      await close.focus(); await page.keyboard.press('Shift+Tab');
+      assert.equal(await leave.evaluate(node => node === document.activeElement), true, 'Settings traps reverse keyboard traversal');
+      const graphics = dialog.getByRole('combobox', { name: 'Graphics quality', exact: true });
+      assert.ok((await graphics.boundingBox())!.height >= 44, 'Settings selects keep full touch height');
+      await graphics.selectOption('low');
+      assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('slop-city-comfort')!).graphics), 'low');
+      await graphics.selectOption('medium');
+    }
+    await dialog.locator('.soft-panel-content').evaluate(node => { node.scrollTop = 0; });
+    await page.screenshot({ path: `${output}/${label}-${name === 'Settings' ? 'settings' : 'map'}.png` });
+    await close.focus(); await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached' });
+  }
+}
 try {
   await until(async () => { try { return (await fetch(`${endpoint}/health`)).ok; } catch { return false; } }, 'isolated server');
   web = await preview({ configFile: false, preview: { host: '127.0.0.1', port: 5182, strictPort: true, proxy: { '/game': { target: endpoint, ws: true, rewrite: path => path.replace(/^\/game/, '') } } } });
@@ -64,6 +95,9 @@ try {
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } }); const page = await context.newPage();
   const ownId = await join(page, 'Rowan'), bea = await raw('Bea'), ada = await raw('Ada');
   await until(() => bea.room.state?.players?.size === 3, 'three real guests');
+  await townPanels(page, 'desktop');
+  checks.push('Map and Settings: fixed header, reachable leave action, keyboard close/trap and saved graphics controls');
+  console.log('PASS: desktop Map and Settings');
   await page.getByRole('button', { name: 'Open neighbours', exact: true }).click(); await dialogVisible(page, 'Your neighbours.');
   await page.screenshot({ path: `${output}/social-desktop.png` });
   await page.keyboard.press('Escape'); assert.equal(await page.getByRole('dialog').count(), 0);
@@ -85,7 +119,7 @@ try {
   await page.getByRole('button', { name: 'Town', exact: true }).click();
   for (let n = 0; n < 16; n++) { const peer = n % 2 ? bea : ada; peer.room.send('chat', `Neighbourhood note ${n + 1}: good company in the square today.`); await delay(1100); }
   await page.locator('.chat-history').getByText('Neighbourhood note 16: good company in the square today.', { exact: true }).waitFor();
-  const metrics = await page.locator('.chat-history').evaluate(node => ({ height: node.clientHeight, total: node.scrollHeight, font: getComputedStyle(node.querySelector('p')!).fontSize })); assert.ok(metrics.height >= 180 && metrics.total > metrics.height); assert.equal(metrics.font, '14px');
+  const metrics = await page.locator('.chat-history').evaluate(node => ({ height: node.clientHeight, total: node.scrollHeight, font: getComputedStyle(node.querySelector('p')!).fontSize })); assert.ok(metrics.height >= 180 && metrics.total > metrics.height, `Readable, scrollable desktop chat: ${JSON.stringify(metrics)}`); assert.equal(metrics.font, '14px');
   await page.locator('.chat-history').evaluate(node => { node.scrollTop = 0; }); await delay(150);
   await delay(2200); bea.room.send('chat', 'A new note while you read'); await page.locator('.chat-history').getByText('A new note while you read', { exact: true }).waitFor();
   assert.ok(await page.locator('.chat-history').evaluate(node => node.scrollTop < 10), 'incoming messages preserve scrollback');
@@ -102,6 +136,8 @@ try {
   await page.getByRole('button', { name: 'Expand chat height' }).click(); assert.ok((await page.locator('.chat-panel').boundingBox())!.height > 400);
   await page.getByRole('button', { name: 'Change chat text size' }).click(); assert.equal(await page.locator('.chat-history p').first().evaluate(node => getComputedStyle(node).fontSize), '16px');
   await page.setViewportSize({ width: 3840, height: 2160 }); await fits(page, '.bottom-left'); await fits(page, '.toolbar');
+  const brand = await page.locator('.hud-brand').boundingBox(), wallet = await page.locator('.wallet-hud').boundingBox();
+  assert.ok(brand && wallet && wallet.y > brand.y + brand.height, '4K header and wallet keep separate rows');
   assert.ok((await page.getByRole('button', { name: 'Open neighbours', exact: true }).boundingBox())!.width >= 60);
   await page.screenshot({ path: `${output}/hud-4k.png` });
   await page.setViewportSize({ width: 1920, height: 1080 });
@@ -127,6 +163,8 @@ try {
   assert.ok(await page.locator('.chat-history').evaluate(node => node.clientHeight >= 30), 'portrait casino whisper keeps visible history');
   const composer = page.getByRole('textbox', { name: 'Whisper message' });
   assert.equal(await composer.evaluate(node => { const b = node.getBoundingClientRect(); return document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2) === node; }), true, 'whisper input is not clipped');
+  const composerBox = await composer.boundingBox(), chatBox = await page.locator('.chat-panel').boundingBox();
+  assert.ok(composerBox && chatBox && composerBox.height >= 44 && composerBox.y + composerBox.height <= chatBox.y + chatBox.height - 1, 'The full 44px whisper input fits inside the casino chat card');
   assert.ok((await page.getByRole('button', { name: 'Close town chat', exact: true }).boundingBox())!.height >= 44);
   await page.screenshot({ path: `${output}/table-whisper-portrait.png` });
   checks.push('actual walk and leaderboard at three sizes; actual roulette table chat, outsider exclusion, portrait/landscape fit');
@@ -135,6 +173,24 @@ try {
   await join(phone, 'Poppy');
   assert.equal(await phone.locator('.chat-panel').count(), 0, 'touch chat starts collapsed');
   assert.equal(await phone.locator('.toolbar').evaluate(node => getComputedStyle(node).transform), 'none', 'no desktop scaling on touch');
+  for (const [label, width, height] of [['portrait', 390, 844], ['small-phone', 320, 568], ['landscape', 844, 390]] as const) {
+    await phone.setViewportSize({ width, height });
+    assert.equal(await phone.locator('.hud-district').isVisible(), false, 'Phone header keeps the logo without the district label');
+    for (const button of await phone.locator('.toolbar button').all()) {
+      const box = await button.boundingBox();
+      assert.ok(box && box.width >= 44 && box.height >= 44 && box.x >= -1 && box.x + box.width <= width + 1, `${label}: toolbar touch targets fit`);
+      assert.equal(await button.locator('span').isVisible(), true, 'Toolbar labels are visible');
+    }
+    await townPanels(phone, `touch-${label}`);
+    await phone.getByRole('button', { name: 'Open neighbours', exact: true }).click();
+    await dialogVisible(phone, 'Your neighbours.');
+    await phone.screenshot({ path: `${output}/touch-${label}-social.png` });
+    await phone.keyboard.press('Escape');
+    await phone.screenshot({ path: `${output}/touch-${label}-hud.png` });
+    await phone.getByRole('button', { name: 'Toggle town chat', exact: true }).click();
+    await phone.getByRole('button', { name: 'Close town chat', exact: true }).click();
+  }
+  await phone.setViewportSize({ width: 390, height: 844 });
   await phone.getByRole('button', { name: 'Toggle town chat' }).click(); await fits(phone, '.chat-panel');
   assert.ok((await phone.getByRole('textbox', { name: 'Message to town' }).boundingBox())!.height >= 44);
   await phone.screenshot({ path: `${output}/touch-portrait.png` });

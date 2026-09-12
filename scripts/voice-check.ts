@@ -6,8 +6,8 @@ const errors:string[]=[];
 async function join(page:Page,name:string) {
  page.on('pageerror',error=>errors.push(error.message));
  await page.goto('http://localhost:5173');
- await page.getByRole('textbox',{name:'WHAT SHOULD WE CALL YOU?'}).fill(name);
- await page.getByRole('button',{name:'Enter',exact:true}).click({timeout:90000});
+ await page.getByRole('textbox',{name:'What should we call you?'}).fill(name);
+ await page.getByRole('button',{name:'Choose your look',exact:true}).click({timeout:90000});
  await page.getByRole('button',{name:'Join the square',exact:true}).click();
  await page.getByRole('button',{name:'Open neighbours'}).click();
  const responsePromise=page.waitForResponse(r=>r.url().endsWith('/voice/token'));

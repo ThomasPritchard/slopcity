@@ -24,8 +24,8 @@ async function mobileLayout(game:string,action:string){
 
 try {
  await page.goto('http://localhost:5173');
- await page.getByRole('textbox',{name:'WHAT SHOULD WE CALL YOU?'}).fill('Craps visitor');
- await page.getByRole('button',{name:'Enter',exact:true}).click(); await page.getByRole('button',{name:'Join the square',exact:true}).click();
+ await page.getByRole('textbox',{name:'What should we call you?'}).fill('Craps visitor');
+ await page.getByRole('button',{name:'Choose your look',exact:true}).click(); await page.getByRole('button',{name:'Join the square',exact:true}).click();
  await page.getByRole('button',{name:'Open town map'}).waitFor(); const welcome=page.getByRole('button',{name:'Dismiss welcome'}); if(await welcome.isVisible())await welcome.click();
  await page.evaluate(async()=>{const path='/node_modules/.vite/deps/@babylonjs_core_Engines_engine.js';const{Engine}=await import(path);(window as any).casinoScene=Engine.Instances[0].scenes[0];});
  for(const [axis,target] of [['x',-4.7],['z',11.2],['x',0],['z',26.7],['x',-12],['z',48],['x',-11.5],['z',49.5]] as const) await walk(axis,target);

@@ -51,7 +51,7 @@ export function TownChat({ messages, message, name, colour, population, profileI
   return <section className={`chat-panel chat-qol${options.tall ? ' chat-tall' : ''}`} style={{ '--chat-font': `${options.font}px` } as React.CSSProperties} aria-label="Town chat" onKeyDown={event => {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); }
   }}>
-    <div className="chat-title"><span className="live-dot"/><span className="chat-title-label">CHAT</span>
+    <div className="chat-title"><span className="live-dot"/><span className="chat-title-label">Chat</span>
       <span className="chat-identity"><span className="identity-dot" aria-hidden="true" style={{ background: colour }}/><b>{name}</b></span>
       <span className="chat-population">{population} in town</span>
       <div className="chat-tools">

@@ -61,8 +61,8 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error' && message.text().includes('same key')) errors.push(message.text()); });
   await page.goto(site);
-  await page.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).fill('Chat Tester');
-  await page.getByRole('button', { name: 'Enter', exact: true }).click();
+  await page.getByRole('textbox', { name: 'What should we call you?' }).fill('Chat Tester');
+  await page.getByRole('button', { name: 'Choose your look', exact: true }).click();
   await page.getByRole('button', { name: 'Join the square', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Join the square', exact: true }).click();
   await page.getByRole('button', { name: 'Open town map' }).waitFor();
@@ -141,8 +141,8 @@ try {
   second.on('pageerror', error => errors.push(error.message));
   second.on('console', message => { if (message.type() === 'error' && message.text().includes('same key')) errors.push(message.text()); });
   await second.goto(site);
-  await second.getByRole('textbox', { name: 'WHAT SHOULD WE CALL YOU?' }).fill('Silent Sam');
-  await second.getByRole('button', { name: 'Enter', exact: true }).click();
+  await second.getByRole('textbox', { name: 'What should we call you?' }).fill('Silent Sam');
+  await second.getByRole('button', { name: 'Choose your look', exact: true }).click();
   await second.getByRole('button', { name: 'Join the square', exact: true }).waitFor();
   await second.getByRole('button', { name: 'Join the square', exact: true }).click();
   await second.getByRole('button', { name: 'Open town map' }).waitFor();
